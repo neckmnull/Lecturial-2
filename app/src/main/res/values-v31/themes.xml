@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Lecturial.Starting" parent="Theme.Lecturial">
+        <item name="android:windowSplashScreenBackground">#FF262626</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FF262626</item>
+    </style>
+</resources>

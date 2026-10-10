@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_background">#FF303030</color>
+    <color name="widget_on_background">#FFC6C6C6</color>
+    <color name="widget_on_surface_variant">#FFA8A8A8</color>
+    <color name="widget_primary">@android:color/system_accent1_100</color>
+    <color name="widget_secondary">@android:color/system_accent2_200</color>
+    <color name="widget_primary_container">@android:color/system_accent1_700</color>
+    <color name="widget_on_primary_container">@android:color/system_accent1_50</color>
+    <color name="widget_secondary_container">@android:color/system_accent2_700</color>
+    <color name="widget_on_secondary_container">@android:color/system_accent2_50</color>
+    <color name="widget_outline">@android:color/system_neutral2_700</color>
+</resources>

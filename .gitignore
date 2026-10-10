@@ -1,0 +1,37 @@
+*.iml
+.gradle/
+.idea/
+local.properties
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+keystore/
+keystore.properties
+
+# Kotlin / IDE / local assistant state
+.kotlin/
+.cursor/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Signing keys, credentials and local configuration
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+google-services.json
+
+# Generated distribution files and logs
+*.apk
+*.aab
+*.apks
+*.log
+publication/
