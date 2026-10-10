@@ -1,27 +1,25 @@
-# Публикация на GitHub
+# Publishing Lecturial 2
 
-## Комплект
+## Repository package
 
-Исходники, Gradle Wrapper, README, описание архитектуры, правила участия, шаблоны Issues/PR, Apache 2.0 и лицензия Manrope подготовлены в корне проекта. Локальный архив `publication/Lecturial-2-github-source.zip` содержит снимок публикуемых файлов; после изменений его нужно пересоздать.
+The source tree includes Gradle Wrapper, README, architecture and design documentation, contribution guidelines, GitHub templates, Apache License 2.0, and the Manrope license.
 
-## Перед публичной публикацией
+## Before public distribution
 
-1. Проверьте право распространения логотипа `onboarding_sirius_logo.png`. Подтверждение разрешения не найдено; получите его или замените логотип собственной графикой. Подробнее: [сторонние материалы](../THIRD_PARTY_NOTICES.md).
-2. Проверьте выбор Apache 2.0: она допускает коммерческие и закрытые производные проекты. Если хотите обязательного открытия распространяемых производных версий, рассмотрите GPL-3.0 до публикации.
-3. Убедитесь, что являетесь правообладателем публикуемого кода. Уведомление об авторстве использует нейтральное `Lecturial 2 contributors`; при необходимости укажите своё имя или организацию в README и NOTICE.
-4. Проверьте состав файлов перед первым коммитом. `.gitignore` не удаляет уже отслеживаемые секреты.
+1. Verify the right to redistribute `onboarding_sirius_logo.png`. No evidence of permission is bundled with this repository; obtain permission or replace it with original artwork. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+2. Confirm that Apache License 2.0 is the intended license. It permits commercial use and closed-source derivatives subject to its terms.
+3. Make sure you own or have permission to distribute all submitted code. The attribution notice uses the neutral name `Lecturial 2 contributors`; update README and NOTICE if a specific person or organization should be named.
+4. Review staged files before every release. `.gitignore` does not remove secrets that have already been tracked.
 
-## Создание репозитория
+## Creating the repository
 
-Рекомендуемое имя: `Lecturial-2`.
+Recommended repository name: `Lecturial-2`.
 
-Описание: `Неофициальное Android-приложение для расписания Университета «Сириус»: Compose, офлайн-кэш, виджет и уведомления.`
+Recommended description: `Unofficial Android schedule app for Sirius University with Jetpack Compose, offline cache, widget, and notifications.`
 
-Topics: `android`, `kotlin`, `jetpack-compose`, `material3`, `schedule`, `room`, `datastore`, `android-widget`.
+Recommended topics: `android`, `kotlin`, `jetpack-compose`, `material3`, `schedule`, `room`, `datastore`, `android-widget`.
 
-Создайте пустой репозиторий на GitHub без автоматически созданных README, .gitignore и лицензии — они уже есть в комплекте. Для предварительной загрузки можно выбрать Private, затем сделать Public после проверки сторонних материалов.
-
-PowerShell из корня проекта (замените `YOUR_ACCOUNT` своим именем):
+Create an empty repository without generated README, `.gitignore`, or license files because they are already included. Keep it private until all third-party material has been reviewed.
 
 ```powershell
 git init -b main
@@ -31,9 +29,7 @@ git diff --cached --stat
 git diff --cached --name-only
 ```
 
-До коммита проверьте, что отсутствуют `keystore/`, `keystore.properties`, `local.properties`, `.gradle/`, `.kotlin/`, результаты сборки и `publication/`. `keystore.properties.example` должен присутствовать: он не содержит реальных паролей.
-
-После проверки:
+Before committing, verify that `keystore/`, `keystore.properties`, `local.properties`, `.gradle/`, `.kotlin/`, build outputs, and `publication/` are absent. `keystore.properties.example` should remain because it contains no real credentials.
 
 ```powershell
 git commit -m "Initial public source release"
@@ -41,14 +37,15 @@ git remote add origin https://github.com/YOUR_ACCOUNT/Lecturial-2.git
 git push -u origin main
 ```
 
-Для существующего Git-репозитория используйте его настройки и ветки; повторная инициализация не требуется. Для Linux/macOS установите исполняемый бит Wrapper перед коммитом: `git update-index --chmod=+x gradlew`.
+For an existing Git repository, retain its current configuration and branches. On Linux/macOS, preserve the executable bit with `git update-index --chmod=+x gradlew`.
 
-## Выпуск приложения
+## Publishing an app release
 
-1. Обновите `versionCode` и `versionName` в `app/build.gradle.kts` и версию в README.
-2. Выполните относящиеся к выпуску проверки, соберите APK/AAB своим ключом. Проверьте обновление поверх прежнего release без удаления данных.
-3. Создайте тег для версии, например `v1.4.4`, только после подтверждения готовности соответствующей сборки.
-4. Создайте GitHub Release, опишите изменения и приложите подписанный APK для установки. AAB предназначен для магазина, не для прямой установки.
-5. Не прикладывайте keystore, пароли или исходники локальной конфигурации. Для бинарного распространения проверьте также лицензии транзитивных библиотек.
+1. Update `versionCode` and `versionName` in `app/build.gradle.kts` and the version shown in README.
+2. Run the relevant checks and build APK/AAB artifacts with the long-term release key. Verify an in-place upgrade over the previous release without deleting app data.
+3. Create a version tag such as `v1.4.4` only after confirming the corresponding build.
+4. Create a GitHub Release with English notes and attach the signed APK for direct installation. AAB files are intended for stores, not direct installation.
+5. Never attach the keystore, passwords, or local configuration. Review transitive dependency licenses before binary distribution.
+6. Back up the release key securely. Future updates with the same application ID must use the same key.
 
-Команды сборки приведены в [README](../README.md). Подготовка этого комплекта не означает, что репозиторий уже создан, приложение повторно собрано или опубликовано.
+Build commands are listed in the [README](../README.md). Preparing the repository does not by itself verify UI behavior, notifications, widgets, or installation on a physical device.

@@ -1,75 +1,73 @@
 # Lecturial 2
 
-<img src="artwork/play-store-icon-512.png" alt="Иконка Lecturial 2" width="112">
+<img src="artwork/play-store-icon-512.png" alt="Lecturial 2 icon" width="112">
 
-Неофициальное Android-приложение для просмотра расписания Университета «Сириус»: занятия, преподаватели и аудитории в тёмном интерфейсе, с локальным кэшем, виджетом и уведомлениями.
+An unofficial Android app for viewing the Sirius University schedule. It presents classes, instructors, and classrooms in a dark interface with offline caching, a home-screen widget, and notifications.
 
 **Android 8.0+ · Kotlin · Jetpack Compose · Material 3 · Apache 2.0**
 
-## Возможности
+## Features
 
-- Расписание по дням, переход между неделями и возврат к сегодняшней дате.
-- Время занятий, тип пары, преподаватели и аудитории; выделение текущей пары и оставшееся время.
-- Обновление жестом pull-to-refresh и cache-first загрузка через Room. Офлайн доступны сохранённые недели.
-- Выбор группы и преподавателя иностранного языка, собственные названия предметов.
-- Виджет «Сегодня»: цвета полос, состав строк, размеры текста и отступы.
-- Напоминания, уведомления о начале и завершении пары, уведомление с прогрессом текущего занятия.
-- Четыре сохраняемые тёмные цветовые темы: «Сириус», «Океан», «Лес» и «Закат»; шрифт Manrope.
+- Daily schedules, week navigation, and a quick return to today.
+- Class times, lesson types, instructors, and classrooms, including current-class highlighting and remaining time.
+- Pull-to-refresh and cache-first loading backed by Room. Previously loaded weeks remain available offline.
+- Group and foreign-language instructor selection, plus custom subject names.
+- Configurable Today widget with stripe colors, visible fields, text sizes, and spacing.
+- Reminders, class start/end notifications, and a live notification for the current class.
+- Four persistent dark themes: Sirius, Ocean, Forest, and Sunset, using the Manrope typeface.
 
-Доступные группы и результаты поиска загружаются с сайта расписания Университета «Сириус».
+Available groups and search results are loaded from the Sirius University schedule website.
 
-## Стек и версия
+## Technology and version
 
-Параметры текущего комплекта исходников:
-
-| Компонент | Значение |
+| Component | Value |
 | --- | --- |
-| Версия приложения | 1.4.4, versionCode 23 |
-| Минимальная версия Android | API 26 / Android 8.0 |
-| compileSdk / targetSdk | 37 / 37 |
+| App version | 1.4.4 (`versionCode` 23) |
+| Minimum Android version | API 26 / Android 8.0 |
+| `compileSdk` / `targetSdk` | 37 / 37 |
 | JDK | 17 |
 | Gradle Wrapper | 9.5.0 |
-| Android Gradle Plugin | 9.3.1, встроенная поддержка Kotlin |
+| Android Gradle Plugin | 9.3.1 with built-in Kotlin support |
 | Compose Compiler plugin | 2.3.21 |
 | Compose BOM | 2026.08.00 |
 | Material 3 | 1.5.0-alpha27 |
-| Хранение | Room 2.8.4, DataStore 1.2.1 |
-| Сеть | OkHttp 5.1.0, JSON |
+| Storage | Room 2.8.4, DataStore 1.2.1 |
+| Networking | OkHttp 5.1.0, JSON |
 
-## Быстрый запуск
+## Quick start
 
-1. Скачайте исходники или клонируйте свой репозиторий. Откройте корневую папку в Android Studio, совместимой с AGP 9.3.1.
-2. Выберите JDK 17 для Gradle. Через SDK Manager установите Android SDK Platform 37.0 (API 37) и Build Tools 36.0.0.
-3. Дождитесь Gradle Sync. Android Studio создаст локальный `local.properties` с путём к SDK. Для командной строки можно задать `ANDROID_HOME`.
-4. Запустите конфигурацию `app` на устройстве или эмуляторе Android 8.0+.
+1. Download the source or clone the repository and open its root directory in an Android Studio version compatible with AGP 9.3.1.
+2. Select JDK 17 for Gradle. Install Android SDK Platform 37.0 (API 37) and Build Tools 36.0.0 through SDK Manager.
+3. Wait for Gradle Sync. Android Studio creates a local `local.properties` file containing the SDK path. For command-line builds, `ANDROID_HOME` can be used instead.
+4. Run the `app` configuration on an Android 8.0+ device or emulator.
 
-PowerShell из корня проекта:
+PowerShell from the project root:
 
 ```powershell
 .\gradlew.bat assembleDebug
 ```
 
-Linux/macOS с установленными JDK и Android SDK:
+Linux/macOS with JDK and Android SDK installed:
 
 ```bash
 chmod +x gradlew
 ./gradlew assembleDebug
 ```
 
-Результат: `app/build/outputs/apk/debug/app-debug.apk`.
+The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
-Установка через Android Platform Tools:
+Install it with Android Platform Tools:
 
 ```powershell
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.rassvet.lecturial.debug/com.rassvet.lecturial.MainActivity
 ```
 
-Debug использует пакет `com.rassvet.lecturial.debug`, release — `com.rassvet.lecturial`. Они устанавливаются рядом и хранят данные отдельно. Для обновления установленного release нужна прежняя подпись.
+The debug build uses `com.rassvet.lecturial.debug`; the release build uses `com.rassvet.lecturial`. They can be installed side by side and keep separate data. Updating an installed release requires the same signing key.
 
-## Проверки
+## Verification
 
-В проекте уже есть модульные и инструментальные тесты:
+The project includes unit and instrumented tests:
 
 ```powershell
 .\gradlew.bat testDebugUnitTest
@@ -77,7 +75,7 @@ Debug использует пакет `com.rassvet.lecturial.debug`, release —
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
-Последняя команда требует устройства или эмулятора. Тест реального сайта по умолчанию отключён; для отдельного запуска:
+The last command requires a device or emulator. The live-site integration test is disabled by default and can be run separately:
 
 ```powershell
 $env:LECTURIAL_LIVE_TEST = '1'
@@ -85,110 +83,77 @@ $env:LECTURIAL_LIVE_TEST = '1'
 Remove-Item Env:LECTURIAL_LIVE_TEST
 ```
 
-Этот тест зависит от сети и текущего контракта сайта. Сборка сама по себе не подтверждает работу интерфейса и уведомлений на устройстве.
+That test depends on network access and the website’s current contract. A successful build alone does not verify the UI, widget, or notifications on a physical device.
 
-## Release-сборка
+## Release build
 
-Скопируйте шаблон и заполните его значениями своего ключа локально:
+Copy the template and fill it with your local signing-key values:
 
 ```powershell
 Copy-Item keystore.properties.example keystore.properties
 ```
 
-После заполнения `keystore.properties`:
+Then build the release artifacts:
 
 ```powershell
 .\gradlew.bat assembleRelease bundleRelease
 ```
 
-Выходные каталоги: `app/build/outputs/apk/release/` и `app/build/outputs/bundle/release/`. Без настройки подписи release не готов для установки или загрузки в магазин. Ключи и пароли исключены из Git; debug их не требует.
+Outputs are written to `app/build/outputs/apk/release/` and `app/build/outputs/bundle/release/`. Without signing configuration, release artifacts are not ready for installation or store submission. Signing keys and passwords are excluded from Git; debug builds do not require them.
 
-## Подробная структура
+## Project structure
 
 ```text
 Lecturial/
-├── README.md                      # Описание, запуск, сборка и структура
-├── LICENSE                        # Apache License 2.0
-├── NOTICE                         # Авторство и сторонние материалы
-├── THIRD_PARTY_NOTICES.md          # Шрифт, логотип и зависимости
-├── CONTRIBUTING.md                # Правила участия
-├── DESIGN.md                      # Правила интерфейса
+├── README.md                       # Overview, setup, build, and structure
+├── LICENSE                         # Apache License 2.0
+├── NOTICE                          # Attribution and third-party notice
+├── THIRD_PARTY_NOTICES.md          # Fonts, logo, data, and dependencies
+├── CONTRIBUTING.md                 # Contribution guidelines
+├── DESIGN.md                       # Interface guidelines
 ├── docs/
-│   ├── ARCHITECTURE.md             # Слои и поток данных
-│   └── PUBLISHING.md               # GitHub и выпуск версии
-├── licenses/Manrope-OFL.txt        # Лицензия встроенного шрифта
-├── .github/
-│   ├── ISSUE_TEMPLATE/             # Ошибка и предложение
-│   └── pull_request_template.md    # Описание PR
-├── .gitignore                     # Исключения для секретов и сборки
-├── .gitattributes                 # Переносы строк и бинарные файлы
-├── build.gradle.kts               # Версии Gradle-плагинов
-├── settings.gradle.kts            # Репозитории и модуль app
-├── gradle.properties              # Настройки Gradle и Android
-├── gradlew / gradlew.bat           # Запуск закреплённой версии Gradle
-├── gradle/wrapper/                 # Wrapper JAR и настройки
-├── keystore.properties.example    # Шаблон подписи без секретов
-├── artwork/                       # Иконка и материалы оформления
+│   ├── ARCHITECTURE.md             # Layers and data flow
+│   └── PUBLISHING.md               # GitHub and release process
+├── licenses/Manrope-OFL.txt        # Embedded font license
+├── .github/                        # Issue and pull-request templates
+├── build.gradle.kts                # Gradle plugin versions
+├── settings.gradle.kts             # Repositories and app module
+├── gradle/                         # Gradle Wrapper files
+├── gradlew / gradlew.bat           # Pinned Gradle launchers
+├── keystore.properties.example     # Secret-free signing template
+├── artwork/                        # App icon source artwork
 └── app/
-    ├── build.gradle.kts            # SDK, версии, варианты и зависимости
-    ├── proguard-rules.pro          # Оптимизация release
+    ├── build.gradle.kts            # SDK, variants, versions, dependencies
+    ├── proguard-rules.pro          # Release optimization rules
     └── src/
-        ├── main/
-        │   ├── AndroidManifest.xml
-        │   ├── java/com/rassvet/lecturial/
-        │   │   ├── LecturialApplication.kt   # Создание зависимостей
-        │   │   ├── MainActivity.kt          # Вход в Compose
-        │   │   ├── data/
-        │   │   │   ├── ScheduleRepository.kt
-        │   │   │   ├── local/
-        │   │   │   │   ├── ScheduleDatabase.kt  # Room-кэш недель
-        │   │   │   │   └── UserPreferences.kt   # DataStore-настройки
-        │   │   │   └── network/
-        │   │   │       └── SiriusScheduleDataSource.kt # Livewire и парсер
-        │   │   ├── model/
-        │   │   │   ├── ScheduleModels.kt       # Группы, занятия, дни и недели
-        │   │   │   ├── ScheduleDisplay.kt      # Форматирование
-        │   │   │   ├── LanguageTeacher.kt      # Выбор преподавателя языка
-        │   │   │   ├── LessonAlertPlanning.kt  # Расчёт уведомлений
-        │   │   │   └── WidgetAppearance.kt     # Настройки виджета
-        │   │   ├── ui/
-        │   │   │   ├── LecturialApp.kt         # Экраны и компоненты
-        │   │   │   ├── ScheduleViewModel.kt    # Состояние и действия
-        │   │   │   └── theme/LecturialTheme.kt  # Тема
-        │   │   ├── notify/
-        │   │   │   ├── LessonAlerts.kt         # Планирование и уведомления
-        │   │   │   ├── LessonAlertReceiver.kt  # Системные события
-        │   │   │   └── LessonLiveService.kt    # Прогресс текущей пары
-        │   │   └── widget/TodayScheduleWidget.kt # Виджет и RemoteViewsService
-        │   └── res/                  # Разметки виджета, шрифт, иконки, строки
-        ├── debug/                    # Activity и manifest для Compose-тестов
-        ├── test/                     # JVM-тесты моделей и сетевого адаптера
-        └── androidTest/              # Compose UI и тесты репозитория на Android
+        ├── main/                   # Production app, resources, widget
+        ├── debug/                  # Compose test activity and manifest
+        ├── test/                   # JVM tests
+        └── androidTest/            # Android and Compose UI tests
 ```
 
-Локальные `local.properties`, `keystore.properties`, `keystore/`, `.gradle/`, `.kotlin/`, `build/` и `publication/` не входят в публикуемые исходники.
+Local `local.properties`, `keystore.properties`, `keystore/`, `.gradle/`, `.kotlin/`, `build/`, and `publication/` paths are excluded from published source.
 
-## Архитектура и источник данных
+## Architecture and data source
 
 `SiriusScheduleDataSource → ScheduleRepository → ScheduleViewModel → Compose UI`.
 
-Адаптер работает с cookies, CSRF и структурированным Livewire-ответом [сайта расписания](https://schedule.siriusuniversity.ru/). Репозиторий сохраняет недели в Room, настройки хранятся в DataStore. Обновление кэша синхронизирует виджет и уведомления.
+The adapter manages cookies, CSRF, and structured Livewire responses from the [schedule website](https://schedule.siriusuniversity.ru/). The repository stores weeks in Room, while preferences are stored in DataStore. Cache updates synchronize the widget and notifications.
 
-Подробнее: [архитектура](docs/ARCHITECTURE.md), [дизайн](DESIGN.md), [публикация](docs/PUBLISHING.md).
+See [Architecture](docs/ARCHITECTURE.md), [Design](DESIGN.md), and [Publishing](docs/PUBLISHING.md) for details.
 
-## Ограничения
+## Limitations
 
-- Приложение не является официальным проектом университета.
-- Livewire-контракт сайта не является публичным API и может измениться.
-- Офлайн доступны только ранее сохранённые недели; кэш может устареть.
-- Уведомления зависят от разрешений и ограничений фоновой работы Android.
-- Используется alpha-версия Material 3.
+- This app is not an official university project.
+- The website’s Livewire contract is not a public API and may change.
+- Only previously cached weeks are available offline, and cached data may become stale.
+- Notifications depend on permissions and Android background-execution restrictions.
+- The project currently uses an alpha version of Material 3.
 
-## Участие и лицензия
+## Contributing and license
 
-Предложения и ошибки принимаются через Issues. Правила изменений: [CONTRIBUTING.md](CONTRIBUTING.md).
+Suggestions and bug reports are welcome through GitHub Issues. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
-Собственный код и документация — [Apache License 2.0](LICENSE). Copyright 2026 Lecturial 2 contributors. Лицензия допускает коммерческое использование и закрытые производные проекты при соблюдении её условий. Если требуется обязательное открытие распространяемых производных версий, рассмотрите GPL-3.0 до первой публикации.
+Original code and documentation are licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Lecturial 2 contributors. Apache 2.0 permits commercial use and closed-source derivatives subject to its terms.
 
-
-Manrope — SIL OFL 1.1. Названия, логотипы и данные третьих лиц не перелицензируются: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Перед публичной публикацией проверьте разрешение на логотип «Сириуса».
+Manrope is licensed under SIL OFL 1.1. Third-party names, logos, and data are not relicensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Verify permission to distribute the Sirius logo before making the repository or binaries public.

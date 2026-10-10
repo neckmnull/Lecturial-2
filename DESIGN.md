@@ -1,48 +1,47 @@
-# Дизайн Lecturial 2
+# Lecturial 2 design
 
-## Направление
+## Direction
 
-Интерфейс тёмный, спокойный и минималистичный. Фон почти чёрный, акценты синие и золотые используются точечно: дни недели, активная навигация и тип занятия. Крупные тени, цветные карточки и декоративные панели не используются.
+The interface is dark, calm, and minimal. Near-black backgrounds dominate, while blue and gold accents are used selectively for weekdays, active navigation, and lesson types. Large shadows, brightly colored cards, and decorative panels are avoided.
 
-## Палитра
+## Palette
 
-- Основной фон: `#000000`.
-- Основной текст: `#F4F4F5`.
-- Вторичный текст: `#9A9AA3`.
-- Акцент дней и выбранной вкладки: `primaryFixed` `#B7C7FF`, контейнер `#27407A`.
-- Лекция: контейнер `#16506C`.
-- Практика: контейнер `#6B4C00`.
-- Шрифт интерфейса: Manrope. Виджет остаётся системным.
+- Primary background: `#000000`.
+- Primary text: `#F4F4F5`.
+- Secondary text: `#9A9AA3`.
+- Day and selected-tab accent: `primaryFixed` `#B7C7FF`, container `#27407A`.
+- Lecture container: `#16506C`.
+- Practice container: `#6B4C00`.
+- App typeface: Manrope. The widget keeps the system typeface.
 
-Палитра постоянная и не зависит от dynamic color устройства. Красный остаётся только для ошибок и офлайн-баннера.
+The palette does not depend on device dynamic color. Red is reserved for errors and the offline banner. Ocean, Forest, and Sunset provide distinct backgrounds, surfaces, containers, and borders while preserving the same hierarchy and contrast goals.
 
-## Главный экран расписания
+## Main schedule screen
 
-- Заголовок — учебная группа и строка `сегодня • 3 пары`.
-- Дни идут вертикальной лентой. Сегодняшний день подписан «Сегодня».
-- После оставшихся дней текущей недели идёт разделитель «Следующая неделя» с диапазоном дат, затем пары следующей недели.
-- Занятие: капсулы типа и `сейчас` над названием, время слева, предмет отдельной строкой. Текущая или ближайшая сегодняшняя пара получает полоску слева.
-- Преподаватель сокращается до `И. Петр Алексеевич`.
-- Подпись корпуса `Основной` не показывается: это служебная метка сайта, а не адрес.
-- Между занятиями с заметным окном показывается подсказка `можно отдохнуть с … до …`.
-- Нижняя навигация: «Расписание» и «Настройки», выбранная вкладка с `primaryContainer`.
-- Лента расписания собирается заранее и без stretch-overscroll, чтобы быстрый скролл не подвисал.
-- Все состояния должны оставаться понятными при крупном системном шрифте и с TalkBack.
-- Движение в приложении — `MotionScheme.standard()`, чтобы не мешать прокрутке.
+- The header contains the study group and a compact summary of today’s class count.
+- Days appear in a vertical feed, with the current day explicitly identified.
+- A next-week divider and date range follows the remaining days of the current week.
+- Each lesson shows type and current-state chips, time on the left, and the subject on its own line. The current or nearest class receives a left accent stripe.
+- Instructor names are shortened for compact display.
+- The default campus service label is hidden because it is not an address.
+- A rest hint appears between lessons when the gap is meaningful.
+- Bottom navigation contains Schedule and Settings, with the selected tab using `primaryContainer`.
+- The schedule feed is prepared in advance and avoids stretch overscroll to keep rapid scrolling responsive.
+- All states must remain understandable with large system fonts and TalkBack.
+- App motion follows `MotionScheme.standard()` without interfering with scrolling.
 
-## Виджет «Сегодня»
+## Today widget
 
-- Компактный размер 2×2 с возможностью изменения размера.
-- Внешняя обводка отсутствует; отделение от рабочего стола создаётся цветом поверхности.
-- Визуальный стиль Material 3 Expressive: внешний радиус 24 dp, внутренние контейнеры занятий 16 dp.
-- На Android 12+ используются системные динамические Material You accent-цвета; на старых версиях — фиолетовая fallback-палитра Material 3.
-- Фоновые плашки занятий не используются. Тип занятия обозначается тонкой полосой слева: primary для лекции, secondary для практики.
-- Показывает обычный вертикально прокручиваемый список занятий без отдельной шапки даты и группы.
-- Фон виджета фиксированный `#303030`, основной текст `#C6C6C6`; accent-цвет применяется только к боковым полосам.
-- Строка занятия содержит полный диапазон времени, предмет и аудиторию; название корпуса в виджете не выводится.
-- Тип занятия различается цветом боковой полосы без текстовой подписи; цвета лекций и практик отдельно выбираются в настройках приложения.
-- Строки занятий не кликабельны и не имеют pressed-подсветки: вертикальный жест используется только для перелистывания.
-- Настройки виджета находятся на отдельном экране приложения: цвета полос, показ аудитории, времени окончания и перенос названия.
-- Название предмета занимает до двух строк; увеличенная строка занятия сохраняет удобную прокрутку.
-- При отсутствии данных сообщает, что нужно открыть приложение и обновить расписание.
-- Нажатие на любую область открывает Lecturial.
+- Compact 2×2 default size with resizing support.
+- No outer stroke; surface color separates the widget from the launcher.
+- Material 3 Expressive styling uses a 24 dp outer radius and 16 dp lesson-container radii.
+- Android 12+ uses system Material You accent colors; older versions use a Material 3 purple fallback palette.
+- Lesson rows do not use colored backgrounds. A thin left stripe distinguishes lecture and practice colors.
+- The widget displays a standard vertically scrollable lesson list without a separate date/group header.
+- The fixed background is `#303030` and primary text is `#C6C6C6`; accent colors are limited to side stripes.
+- A row contains the complete time range, subject, and classroom; the campus label is omitted.
+- Rows are not individually clickable and have no pressed highlight because vertical gestures are reserved for scrolling.
+- Widget options live on a dedicated app screen and include stripe colors, classroom visibility, end-time visibility, title wrapping, text sizes, and spacing.
+- Subject names may occupy up to two lines while preserving comfortable scrolling.
+- When data is unavailable, the widget asks the user to open the app and refresh the schedule.
+- Tapping outside the collection opens Lecturial 2.

@@ -1,11 +1,11 @@
-## Изменение
+## Change
 
-Что исправлено или добавлено и как изменилось поведение?
+What was fixed or added, and how did behavior change?
 
-## Проверка
+## Verification
 
-Укажите команды и результаты либо объясните, что не проверялось.
+List commands and results, or explain what was not verified.
 
-## Интерфейс
+## Interface
 
-Для визуальных изменений приложите скриншоты без личных данных.
+For visual changes, include screenshots without personal data.

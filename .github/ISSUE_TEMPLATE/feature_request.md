@@ -1,19 +1,19 @@
 ---
-name: Предложение
-about: Предложить улучшение Lecturial 2
+name: Feature request
+about: Suggest an improvement for Lecturial 2
 title: ''
 labels: ''
 assignees: ''
 ---
 
-## Задача пользователя
+## User need
 
-Какую проблему нужно решить?
+What problem should be solved?
 
-## Предложение
+## Proposed behavior
 
-Как должно работать новое поведение?
+How should the feature work?
 
-## Пример
+## Example
 
-Опишите сценарий или приложите эскиз.
+Describe a scenario or attach a mockup.

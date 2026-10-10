@@ -1,27 +1,27 @@
 ---
-name: Ошибка
-about: Сообщить о проблеме в Lecturial 2
+name: Bug report
+about: Report a problem in Lecturial 2
 title: ''
 labels: ''
 assignees: ''
 ---
 
-## Что произошло
+## What happened?
 
-## Как повторить
+## Steps to reproduce
 
 1.
 2.
 3.
 
-## Ожидаемый результат
+## Expected behavior
 
-## Окружение
+## Environment
 
-- Версия Lecturial 2:
-- Android и модель устройства:
-- Группа и дата расписания, если применимо:
+- Lecturial 2 version:
+- Android version and device model:
+- Group and schedule date, if relevant:
 
-## Скриншоты или журнал
+## Screenshots or logs
 
-Удалите личные данные, cookies, токены и другие секреты.
+Remove personal data, cookies, tokens, and other secrets before posting.

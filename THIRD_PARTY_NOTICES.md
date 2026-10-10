@@ -1,24 +1,24 @@
-# Сторонние материалы
+# Third-party notices
 
-Apache 2.0 распространяется на собственный код и документацию Lecturial 2. Сторонние материалы сохраняют свои условия использования.
+Apache License 2.0 applies to original Lecturial 2 code and documentation. Third-party materials retain their respective terms.
 
 ## Manrope
 
-Файлы `app/src/main/res/font/manrope_*.ttf` — шрифт Manrope.
+Files matching `app/src/main/res/font/manrope_*.ttf` contain the Manrope typeface.
 
-- Правообладатель: Copyright 2018 The Manrope Project Authors.
-- Источник: https://github.com/googlefonts/manrope.
-- Лицензия: SIL Open Font License 1.1.
-- Полный текст: [licenses/Manrope-OFL.txt](licenses/Manrope-OFL.txt).
+- Copyright: Copyright 2018 The Manrope Project Authors.
+- Source: https://github.com/googlefonts/manrope.
+- License: SIL Open Font License 1.1.
+- Full text: [licenses/Manrope-OFL.txt](licenses/Manrope-OFL.txt).
 
-## Названия, логотипы и расписание «Сириуса»
+## Sirius names, logo, and schedule data
 
-В проекте присутствует `app/src/main/res/drawable-nodpi/onboarding_sirius_logo.png`, а также вспомогательный файл `artwork/render-onboarding-logo.html`. Подтверждение разрешения на распространение логотипа в текущем комплекте отсутствует. Перед публичной публикацией получите разрешение правообладателя или замените логотип собственной графикой и обновите связанные упоминания. Apache 2.0 не предоставляет прав на этот логотип.
+The project contains `app/src/main/res/drawable-nodpi/onboarding_sirius_logo.png` and the supporting file `artwork/render-onboarding-logo.html`. This source package does not include evidence of permission to redistribute the logo. Obtain permission from its owner or replace it with original artwork before public distribution, and update related references. Apache License 2.0 grants no rights to this logo.
 
-Расписание загружается с https://schedule.siriusuniversity.ru/. Лицензия проекта не перелицензирует данные сайта и не означает, что проект официально поддерживается университетом.
+Schedule data is loaded from https://schedule.siriusuniversity.ru/. The project license does not relicense website data and does not imply that the university officially supports this project.
 
-## Зависимости сборки
+## Build dependencies
 
-AndroidX, Compose, Room, DataStore, Kotlin, kotlinx, OkHttp и инструменты сборки подключаются через Gradle; версии перечислены в `app/build.gradle.kts` и `build.gradle.kts`. Они распространяются на условиях своих правообладателей. Gradle Wrapper находится в `gradle/wrapper/`; проект Gradle использует Apache 2.0: https://github.com/gradle/gradle/blob/master/LICENSE.
+AndroidX, Compose, Room, DataStore, Kotlin, kotlinx, OkHttp, and build tools are resolved through Gradle. Versions are listed in `app/build.gradle.kts` and `build.gradle.kts`; each dependency remains subject to its owner’s terms. Gradle Wrapper files live in `gradle/wrapper/`; Gradle uses Apache License 2.0: https://github.com/gradle/gradle/blob/master/LICENSE.
 
-Этот файл перечисляет встроенные материалы и основные группы зависимостей; он не заменяет полный список лицензий транзитивных библиотек для распространения APK/AAB.
+This document identifies bundled material and major dependency groups. It is not a substitute for a complete transitive-license report when distributing APK or AAB artifacts.
