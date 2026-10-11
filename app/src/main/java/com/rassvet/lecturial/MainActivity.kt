@@ -44,7 +44,14 @@ class MainActivity : ComponentActivity() {
                 factory = ScheduleViewModel.Factory(app.repository, app.preferences),
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
-            LecturialTheme(appTheme = state.appTheme) {
+            LecturialTheme(
+                appTheme = state.appTheme,
+                customTheme = state.customThemes.firstOrNull { it.id == state.selectedCustomThemeId },
+                darkTheme = state.darkTheme,
+                builtInOverride = state.builtInThemeOverrides.firstOrNull {
+                    it.theme == state.appTheme && it.isDark == state.darkTheme
+                }?.palette,
+            ) {
                 LecturialApp(
                     state = state,
                     onGroupSelected = viewModel::selectGroup,
@@ -74,6 +81,14 @@ class MainActivity : ComponentActivity() {
                     onWidgetTitleMaxLinesChanged = viewModel::setWidgetTitleMaxLines,
                     onLessonAliasChanged = viewModel::setLessonAlias,
                     onAppThemeSelected = viewModel::setAppTheme,
+                    onDarkThemeChanged = viewModel::setDarkTheme,
+                    onBuiltInThemeSaved = viewModel::saveBuiltInThemeOverride,
+                    onBuiltInThemeReset = viewModel::resetBuiltInThemeOverride,
+                    onCustomThemeSelected = viewModel::selectCustomTheme,
+                    onCustomThemeSaved = viewModel::saveCustomTheme,
+                    onCustomThemeDeleted = viewModel::deleteCustomTheme,
+                    onAppDisplayOptionsChanged = viewModel::setAppDisplayOptions,
+                    onAppDisplayOptionsReset = viewModel::resetAppDisplayOptions,
                 )
             }
         }

@@ -14,7 +14,7 @@ An unofficial Android app for viewing the Sirius University schedule. It present
 - Group and foreign-language instructor selection, plus custom subject names.
 - Configurable Today widget with stripe colors, visible fields, text sizes, and spacing.
 - Reminders, class start/end notifications, and a live notification for the current class.
-- Four persistent dark themes: Sirius, Ocean, Forest, and Sunset, using the Manrope typeface.
+- Light and dark appearance modes, editable built-in palettes, custom themes, and configurable schedule typography.
 
 Available groups and search results are loaded from the Sirius University schedule website.
 
@@ -22,7 +22,7 @@ Available groups and search results are loaded from the Sirius University schedu
 
 | Component | Value |
 | --- | --- |
-| App version | 1.4.4 (`versionCode` 23) |
+| App version | 1.4.5 (`versionCode` 24) |
 | Minimum Android version | API 26 / Android 8.0 |
 | `compileSdk` / `targetSdk` | 37 / 37 |
 | JDK | 17 |

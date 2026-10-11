@@ -10,6 +10,10 @@ import com.rassvet.lecturial.model.ScheduleWeek
 import com.rassvet.lecturial.model.WidgetStripePalette
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
+import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.CustomAppTheme
+import com.rassvet.lecturial.model.BuiltInThemeOverride
+import com.rassvet.lecturial.model.ThemePalette
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +29,11 @@ import java.time.LocalDateTime
 
 data class ScheduleUiState(
     val appTheme: AppTheme = AppTheme.default,
+    val darkTheme: Boolean = true,
+    val customThemes: List<CustomAppTheme> = emptyList(),
+    val builtInThemeOverrides: List<BuiltInThemeOverride> = emptyList(),
+    val selectedCustomThemeId: String? = null,
+    val appDisplayOptions: AppDisplayOptions = AppDisplayOptions(),
     val selectedGroup: String? = null,
     val languageTeacher: String? = null,
     val choosingLanguageTeacher: Boolean = false,
@@ -83,10 +92,21 @@ class ScheduleViewModel(
             val displayOptions = preferences.widgetDisplayOptions.first()
             val aliases = preferences.lessonAliases.first()
             val appTheme = preferences.appTheme.first()
+            val darkTheme = preferences.darkTheme.first()
+            val customThemes = preferences.customThemes.first()
+            val builtInThemeOverrides = preferences.builtInThemeOverrides.first()
+            val selectedCustomThemeId = preferences.selectedCustomThemeId.first()
+            val appDisplayOptions = preferences.appDisplayOptions.first()
+            val validCustomThemeId = selectedCustomThemeId?.takeIf { id -> customThemes.any { it.id == id } }
             val date = today()
             _state.update {
                 it.copy(
-                    appTheme = appTheme,
+                    appTheme = if (appTheme == AppTheme.Custom && validCustomThemeId == null) AppTheme.default else appTheme,
+                    darkTheme = darkTheme,
+                    customThemes = customThemes,
+                    builtInThemeOverrides = builtInThemeOverrides,
+                    selectedCustomThemeId = validCustomThemeId,
+                    appDisplayOptions = appDisplayOptions,
                     selectedGroup = group,
                     languageTeacher = savedTeacher,
                     choosingLanguageTeacher = group != null && savedTeacher == null,
@@ -248,10 +268,90 @@ class ScheduleViewModel(
     fun retry() = loadCurrentWeek()
 
     fun setAppTheme(theme: AppTheme) {
+        if (theme == AppTheme.Custom) return
         if (_state.value.appTheme == theme) return
-        _state.update { it.copy(appTheme = theme) }
+        _state.update { it.copy(appTheme = theme, selectedCustomThemeId = null) }
         viewModelScope.launch { preferences.setAppTheme(theme) }
     }
+
+    fun setDarkTheme(value: Boolean) {
+        if (_state.value.darkTheme == value) return
+        _state.update { it.copy(darkTheme = value) }
+        viewModelScope.launch { preferences.setDarkTheme(value) }
+    }
+
+    fun saveBuiltInThemeOverride(theme: AppTheme, palette: ThemePalette) {
+        if (theme == AppTheme.Custom) return
+        val current = _state.value
+        val nextOverride = BuiltInThemeOverride(theme, current.darkTheme, palette)
+        val overrides = current.builtInThemeOverrides
+            .filterNot { it.theme == theme && it.isDark == current.darkTheme } + nextOverride
+        _state.update { it.copy(appTheme = theme, selectedCustomThemeId = null, builtInThemeOverrides = overrides) }
+        viewModelScope.launch {
+            preferences.setBuiltInThemeOverrides(overrides)
+            preferences.setAppTheme(theme)
+        }
+    }
+
+    fun resetBuiltInThemeOverride(theme: AppTheme) {
+        if (theme == AppTheme.Custom) return
+        val current = _state.value
+        val overrides = current.builtInThemeOverrides
+            .filterNot { it.theme == theme && it.isDark == current.darkTheme }
+        if (overrides.size == current.builtInThemeOverrides.size) return
+        _state.update { it.copy(builtInThemeOverrides = overrides) }
+        viewModelScope.launch { preferences.setBuiltInThemeOverrides(overrides) }
+    }
+
+    fun selectCustomTheme(id: String) {
+        if (_state.value.customThemes.none { it.id == id }) return
+        _state.update { it.copy(appTheme = AppTheme.Custom, selectedCustomThemeId = id) }
+        viewModelScope.launch { preferences.setAppTheme(AppTheme.Custom, id) }
+    }
+
+    fun saveCustomTheme(theme: CustomAppTheme) {
+        val normalized = theme.copy(name = theme.name.trim())
+        if (normalized.name.isEmpty()) return
+        val themes = _state.value.customThemes.toMutableList()
+        val index = themes.indexOfFirst { it.id == normalized.id }
+        if (index >= 0) themes[index] = normalized else themes += normalized
+        _state.update {
+            it.copy(
+                customThemes = themes,
+                appTheme = AppTheme.Custom,
+                selectedCustomThemeId = normalized.id,
+            )
+        }
+        viewModelScope.launch {
+            preferences.setCustomThemes(themes)
+            preferences.setAppTheme(AppTheme.Custom, normalized.id)
+        }
+    }
+
+    fun deleteCustomTheme(id: String) {
+        val themes = _state.value.customThemes.filterNot { it.id == id }
+        if (themes.size == _state.value.customThemes.size) return
+        val wasSelected = _state.value.appTheme == AppTheme.Custom && _state.value.selectedCustomThemeId == id
+        _state.update {
+            it.copy(
+                customThemes = themes,
+                appTheme = if (wasSelected) AppTheme.default else it.appTheme,
+                selectedCustomThemeId = if (wasSelected) null else it.selectedCustomThemeId,
+            )
+        }
+        viewModelScope.launch {
+            preferences.setCustomThemes(themes)
+            if (wasSelected) preferences.setAppTheme(AppTheme.default)
+        }
+    }
+
+    fun setAppDisplayOptions(options: AppDisplayOptions) {
+        if (_state.value.appDisplayOptions == options) return
+        _state.update { it.copy(appDisplayOptions = options) }
+        viewModelScope.launch { preferences.setAppDisplayOptions(options) }
+    }
+
+    fun resetAppDisplayOptions() = setAppDisplayOptions(AppDisplayOptions())
 
     fun setLectureStripeColor(color: Int) {
         if (!WidgetStripePalette.isSupported(color)) return

@@ -7,8 +7,11 @@ import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -16,6 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.model.AppTheme
+import com.rassvet.lecturial.model.CustomAppTheme
+import com.rassvet.lecturial.model.ThemePalette
+import com.rassvet.lecturial.model.toPalette
 
 val Manrope = FontFamily(
     Font(R.font.manrope_regular, FontWeight.Normal),
@@ -152,6 +158,176 @@ private val SunsetColors = LecturialColors.copy(
     outlineVariant = Color(0xFF593C34),
 )
 
+private val AmethystColors = LecturialColors.copy(
+    primary = Color(0xFFD0BCFF),
+    onPrimary = Color(0xFF381E72),
+    primaryContainer = Color(0xFF4F378B),
+    onPrimaryContainer = Color(0xFFEADDFF),
+    primaryFixed = Color(0xFFEADDFF),
+    primaryFixedDim = Color(0xFFD0BCFF),
+    secondary = Color(0xFFCCC2DC),
+    secondaryContainer = Color(0xFF4A4458),
+    onSecondaryContainer = Color(0xFFE8DEF8),
+    tertiary = Color(0xFFEFB8C8),
+    tertiaryContainer = Color(0xFF633B48),
+    onTertiaryContainer = Color(0xFFFFD8E4),
+    background = Color(0xFF141218),
+    surface = Color(0xFF141218),
+    surfaceContainerLow = Color(0xFF1D1B20),
+    surfaceContainer = Color(0xFF211F26),
+    surfaceContainerHigh = Color(0xFF2B2930),
+    surfaceContainerHighest = Color(0xFF36343B),
+)
+
+private val SakuraColors = LecturialColors.copy(
+    primary = Color(0xFFFFB0C8),
+    onPrimary = Color(0xFF5E1134),
+    primaryContainer = Color(0xFF7B294B),
+    onPrimaryContainer = Color(0xFFFFD9E3),
+    primaryFixed = Color(0xFFFFD9E3),
+    primaryFixedDim = Color(0xFFFFB0C8),
+    secondary = Color(0xFFE5BDC7),
+    secondaryContainer = Color(0xFF5B3F47),
+    onSecondaryContainer = Color(0xFFFFD9E3),
+    tertiary = Color(0xFFF3BC95),
+    tertiaryContainer = Color(0xFF68411F),
+    onTertiaryContainer = Color(0xFFFFDCC3),
+    background = Color(0xFF1C1014),
+    surface = Color(0xFF1C1014),
+    surfaceContainerLow = Color(0xFF26191D),
+    surfaceContainer = Color(0xFF2C1E22),
+    surfaceContainerHigh = Color(0xFF38292D),
+    surfaceContainerHighest = Color(0xFF453438),
+)
+
+private val AmberColors = LecturialColors.copy(
+    primary = Color(0xFFFFC107),
+    onPrimary = Color(0xFF3F2E00),
+    primaryContainer = Color(0xFF5B4300),
+    onPrimaryContainer = Color(0xFFFFE08B),
+    primaryFixed = Color(0xFFFFE08B),
+    primaryFixedDim = Color(0xFFFFC107),
+    secondary = Color(0xFFD5C6A1),
+    secondaryContainer = Color(0xFF4E4632),
+    onSecondaryContainer = Color(0xFFF2E2BC),
+    tertiary = Color(0xFFB2D18A),
+    tertiaryContainer = Color(0xFF334D20),
+    onTertiaryContainer = Color(0xFFCDEDA4),
+    background = Color(0xFF171307),
+    surface = Color(0xFF171307),
+    surfaceContainerLow = Color(0xFF211C0D),
+    surfaceContainer = Color(0xFF272211),
+    surfaceContainerHigh = Color(0xFF332D1B),
+    surfaceContainerHighest = Color(0xFF403824),
+)
+
+private val GraphiteColors = LecturialColors.copy(
+    primary = Color(0xFFC5C7CE),
+    onPrimary = Color(0xFF2E3035),
+    primaryContainer = Color(0xFF44464D),
+    onPrimaryContainer = Color(0xFFE1E2E9),
+    primaryFixed = Color(0xFFE1E2E9),
+    primaryFixedDim = Color(0xFFC5C7CE),
+    secondary = Color(0xFFC4C6D0),
+    secondaryContainer = Color(0xFF44464F),
+    onSecondaryContainer = Color(0xFFE0E2EC),
+    tertiary = Color(0xFFE4BDCB),
+    tertiaryContainer = Color(0xFF5B3F4A),
+    onTertiaryContainer = Color(0xFFFFD9E6),
+    background = Color(0xFF111316),
+    surface = Color(0xFF111316),
+    surfaceContainerLow = Color(0xFF1A1C1F),
+    surfaceContainer = Color(0xFF1E2023),
+    surfaceContainerHigh = Color(0xFF292A2E),
+    surfaceContainerHighest = Color(0xFF343539),
+)
+
+private fun builtInDarkColors(theme: AppTheme) = when (theme) {
+    AppTheme.Sirius -> LecturialColors
+    AppTheme.Ocean -> OceanColors
+    AppTheme.Forest -> ForestColors
+    AppTheme.Sunset -> SunsetColors
+    AppTheme.Amethyst -> AmethystColors
+    AppTheme.Sakura -> SakuraColors
+    AppTheme.Amber -> AmberColors
+    AppTheme.Graphite -> GraphiteColors
+    AppTheme.Custom -> LecturialColors
+}
+
+fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
+    require(theme != AppTheme.Custom)
+    if (isDark) {
+        val colors = builtInDarkColors(theme)
+        return ThemePalette(
+            primary = colors.primary.toArgb(),
+            secondary = colors.secondary.toArgb(),
+            tertiary = colors.tertiary.toArgb(),
+            background = colors.background.toArgb(),
+            surface = colors.surfaceContainer.toArgb(),
+            onSurface = colors.onSurface.toArgb(),
+        )
+    }
+    return when (theme) {
+        AppTheme.Sirius -> ThemePalette(0xFF345EBC.toInt(), 0xFF00658B.toInt(), 0xFF745B00.toInt(), 0xFFF9F9FF.toInt(), 0xFFF1F3FA.toInt(), 0xFF191C20.toInt())
+        AppTheme.Ocean -> ThemePalette(0xFF006875.toInt(), 0xFF146B61.toInt(), 0xFF405B9D.toInt(), 0xFFF4FBFC.toInt(), 0xFFEBF5F6.toInt(), 0xFF161D1E.toInt())
+        AppTheme.Forest -> ThemePalette(0xFF2D6A3A.toInt(), 0xFF52634F.toInt(), 0xFF6C5D2F.toInt(), 0xFFF7FBF5.toInt(), 0xFFEEF5EB.toInt(), 0xFF191D18.toInt())
+        AppTheme.Sunset -> ThemePalette(0xFF9C4230.toInt(), 0xFF77574F.toInt(), 0xFF705B2E.toInt(), 0xFFFFF8F5.toInt(), 0xFFF9EFEB.toInt(), 0xFF211A18.toInt())
+        AppTheme.Amethyst -> ThemePalette(0xFF6750A4.toInt(), 0xFF625B71.toInt(), 0xFF7D5260.toInt(), 0xFFFFF7FF.toInt(), 0xFFF7F2FA.toInt(), 0xFF1D1B20.toInt())
+        AppTheme.Sakura -> ThemePalette(0xFF984061.toInt(), 0xFF76565F.toInt(), 0xFF865327.toInt(), 0xFFFFF8F8.toInt(), 0xFFFFF0F3.toInt(), 0xFF211A1C.toInt())
+        AppTheme.Amber -> ThemePalette(0xFF735C00.toInt(), 0xFF685F45.toInt(), 0xFF49652F.toInt(), 0xFFFFFAEE.toInt(), 0xFFFFF4D6.toInt(), 0xFF1E1B13.toInt())
+        AppTheme.Graphite -> ThemePalette(0xFF595C64.toInt(), 0xFF5B5E68.toInt(), 0xFF745563.toInt(), 0xFFFAF8FC.toInt(), 0xFFF2F2F6.toInt(), 0xFF1B1B1F.toInt())
+        AppTheme.Custom -> error("Custom theme has no built-in palette")
+    }
+}
+
+private fun paletteColors(palette: ThemePalette, isDark: Boolean) =
+    (if (isDark) darkColorScheme() else lightColorScheme()).copy(
+        primary = Color(palette.primary),
+        onPrimary = contrastColor(palette.primary),
+        primaryContainer = Color(palette.primary).copy(alpha = if (isDark) 0.35f else 0.18f).compositeOver(Color(palette.background)),
+        onPrimaryContainer = Color(palette.onSurface),
+        primaryFixed = Color(palette.primary),
+        primaryFixedDim = Color(palette.primary).copy(alpha = 0.8f).compositeOver(Color(palette.background)),
+        onPrimaryFixed = contrastColor(palette.primary),
+        onPrimaryFixedVariant = contrastColor(palette.primary),
+        secondary = Color(palette.secondary),
+        onSecondary = contrastColor(palette.secondary),
+        secondaryContainer = Color(palette.secondary).copy(alpha = if (isDark) 0.28f else 0.16f).compositeOver(Color(palette.surface)),
+        onSecondaryContainer = Color(palette.onSurface),
+        secondaryFixed = Color(palette.secondary),
+        secondaryFixedDim = Color(palette.secondary).copy(alpha = 0.8f).compositeOver(Color(palette.background)),
+        onSecondaryFixed = contrastColor(palette.secondary),
+        onSecondaryFixedVariant = contrastColor(palette.secondary),
+        tertiary = Color(palette.tertiary),
+        onTertiary = contrastColor(palette.tertiary),
+        tertiaryContainer = Color(palette.tertiary).copy(alpha = if (isDark) 0.28f else 0.16f).compositeOver(Color(palette.surface)),
+        onTertiaryContainer = Color(palette.onSurface),
+        tertiaryFixed = Color(palette.tertiary),
+        tertiaryFixedDim = Color(palette.tertiary).copy(alpha = 0.8f).compositeOver(Color(palette.background)),
+        onTertiaryFixed = contrastColor(palette.tertiary),
+        onTertiaryFixedVariant = contrastColor(palette.tertiary),
+        background = Color(palette.background),
+        onBackground = Color(palette.onSurface),
+        surface = Color(palette.surface),
+        onSurface = Color(palette.onSurface),
+        surfaceVariant = Color(palette.onSurface).copy(alpha = if (isDark) 0.12f else 0.08f).compositeOver(Color(palette.surface)),
+        onSurfaceVariant = Color(palette.onSurface).copy(alpha = 0.72f),
+        surfaceContainerLowest = Color(palette.background),
+        surfaceContainerLow = Color(palette.onSurface).copy(alpha = if (isDark) 0.05f else 0.025f).compositeOver(Color(palette.surface)),
+        surfaceContainer = Color(palette.onSurface).copy(alpha = if (isDark) 0.08f else 0.045f).compositeOver(Color(palette.surface)),
+        surfaceContainerHigh = Color(palette.onSurface).copy(alpha = if (isDark) 0.12f else 0.07f).compositeOver(Color(palette.surface)),
+        surfaceContainerHighest = Color(palette.onSurface).copy(alpha = if (isDark) 0.16f else 0.1f).compositeOver(Color(palette.surface)),
+        outline = Color(palette.onSurface).copy(alpha = 0.4f),
+        outlineVariant = Color(palette.onSurface).copy(alpha = 0.22f),
+    )
+
+private fun contrastColor(argb: Int): Color {
+    val red = (argb shr 16) and 0xFF
+    val green = (argb shr 8) and 0xFF
+    val blue = argb and 0xFF
+    return if (red * 299 + green * 587 + blue * 114 > 150_000) Color(0xFF171717) else Color.White
+}
+
 private val ExpressiveShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
     small = RoundedCornerShape(8.dp),
@@ -186,19 +362,32 @@ private fun manropeTypography(): Typography {
 @Composable
 fun LecturialTheme(
     appTheme: AppTheme = AppTheme.default,
+    customTheme: CustomAppTheme? = null,
+    darkTheme: Boolean = true,
+    builtInOverride: ThemePalette? = null,
     content: @Composable () -> Unit,
 ) {
-    val colors = when (appTheme) {
-        AppTheme.Sirius -> LecturialColors
-        AppTheme.Ocean -> OceanColors
-        AppTheme.Forest -> ForestColors
-        AppTheme.Sunset -> SunsetColors
+    val colors = when {
+        appTheme == AppTheme.Custom && customTheme != null -> {
+            val palette = if (darkTheme) customTheme.toPalette() else customTheme.toPalette().copy(
+                background = 0xFFFFFBFF.toInt(),
+                surface = 0xFFF6F2F7.toInt(),
+                onSurface = 0xFF1D1B20.toInt(),
+            )
+            paletteColors(palette, darkTheme)
+        }
+        builtInOverride != null -> paletteColors(builtInOverride, darkTheme)
+        darkTheme -> builtInDarkColors(if (appTheme == AppTheme.Custom) AppTheme.default else appTheme)
+        else -> paletteColors(
+            defaultThemePalette(if (appTheme == AppTheme.Custom) AppTheme.default else appTheme, false),
+            false,
+        )
     }
     MaterialExpressiveTheme(
         colorScheme = colors,
         shapes = ExpressiveShapes,
         typography = manropeTypography(),
-        motionScheme = MotionScheme.expressive(),
+        motionScheme = MotionScheme.standard(),
         content = content,
     )
 }

@@ -3,14 +3,11 @@ package com.rassvet.lecturial.ui
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.notify.LessonAlerts
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,14 +15,16 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -94,11 +93,14 @@ import android.provider.Settings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -106,11 +108,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.IntOffset
 import com.rassvet.lecturial.model.LessonLiveState
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
@@ -131,6 +135,14 @@ import com.rassvet.lecturial.model.isForeignLanguage
 import com.rassvet.lecturial.model.WidgetStripePalette
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
+import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.CustomAppTheme
+import com.rassvet.lecturial.model.BuiltInThemeOverride
+import com.rassvet.lecturial.model.ThemePalette
+import com.rassvet.lecturial.model.toPalette
+import com.rassvet.lecturial.ui.theme.defaultThemePalette
+import com.rassvet.lecturial.model.parseThemeColor
+import com.rassvet.lecturial.model.themeColorHex
 import com.rassvet.lecturial.ui.theme.LecturialTheme
 import java.text.DateFormat
 import java.time.LocalDate
@@ -140,6 +152,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 
@@ -148,6 +163,33 @@ private val fullWeekdayFormatter = DateTimeFormatter.ofPattern("EEEE", ru)
 private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", ru)
 private val LessonTimeColumnWidth = 68.dp
 private const val RestGapMinutes = 40
+private const val ScreenSlideDurationMillis = 220
+private const val ScreenFadeDurationMillis = 140
+
+private fun <T> screenSlideSpec() = tween<T>(
+    durationMillis = ScreenSlideDurationMillis,
+    easing = FastOutSlowInEasing,
+)
+
+private fun <T> screenFadeSpec() = tween<T>(durationMillis = ScreenFadeDurationMillis)
+
+private val AccentThemeColors = listOf(
+    0xFF8AABFF, 0xFF62D5E8, 0xFF67D391, 0xFFFF897D,
+    0xFFB69DF8, 0xFFFF8FB3, 0xFFE8B84A, 0xFFA8ABB4,
+    0xFF4F7DFF, 0xFF00A7B5, 0xFF2E9B61, 0xFFE55D50,
+)
+private val BackgroundThemeColors = listOf(
+    0xFF000000, 0xFF0A0D14, 0xFF10131C, 0xFF111827,
+    0xFF18181B, 0xFF1C1917, 0xFFF8FAFC, 0xFFFFFBFE,
+)
+private val SurfaceThemeColors = listOf(
+    0xFF0E0E10, 0xFF151922, 0xFF1E2430, 0xFF232936,
+    0xFF27272A, 0xFF292524, 0xFFFFFFFF, 0xFFF1F5F9,
+)
+private val TextThemeColors = listOf(
+    0xFFF4F4F5, 0xFFE2E8F0, 0xFFD1D5DB, 0xFFA1A1AA,
+    0xFF71717A, 0xFF3F3F46, 0xFF18181B, 0xFF09090B,
+)
 
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
 
@@ -182,6 +224,14 @@ fun LecturialApp(
     onGroupSearchQueryChanged: (String) -> Unit = {},
     onGroupsRetry: () -> Unit = {},
     onAppThemeSelected: (AppTheme) -> Unit = {},
+    onDarkThemeChanged: (Boolean) -> Unit = {},
+    onBuiltInThemeSaved: (AppTheme, ThemePalette) -> Unit = { _, _ -> },
+    onBuiltInThemeReset: (AppTheme) -> Unit = {},
+    onCustomThemeSelected: (String) -> Unit = {},
+    onCustomThemeSaved: (CustomAppTheme) -> Unit = {},
+    onCustomThemeDeleted: (String) -> Unit = {},
+    onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit = {},
+    onAppDisplayOptionsReset: () -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
     val stage = when {
@@ -190,15 +240,14 @@ fun LecturialApp(
         state.choosingLanguageTeacher -> 2
         else -> 3
     }
-    val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-    val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     Surface(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
+            modifier = Modifier.fillMaxSize().clipToBounds(),
             targetState = stage,
             transitionSpec = {
                 val direction = if (targetState >= initialState) 1 else -1
-                (slideInHorizontally(spatialSpec) { direction * it / 3 } + fadeIn(effectsSpec)) togetherWith
-                    (slideOutHorizontally(spatialSpec) { -direction * it / 5 } + fadeOut(effectsSpec))
+                (slideInHorizontally(screenSlideSpec()) { direction * it / 5 } + fadeIn(screenFadeSpec())) togetherWith
+                    (slideOutHorizontally(screenSlideSpec()) { -direction * it / 8 } + fadeOut(screenFadeSpec()))
             },
             label = "app-state",
         ) { screen ->
@@ -250,6 +299,14 @@ fun LecturialApp(
                     onLessonAliasChanged,
                     onLanguageTeacherSelected,
                     onAppThemeSelected,
+                    onDarkThemeChanged,
+                    onBuiltInThemeSaved,
+                    onBuiltInThemeReset,
+                    onCustomThemeSelected,
+                    onCustomThemeSaved,
+                    onCustomThemeDeleted,
+                    onAppDisplayOptionsChanged,
+                    onAppDisplayOptionsReset,
                 )
             }
         }
@@ -295,8 +352,7 @@ private fun LanguageTeacherSelectionScreen(
                 fontWeight = FontWeight.Bold)
             Text("Выберите своего преподавателя, чтобы в расписании остались только ваши занятия иностранного языка.",
                 style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (loading) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         LoadingIndicator(Modifier.size(40.dp))
@@ -333,10 +389,10 @@ private fun TeacherChoiceCard(title: String, selected: Boolean, onClick: () -> U
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f,
-        MaterialTheme.motionScheme.fastSpatialSpec(), label = "teacher-scale")
+        tween(durationMillis = 100), label = "teacher-scale")
     val color by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        MaterialTheme.motionScheme.defaultEffectsSpec(), label = "teacher-color")
+        tween(durationMillis = 140), label = "teacher-color")
     Surface(onClick = onClick, interactionSource = interaction,
         modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
             .semantics { this.selected = selected },
@@ -499,11 +555,18 @@ private fun ScheduleScreen(
     onLessonAliasChanged: (String, String) -> Unit,
     onLanguageTeacherSelected: (String?) -> Unit,
     onAppThemeSelected: (AppTheme) -> Unit,
+    onDarkThemeChanged: (Boolean) -> Unit,
+    onBuiltInThemeSaved: (AppTheme, ThemePalette) -> Unit,
+    onBuiltInThemeReset: (AppTheme) -> Unit,
+    onCustomThemeSelected: (String) -> Unit,
+    onCustomThemeSaved: (CustomAppTheme) -> Unit,
+    onCustomThemeDeleted: (String) -> Unit,
+    onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit,
+    onAppDisplayOptionsReset: () -> Unit,
 ) {
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val screenEffectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-    val screenSpatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
     val predictiveBackProgress = remember { Animatable(0f) }
     LaunchedEffect(showSettings) {
         if (!showSettings) settingsSection = null
@@ -516,6 +579,7 @@ private fun ScheduleScreen(
             backEvents.collect { event -> predictiveBackProgress.snapTo(event.progress) }
             when (settingsSection) {
                 SettingsSection.Privacy -> settingsSection = SettingsSection.About
+                SettingsSection.Widget -> settingsSection = SettingsSection.Appearance
                 null -> showSettings = false
                 else -> settingsSection = null
             }
@@ -524,21 +588,28 @@ private fun ScheduleScreen(
         }
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f).fillMaxWidth().statusBarsPadding()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().statusBarsPadding().clipToBounds()) {
             AnimatedContent(
                 targetState = showSettings to settingsSection,
                 transitionSpec = {
                     if (initialState.first != targetState.first) {
-                        EnterTransition.None togetherWith ExitTransition.None
+                        val direction = if (targetState.first) 1 else -1
+                        (slideInHorizontally(screenSlideSpec()) { direction * it / 5 } + fadeIn(screenFadeSpec())) togetherWith
+                            (slideOutHorizontally(screenSlideSpec()) { -direction * it / 5 } + fadeOut(screenFadeSpec()))
                     } else {
-                        val initialDepth = if (!initialState.first) 0 else if (initialState.second == null) 1 else if (initialState.second == SettingsSection.Privacy) 3 else 2
-                        val targetDepth = if (!targetState.first) 0 else if (targetState.second == null) 1 else if (targetState.second == SettingsSection.Privacy) 3 else 2
+                        fun settingsDepth(section: SettingsSection?): Int = when (section) {
+                            null -> 1
+                            SettingsSection.Widget, SettingsSection.Privacy -> 3
+                            else -> 2
+                        }
+                        val initialDepth = if (!initialState.first) 0 else settingsDepth(initialState.second)
+                        val targetDepth = if (!targetState.first) 0 else settingsDepth(targetState.second)
                         if (targetDepth > initialDepth) {
-                            (slideInHorizontally(screenSpatialSpec) { it / 4 } + fadeIn(screenEffectsSpec)) togetherWith
-                                (slideOutHorizontally(screenSpatialSpec) { -it / 10 } + fadeOut(screenEffectsSpec))
+                            (slideInHorizontally(screenSlideSpec()) { it / 5 } + fadeIn(screenFadeSpec())) togetherWith
+                                (slideOutHorizontally(screenSlideSpec()) { -it / 10 } + fadeOut(screenFadeSpec()))
                         } else {
-                            (slideInHorizontally(screenSpatialSpec) { -it / 10 } + fadeIn(screenEffectsSpec)) togetherWith
-                                (slideOutHorizontally(screenSpatialSpec) { it / 4 } + fadeOut(screenEffectsSpec))
+                            (slideInHorizontally(screenSlideSpec()) { -it / 10 } + fadeIn(screenFadeSpec())) togetherWith
+                                (slideOutHorizontally(screenSlideSpec()) { it / 5 } + fadeOut(screenFadeSpec()))
                         }
                     }
                 },
@@ -566,13 +637,27 @@ private fun ScheduleScreen(
                     SettingsSection.Appearance -> AppearanceSettingsScreen(
                         modifier = nestedModifier,
                         selectedTheme = state.appTheme,
+                        darkTheme = state.darkTheme,
+                        builtInThemeOverrides = state.builtInThemeOverrides,
+                        customThemes = state.customThemes,
+                        selectedCustomThemeId = state.selectedCustomThemeId,
                         onThemeSelected = onAppThemeSelected,
+                        onDarkThemeChanged = onDarkThemeChanged,
+                        onBuiltInThemeSaved = onBuiltInThemeSaved,
+                        onBuiltInThemeReset = onBuiltInThemeReset,
+                        onCustomThemeSelected = onCustomThemeSelected,
+                        onCustomThemeSaved = onCustomThemeSaved,
+                        onCustomThemeDeleted = onCustomThemeDeleted,
+                        appDisplayOptions = state.appDisplayOptions,
+                        onAppDisplayOptionsChanged = onAppDisplayOptionsChanged,
+                        onAppDisplayOptionsReset = onAppDisplayOptionsReset,
+                        onOpenWidgetSettings = { settingsSection = SettingsSection.Widget },
                         onBack = { settingsSection = null },
                     )
                     SettingsSection.Widget -> WidgetSettingsScreen(
                         modifier = nestedModifier,
                         state = state,
-                        onBack = { settingsSection = null },
+                        onBack = { settingsSection = SettingsSection.Appearance },
                         onLectureColorSelected = onLectureStripeColorSelected,
                         onPracticeColorSelected = onPracticeStripeColorSelected,
                         onShowTimeChanged = onWidgetShowTimeChanged,
@@ -617,7 +702,6 @@ private fun ScheduleScreen(
                         onGroupsRetry = onGroupsRetry,
                         onOpenLanguageTeacher = { settingsSection = SettingsSection.LanguageTeacher },
                         onOpenAppearance = { settingsSection = SettingsSection.Appearance },
-                        onOpenWidgetSettings = { settingsSection = SettingsSection.Widget },
                         onOpenLessonNames = { settingsSection = SettingsSection.Names },
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
@@ -685,12 +769,12 @@ private fun RowScope.LecturialBottomBarItem(
     val interactionSource = remember { MutableInteractionSource() }
     val contentColor by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryFixed else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-        MaterialTheme.motionScheme.defaultEffectsSpec(), label = "navigation-color")
+        tween(durationMillis = 140), label = "navigation-color")
     val indicatorColor by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        MaterialTheme.motionScheme.defaultEffectsSpec(), label = "navigation-indicator")
+        tween(durationMillis = 140), label = "navigation-indicator")
     val iconScale by animateFloatAsState(if (selected) 1.12f else 1f,
-        MaterialTheme.motionScheme.defaultSpatialSpec(), label = "navigation-scale")
+        tween(durationMillis = 160, easing = FastOutSlowInEasing), label = "navigation-scale")
     Column(
         modifier = Modifier
             .weight(1f)
@@ -729,7 +813,6 @@ private fun AppSettingsScreen(
     onGroupsRetry: () -> Unit,
     onOpenLanguageTeacher: () -> Unit,
     onOpenAppearance: () -> Unit,
-    onOpenWidgetSettings: () -> Unit,
     onOpenLessonNames: () -> Unit,
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -778,8 +861,11 @@ private fun AppSettingsScreen(
             state.languageTeacher?.takeIf { it.isNotBlank() } ?: "Все преподаватели",
             onOpenLanguageTeacher,
         )
-        SettingsNavigationRow("Оформление", appThemeTitle(state.appTheme), onOpenAppearance)
-        SettingsNavigationRow("Виджет", "Внешний вид и содержимое", onOpenWidgetSettings)
+        SettingsNavigationRow(
+            "Оформление",
+            "Тема, карточки расписания и виджет",
+            onOpenAppearance,
+        )
         SettingsNavigationRow("Названия пар", "Сокращения предметов", onOpenLessonNames)
         NotificationSettings()
         if (BuildConfig.DEBUG) {
@@ -796,11 +882,14 @@ private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f,
-        MaterialTheme.motionScheme.fastSpatialSpec(), label = "settings-press")
+        tween(durationMillis = 100), label = "settings-press")
     Surface(
         onClick = onClick,
         interactionSource = interaction,
-        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Открыть: $title" }
+            .graphicsLayer { scaleX = scale; scaleY = scale },
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
@@ -824,10 +913,86 @@ private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -
 @Composable
 private fun AppearanceSettingsScreen(
     selectedTheme: AppTheme,
+    darkTheme: Boolean,
+    builtInThemeOverrides: List<BuiltInThemeOverride>,
+    customThemes: List<CustomAppTheme>,
+    selectedCustomThemeId: String?,
     onThemeSelected: (AppTheme) -> Unit,
+    onDarkThemeChanged: (Boolean) -> Unit,
+    onBuiltInThemeSaved: (AppTheme, ThemePalette) -> Unit,
+    onBuiltInThemeReset: (AppTheme) -> Unit,
+    onCustomThemeSelected: (String) -> Unit,
+    onCustomThemeSaved: (CustomAppTheme) -> Unit,
+    onCustomThemeDeleted: (String) -> Unit,
+    appDisplayOptions: AppDisplayOptions,
+    onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit,
+    onAppDisplayOptionsReset: () -> Unit,
+    onOpenWidgetSettings: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var editedTheme by remember { mutableStateOf<CustomAppTheme?>(null) }
+    var editedBuiltInTheme by remember { mutableStateOf<AppTheme?>(null) }
+    var creatingTheme by remember { mutableStateOf(false) }
+    if (editedBuiltInTheme != null) {
+        val builtInTheme = editedBuiltInTheme!!
+        val savedOverride = builtInThemeOverrides.firstOrNull {
+            it.theme == builtInTheme && it.isDark == darkTheme
+        }
+        val palette = savedOverride?.palette ?: defaultThemePalette(builtInTheme, darkTheme)
+        CustomThemeEditor(
+            modifier = modifier,
+            theme = CustomAppTheme(
+                id = "built-in-${builtInTheme.storageId}-$darkTheme",
+                name = appThemeTitle(builtInTheme),
+                primary = palette.primary,
+                secondary = palette.secondary,
+                tertiary = palette.tertiary,
+                background = palette.background,
+                surface = palette.surface,
+                onSurface = palette.onSurface,
+            ),
+            title = "Тема «${appThemeTitle(builtInTheme)}»",
+            allowRename = false,
+            darkTheme = darkTheme,
+            previewAppTheme = builtInTheme,
+            onSave = {
+                onBuiltInThemeSaved(builtInTheme, it.toPalette())
+                editedBuiltInTheme = null
+            },
+            onReset = if (savedOverride != null) {
+                {
+                    onBuiltInThemeReset(builtInTheme)
+                    editedBuiltInTheme = null
+                }
+            } else null,
+            onBack = { editedBuiltInTheme = null },
+        )
+        return
+    }
+    if (creatingTheme || editedTheme != null) {
+        CustomThemeEditor(
+            modifier = modifier,
+            theme = editedTheme,
+            darkTheme = darkTheme,
+            onSave = {
+                onCustomThemeSaved(it)
+                creatingTheme = false
+                editedTheme = null
+            },
+            onDelete = editedTheme?.let { theme ->
+                {
+                    onCustomThemeDeleted(theme.id)
+                    editedTheme = null
+                }
+            },
+            onBack = {
+                creatingTheme = false
+                editedTheme = null
+            },
+        )
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -847,11 +1012,18 @@ private fun AppearanceSettingsScreen(
             Text("Оформление", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
         Text(
-            "Выберите цветовую тему приложения. Выбор сохранится после перезапуска.",
+            "Общее оформление приложения и расписания. Все сохранённые изменения применяются сразу.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        AppTheme.entries.forEach { theme ->
+        WidgetSettingSwitch(
+            title = "Тёмный режим",
+            description = if (darkTheme) "Тёмная палитра включена" else "Используется светлая палитра",
+            checked = darkTheme,
+            onCheckedChange = onDarkThemeChanged,
+        )
+        Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        AppTheme.entries.filterNot { it == AppTheme.Custom }.forEach { theme ->
             val selected = theme == selectedTheme
             Surface(
                 onClick = { onThemeSelected(theme) },
@@ -878,10 +1050,370 @@ private fun AppearanceSettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    TextButton(onClick = { editedBuiltInTheme = theme }) { Text("Изменить") }
                     RadioButton(selected = selected, onClick = null)
                 }
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text("Мои темы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        customThemes.forEach { theme ->
+            val selected = selectedTheme == AppTheme.Custom && selectedCustomThemeId == theme.id
+            Surface(
+                onClick = { onCustomThemeSelected(theme.id) },
+                modifier = Modifier.fillMaxWidth().semantics { this.selected = selected },
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        listOf(theme.primary, theme.secondary, theme.tertiary).forEach { color ->
+                            Box(Modifier.size(12.dp, 36.dp).background(Color(color), RoundedCornerShape(6.dp)))
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(theme.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { editedTheme = theme }) { Text("Изменить") }
+                    RadioButton(selected = selected, onClick = null)
+                }
+            }
+        }
+        Button(onClick = { creatingTheme = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Создать тему")
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text("Оформление расписания", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Настройте карточки занятий и сразу оцените результат.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        AppDisplaySettings(
+            options = appDisplayOptions,
+            onOptionsChanged = onAppDisplayOptionsChanged,
+        )
+        OutlinedButton(
+            onClick = onAppDisplayOptionsReset,
+            enabled = appDisplayOptions != AppDisplayOptions(),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Сбросить настройки расписания") }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text("Виджет", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        SettingsNavigationRow(
+            title = "Оформление виджета",
+            subtitle = "Цвета, содержимое, шрифт, размеры и отступы",
+            onClick = onOpenWidgetSettings,
+        )
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun CustomThemeEditor(
+    theme: CustomAppTheme?,
+    title: String = if (theme == null) "Новая тема" else "Редактор темы",
+    allowRename: Boolean = true,
+    darkTheme: Boolean = true,
+    previewAppTheme: AppTheme = AppTheme.Custom,
+    onSave: (CustomAppTheme) -> Unit,
+    onDelete: (() -> Unit)? = null,
+    onReset: (() -> Unit)? = null,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var name by remember(theme?.id) { mutableStateOf(theme?.name.orEmpty()) }
+    var primary by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.primary) } ?: "#8AABFF") }
+    var secondary by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.secondary) } ?: "#7EC8F2") }
+    var tertiary by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.tertiary) } ?: "#E8B84A") }
+    var background by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.background) } ?: "#000000") }
+    var surface by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.surface) } ?: "#0E0E10") }
+    var onSurface by remember(theme?.id) { mutableStateOf(theme?.let { themeColorHex(it.onSurface) } ?: "#F4F4F5") }
+    val parsed = listOf(primary, secondary, tertiary, background, surface, onSurface).map(::parseThemeColor)
+    val canSave = name.isNotBlank() && parsed.all { it != null }
+    val previewTheme = if (parsed.all { it != null }) {
+        CustomAppTheme(
+            id = theme?.id ?: "theme-preview",
+            name = name.ifBlank { "Предпросмотр" },
+            primary = parsed[0]!!,
+            secondary = parsed[1]!!,
+            tertiary = parsed[2]!!,
+            background = parsed[3]!!,
+            surface = parsed[4]!!,
+            onSurface = parsed[5]!!,
+        )
+    } else null
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SettingsScreenHeader(title, onBack)
+        Text(
+            "Выберите оттенки на hue-колесе, из готовой палитры или введите их в формате #RRGGBB. Предпросмотр обновляется сразу, тема сохранится только по кнопке ниже.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (allowRename) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(40) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Название темы") },
+                singleLine = true,
+            )
+        } else {
+            Text(name, style = MaterialTheme.typography.titleLarge)
+        }
+        ThemeColorField("Основной цвет", primary, { primary = it }, parsed[0], AccentThemeColors)
+        ThemeColorField("Дополнительный цвет", secondary, { secondary = it }, parsed[1], AccentThemeColors)
+        ThemeColorField("Третичный цвет", tertiary, { tertiary = it }, parsed[2], AccentThemeColors)
+        ThemeColorField("Фон", background, { background = it }, parsed[3], BackgroundThemeColors)
+        ThemeColorField("Поверхности", surface, { surface = it }, parsed[4], SurfaceThemeColors)
+        ThemeColorField("Текст", onSurface, { onSurface = it }, parsed[5], TextThemeColors)
+        if (previewTheme != null) {
+            LecturialTheme(
+                appTheme = previewAppTheme,
+                customTheme = previewTheme.takeIf { previewAppTheme == AppTheme.Custom },
+                darkTheme = darkTheme,
+                builtInOverride = previewTheme.toPalette().takeIf { previewAppTheme != AppTheme.Custom },
+            ) {
+                AppThemePreview()
+            }
+        }
+        Button(
+            enabled = canSave,
+            onClick = {
+                onSave(
+                    CustomAppTheme(
+                        id = theme?.id ?: java.util.UUID.randomUUID().toString(),
+                        name = name.trim(),
+                        primary = parsed[0]!!,
+                        secondary = parsed[1]!!,
+                        tertiary = parsed[2]!!,
+                        background = parsed[3]!!,
+                        surface = parsed[4]!!,
+                        onSurface = parsed[5]!!,
+                    ),
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Сохранить и применить") }
+        if (onDelete != null) {
+            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) { Text("Удалить тему") }
+        }
+        if (onReset != null) {
+            OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
+                Text("Сбросить изменения темы")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThemeColorField(
+    label: String,
+    value: String,
+    onValueChanged: (String) -> Unit,
+    parsed: Int?,
+    palette: List<Long>,
+) {
+    var paletteExpanded by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onValueChanged(it.take(9)) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        supportingText = { if (value.isNotBlank() && parsed == null) Text("Используйте формат #RRGGBB") },
+        isError = value.isNotBlank() && parsed == null,
+        singleLine = true,
+        leadingIcon = {
+            Box(
+                Modifier.size(24.dp).background(parsed?.let(::Color) ?: Color.Transparent, RoundedCornerShape(8.dp)),
+            )
+        },
+        trailingIcon = {
+            TextButton(
+                onClick = { paletteExpanded = !paletteExpanded },
+                modifier = Modifier.semantics {
+                    contentDescription = if (paletteExpanded) "Скрыть палитру: $label" else "Открыть палитру: $label"
+                },
+            ) {
+                Text(if (paletteExpanded) "Скрыть" else "Палитра")
+            }
+        },
+    )
+    if (paletteExpanded) {
+        HueColorPicker(
+            label = label,
+            color = parsed ?: palette.first().toInt(),
+            onColorChanged = { onValueChanged(themeColorHex(it)) },
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            palette.forEach { paletteColor ->
+                val color = paletteColor.toInt()
+                val hex = themeColorHex(color)
+                val selected = parsed == color
+                Surface(
+                    onClick = { onValueChanged(hex) },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .semantics {
+                            contentDescription = "$label, цвет $hex"
+                            this.selected = selected
+                        },
+                    shape = RoundedCornerShape(13.dp),
+                    color = Color(color),
+                    border = BorderStroke(
+                        width = if (selected) 3.dp else 1.dp,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    ),
+                ) {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun HueColorPicker(
+    label: String,
+    color: Int,
+    onColorChanged: (Int) -> Unit,
+) {
+    val hsv = remember(color) { FloatArray(3).also { android.graphics.Color.colorToHSV(color, it) } }
+    val saturation = hsv[1].takeIf { it >= 0.15f } ?: 0.72f
+    val brightness = hsv[2].let { if (it < 0.08f) 0.18f else it }
+    fun selectHue(position: Offset, center: Offset) {
+        val degrees = Math.toDegrees(
+            atan2(position.y - center.y, position.x - center.x).toDouble(),
+        ).toFloat()
+        val hue = (degrees + 90f + 360f) % 360f
+        onColorChanged(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Hue-колесо", style = MaterialTheme.typography.labelLarge)
+        Canvas(
+            modifier = Modifier
+                .size(184.dp)
+                .semantics { contentDescription = "Hue-колесо: $label" }
+                .pointerInput(saturation, brightness) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        selectHue(down.position, center)
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                selectHue(change.position, center)
+                                change.consume()
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                },
+        ) {
+            val strokeWidth = 24.dp.toPx()
+            val diameter = size.minDimension - strokeWidth
+            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+            repeat(360) { degree ->
+                drawArc(
+                    color = Color(android.graphics.Color.HSVToColor(floatArrayOf(degree.toFloat(), 1f, 1f))),
+                    startAngle = degree - 90f,
+                    sweepAngle = 1.8f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = Size(diameter, diameter),
+                    style = Stroke(strokeWidth),
+                )
+            }
+            val angle = Math.toRadians((hsv[0] - 90f).toDouble())
+            val markerRadius = diameter / 2f
+            val marker = Offset(
+                x = center.x + cos(angle).toFloat() * markerRadius,
+                y = center.y + sin(angle).toFloat() * markerRadius,
+            )
+            drawCircle(Color.Black.copy(alpha = 0.65f), radius = 9.dp.toPx(), center = marker)
+            drawCircle(Color.White, radius = 6.dp.toPx(), center = marker)
+            drawCircle(Color(color), radius = 4.dp.toPx(), center = marker)
+            drawCircle(Color(color), radius = 42.dp.toPx(), center = center)
+        }
+        Text(
+            "Проведите по кругу, чтобы выбрать оттенок",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AppThemePreview() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Живой предпросмотр темы приложения" },
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.background,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Предпросмотр приложения", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Расписание на сегодня",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LessonChip(
+                            "Лекция",
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        LessonChip(
+                            "Сейчас",
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Text("Основы программирования", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "08:45–10:05 · аудитория 5.7",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Основное действие") }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreenHeader(title: String, onBack: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "‹",
+            modifier = Modifier.clickable(onClick = onBack).semantics { contentDescription = "Назад" }.padding(end = 12.dp),
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -890,6 +1422,11 @@ private fun appThemeTitle(theme: AppTheme): String = when (theme) {
     AppTheme.Ocean -> "Океан"
     AppTheme.Forest -> "Лес"
     AppTheme.Sunset -> "Закат"
+    AppTheme.Amethyst -> "Аметист"
+    AppTheme.Sakura -> "Сакура"
+    AppTheme.Amber -> "Янтарь"
+    AppTheme.Graphite -> "Графит"
+    AppTheme.Custom -> "Своя тема"
 }
 
 private fun appThemeDescription(theme: AppTheme): String = when (theme) {
@@ -897,6 +1434,11 @@ private fun appThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.Ocean -> "Бирюзовый и лазурный"
     AppTheme.Forest -> "Зелёный и природный"
     AppTheme.Sunset -> "Коралловый и тёплый"
+    AppTheme.Amethyst -> "Фиолетовый и выразительный"
+    AppTheme.Sakura -> "Розовый и мягкий"
+    AppTheme.Amber -> "Золотистый и контрастный"
+    AppTheme.Graphite -> "Нейтральный монохром"
+    AppTheme.Custom -> "Пользовательская палитра"
 }
 
 private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
@@ -904,6 +1446,11 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
     AppTheme.Ocean -> Color(0xFF62D5E8)
     AppTheme.Forest -> Color(0xFF8ED29A)
     AppTheme.Sunset -> Color(0xFFFFB59D)
+    AppTheme.Amethyst -> Color(0xFFD0BCFF)
+    AppTheme.Sakura -> Color(0xFFFFB0C8)
+    AppTheme.Amber -> Color(0xFFFFC107)
+    AppTheme.Graphite -> Color(0xFFC5C7CE)
+    AppTheme.Custom -> Color(0xFF8AABFF)
 }
 
 @Composable
@@ -1179,6 +1726,112 @@ private fun LessonNamesScreen(
     }
 }
 
+@Composable
+private fun AppDisplaySettings(
+    options: AppDisplayOptions,
+    onOptionsChanged: (AppDisplayOptions) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AppDisplayPreview(options)
+        Text("Цветовые полосы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        StripeColorPicker("Лекция", options.lectureStripeColor) {
+            onOptionsChanged(options.copy(lectureStripeColor = it))
+        }
+        StripeColorPicker("Практика", options.practiceStripeColor) {
+            onOptionsChanged(options.copy(practiceStripeColor = it))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Text("Содержимое", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        WidgetSettingSwitch("Показывать аудиторию", "Аудитория и адрес занятия", options.showClassroom) {
+            onOptionsChanged(options.copy(showClassroom = it))
+        }
+        WidgetSettingSwitch("Показывать время", "Время слева от названия предмета", options.showTime) {
+            onOptionsChanged(options.copy(showTime = it))
+        }
+        WidgetSettingSwitch("Показывать цветную полосу", "Акцент у текущего занятия", options.showStripe) {
+            onOptionsChanged(options.copy(showStripe = it))
+        }
+        WidgetSettingSwitch("Время окончания", "Показывать окончание под временем начала", options.showEndTime) {
+            onOptionsChanged(options.copy(showEndTime = it))
+        }
+        WidgetSettingSwitch("Переносить название", "Разрешить несколько строк для предмета", options.wrapTitle) {
+            onOptionsChanged(options.copy(wrapTitle = it))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Text("Размер текста", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        FontStylePicker(options.fontStyleId) { onOptionsChanged(options.copy(fontStyleId = it)) }
+        WidgetDimensionSlider("Название предмета", "Размер основного текста", options.titleTextSizeSp, 12..24, "sp") {
+            onOptionsChanged(options.copy(titleTextSizeSp = it))
+        }
+        WidgetDimensionSlider("Время и детали", "Размер вспомогательного текста", options.secondaryTextSizeSp, 10..20, "sp") {
+            onOptionsChanged(options.copy(secondaryTextSizeSp = it))
+        }
+        WidgetDimensionSlider("Межбуквенный интервал", "Плотность букв", options.letterSpacingPercent, -5..10, "%") {
+            onOptionsChanged(options.copy(letterSpacingPercent = it))
+        }
+        WidgetDimensionSlider("Максимум строк названия", "Используется при включённом переносе", options.titleMaxLines, 1..5, "стр.") {
+            onOptionsChanged(options.copy(titleMaxLines = it))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Text("Отступы и плотность", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        WidgetDimensionSlider("Отступ от краёв", "Поля списка расписания", options.outerPaddingDp, 0..32) {
+            onOptionsChanged(options.copy(outerPaddingDp = it))
+        }
+        WidgetDimensionSlider("Отступ текста", "Расстояние между временем и предметом", options.horizontalPaddingDp, 0..24) {
+            onOptionsChanged(options.copy(horizontalPaddingDp = it))
+        }
+        WidgetDimensionSlider("Вертикальный отступ", "Свободное место внутри занятия", options.verticalPaddingDp, 0..16) {
+            onOptionsChanged(options.copy(verticalPaddingDp = it))
+        }
+        WidgetDimensionSlider("Расстояние между занятиями", "Пустое место между карточками", options.itemSpacingDp, 0..24) {
+            onOptionsChanged(options.copy(itemSpacingDp = it))
+        }
+        Text("Изменения применяются сразу.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun AppDisplayPreview(options: AppDisplayOptions) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Живой предпросмотр расписания" },
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                start = options.outerPaddingDp.dp,
+                end = options.outerPaddingDp.dp,
+                top = 16.dp,
+                bottom = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Предпросмотр расписания", style = MaterialTheme.typography.titleMedium)
+            LessonTimelineItem(
+                lesson = ScheduleRow.Lesson(
+                    eventId = "appearance-preview",
+                    typeLabel = "Лекция",
+                    isLecture = true,
+                    startTime = "08:45",
+                    endTime = "10:05",
+                    discipline = "Основы программирования",
+                    location = "5.7 · Главный корпус",
+                    teachers = "И. Иван Иванович",
+                    comment = null,
+                    liveLabel = null,
+                ),
+                options = options,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WidgetSettingsScreen(
@@ -1371,7 +2024,9 @@ private fun FontStylePicker(
         Text("Шрифт и начертание", style = MaterialTheme.typography.titleMedium)
         Surface(
             onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Выбрать шрифт, сейчас ${selected.name}" },
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
@@ -1381,6 +2036,12 @@ private fun FontStylePicker(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(selected.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Физика · 08:45",
+                        modifier = Modifier.semantics { contentDescription = "Предпросмотр шрифта: ${selected.name}" },
+                        style = fontPreviewStyle(MaterialTheme.typography.bodyLarge, selected.id),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(selected.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("⌄", color = MaterialTheme.colorScheme.primary)
@@ -1389,7 +2050,16 @@ private fun FontStylePicker(
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             WidgetFontStyles.options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option.name) },
+                    text = {
+                        Column {
+                            Text(option.name, style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                "Физика · 08:45",
+                                modifier = Modifier.semantics { contentDescription = "Предпросмотр шрифта: ${option.name}" },
+                                style = fontPreviewStyle(MaterialTheme.typography.bodyLarge, option.id),
+                            )
+                        }
+                    },
                     onClick = {
                         onSelected(option.id)
                         expanded = false
@@ -1399,6 +2069,16 @@ private fun FontStylePicker(
         }
     }
 }
+
+private fun fontPreviewStyle(
+    base: androidx.compose.ui.text.TextStyle,
+    fontStyleId: String,
+): androidx.compose.ui.text.TextStyle = appTextStyle(
+    base = base,
+    sizeSp = 16,
+    defaultSizeSp = 16,
+    options = AppDisplayOptions(fontStyleId = fontStyleId),
+)
 
 @Composable
 private fun WidgetDimensionSlider(
@@ -1612,28 +2292,26 @@ private fun ScheduleContent(state: ScheduleUiState, onRetry: () -> Unit) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = listState,
-                    contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 40.dp),
+                    contentPadding = PaddingValues(
+                        start = state.appDisplayOptions.outerPaddingDp.dp,
+                        end = state.appDisplayOptions.outerPaddingDp.dp,
+                        top = 12.dp,
+                        bottom = 40.dp,
+                    ),
                 ) {
                     items(
                         items = rows,
                         key = { it.key },
                         contentType = { it.contentType },
                     ) { row ->
-                        Box(Modifier.animateItem()) {
                         when (row) {
                             is ScheduleRow.Header -> ScheduleHeader(row.group, row.subtitle)
                             is ScheduleRow.Banner -> OfflineBanner(row.message, row.updatedAt)
-                            is ScheduleRow.Empty -> Text(
-                                "На ближайшие две недели занятий нет",
-                                modifier = Modifier.padding(top = 32.dp),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            is ScheduleRow.Empty -> EmptyScheduleState()
                             is ScheduleRow.WeekBreak -> NextWeekDivider(row.range)
                             is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
-                            is ScheduleRow.Lesson -> LessonTimelineItem(row)
+                            is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions)
                             is ScheduleRow.Rest -> BreakHint(row.text)
-                        }
                         }
                     }
                 }
@@ -1656,6 +2334,40 @@ private fun ScheduleHeader(group: String, subtitle: String) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun EmptyScheduleState() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.DateRange,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "Занятий нет",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "На ближайшие две недели занятий нет",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -1727,7 +2439,7 @@ private fun pairCountText(count: Int): String {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LessonTimelineItem(lesson: ScheduleRow.Lesson) {
+private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOptions) {
     val container = if (lesson.isLecture) {
         MaterialTheme.colorScheme.secondaryContainer
     } else {
@@ -1739,13 +2451,17 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson) {
         MaterialTheme.colorScheme.onTertiaryContainer
     }
     val live = lesson.liveLabel != null
-    val stripeColor = MaterialTheme.colorScheme.primaryFixed
+    val stripeColor = when {
+        live -> MaterialTheme.colorScheme.primaryFixed
+        lesson.isLecture -> Color(options.lectureStripeColor)
+        else -> Color(options.practiceStripeColor)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 20.dp)
+            .padding(bottom = options.itemSpacingDp.dp)
             .drawBehind {
-                if (!live) return@drawBehind
+                if (!options.showStripe) return@drawBehind
                 val thickness = 3.dp.toPx()
                 drawRoundRect(
                     color = stripeColor,
@@ -1754,13 +2470,13 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson) {
                     cornerRadius = CornerRadius(2.dp.toPx()),
                 )
             }
-            .padding(start = 12.dp),
+            .padding(start = options.horizontalPaddingDp.dp, top = options.verticalPaddingDp.dp, bottom = options.verticalPaddingDp.dp),
     ) {
         if (lesson.typeLabel.isNotBlank() || lesson.liveLabel != null) {
             FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = LessonTimeColumnWidth, bottom = 8.dp),
+                    .padding(start = if (options.showTime) LessonTimeColumnWidth else 0.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -1777,35 +2493,39 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson) {
             }
         }
         Row(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.width(LessonTimeColumnWidth)) {
-                Text(
-                    lesson.startTime,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    lesson.endTime,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (options.showTime) {
+                Column(modifier = Modifier.width(LessonTimeColumnWidth)) {
+                    Text(
+                        lesson.startTime,
+                        style = appTextStyle(MaterialTheme.typography.titleLarge, options.secondaryTextSizeSp, 14, options),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    if (options.showEndTime) {
+                        Text(
+                            lesson.endTime,
+                            style = appTextStyle(MaterialTheme.typography.bodyLarge, options.secondaryTextSizeSp, 14, options),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             Column(Modifier.weight(1f)) {
                 Text(
                     lesson.discipline,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = appTextStyle(MaterialTheme.typography.titleMedium, options.titleTextSizeSp, 16, options),
                     color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 3,
+                    maxLines = if (options.wrapTitle) options.titleMaxLines else 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (!lesson.location.isNullOrBlank()) {
-                    LessonDetail(Icons.Outlined.Place, lesson.location)
+                if (options.showClassroom && !lesson.location.isNullOrBlank()) {
+                    LessonDetail(Icons.Outlined.Place, lesson.location, options)
                 }
                 if (!lesson.teachers.isNullOrBlank()) {
-                    LessonDetail(Icons.Outlined.Person, lesson.teachers)
+                    LessonDetail(Icons.Outlined.Person, lesson.teachers, options)
                 }
                 if (!lesson.comment.isNullOrBlank()) {
-                    LessonDetail(Icons.Outlined.Info, lesson.comment)
+                    LessonDetail(Icons.Outlined.Info, lesson.comment, options)
                 }
             }
         }
@@ -1828,7 +2548,7 @@ private fun LessonChip(text: String, container: Color, content: Color) {
 }
 
 @Composable
-private fun LessonDetail(icon: ImageVector, value: String) {
+private fun LessonDetail(icon: ImageVector, value: String, options: AppDisplayOptions) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1843,12 +2563,40 @@ private fun LessonDetail(icon: ImageVector, value: String) {
         Text(
             value,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
+            style = appTextStyle(MaterialTheme.typography.bodyMedium, options.secondaryTextSizeSp, 14, options),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+private fun appTextStyle(
+    base: androidx.compose.ui.text.TextStyle,
+    sizeSp: Int,
+    defaultSizeSp: Int,
+    options: AppDisplayOptions,
+): androidx.compose.ui.text.TextStyle {
+    val family = when (options.fontStyleId) {
+        "serif", "serif_bold" -> FontFamily.Serif
+        "monospace" -> FontFamily.Monospace
+        WidgetFontStyles.defaultId -> base.fontFamily ?: FontFamily.Default
+        else -> FontFamily.SansSerif
+    }
+    val weight = when (options.fontStyleId) {
+        "system_bold", "serif_bold" -> FontWeight.Bold
+        "system_medium", "condensed" -> FontWeight.Medium
+        else -> FontWeight.Normal
+    }
+    val style = if (options.fontStyleId == "system_italic") FontStyle.Italic else FontStyle.Normal
+    val scaledSize = base.fontSize.value * sizeSp / defaultSizeSp
+    return base.copy(
+        fontFamily = family,
+        fontWeight = weight,
+        fontStyle = style,
+        fontSize = scaledSize.sp,
+        letterSpacing = (scaledSize * options.letterSpacingPercent / 100f).sp,
+    )
 }
 
 @Composable

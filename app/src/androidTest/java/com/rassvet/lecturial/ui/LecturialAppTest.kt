@@ -6,11 +6,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import com.rassvet.lecturial.model.AppTheme
+import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
@@ -116,6 +119,61 @@ class LecturialAppTest {
     }
 
     @Test
+    fun emptyScheduleDisappearsWhenLessonsArrive() {
+        val date = LocalDate.of(2026, 8, 31)
+        val emptyWeek = ScheduleWeek("ИОП-ИТ-26/1", date, listOf(ScheduleDay(date, emptyList())))
+        val event = ScheduleEvent(
+            id = "lesson",
+            date = date,
+            startTime = "08:45",
+            endTime = "10:05",
+            pairNumber = 1,
+            discipline = "Физика",
+            type = "Лекция",
+            classroom = "5.7",
+            address = null,
+            teachers = emptyList(),
+            comment = null,
+            onlineUrl = null,
+        )
+        var state by mutableStateOf(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                selectedDate = date,
+                weekStart = date,
+                week = emptyWeek,
+                isStarting = false,
+                now = LocalDateTime.of(date, LocalTime.of(12, 0)),
+            ),
+        )
+        compose.setContent {
+            LecturialTheme(appTheme = state.appTheme) {
+                LecturialApp(
+                    state = state,
+                    onGroupSelected = {},
+                    onDateSelected = {},
+                    onMoveWeek = {},
+                    onToday = {},
+                    onRefresh = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("На ближайшие две недели занятий нет").assertIsDisplayed()
+
+        compose.runOnIdle {
+            state = state.copy(
+                week = ScheduleWeek("ИОП-ИТ-26/1", date, listOf(ScheduleDay(date, listOf(event)))),
+                events = listOf(event),
+            )
+        }
+
+        compose.onNodeWithText("На ближайшие две недели занятий нет").assertDoesNotExist()
+        compose.onNodeWithText("Физика").assertIsDisplayed()
+    }
+
+    @Test
     fun errorWithoutCacheOffersRetry() {
         render(
             ScheduleUiState(
@@ -194,6 +252,125 @@ class LecturialAppTest {
         compose.onNodeWithText("Океан").performClick()
 
         compose.runOnIdle { assertEquals(AppTheme.Ocean, selectedTheme) }
+    }
+
+    @Test
+    fun appearanceForwardsLightModeSelection() {
+        var darkTheme: Boolean? = null
+        render(
+            state = ScheduleUiState(selectedGroup = "ИОП-ИТ-26/1", isStarting = false),
+            onDarkThemeChanged = { darkTheme = it },
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Тёмный режим").performClick()
+
+        compose.runOnIdle { assertEquals(false, darkTheme) }
+    }
+
+    @Test
+    fun builtInThemeCanBeOpenedForEditing() {
+        render(ScheduleUiState(selectedGroup = "ИОП-ИТ-26/1", isStarting = false))
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onAllNodesWithText("Изменить")[0].performClick()
+
+        compose.onNodeWithText("Тема «Сириус»").assertIsDisplayed()
+        compose.onNodeWithText("Сохранить и применить").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun appearanceForwardsScheduleSettingsReset() {
+        var resetCalled = false
+        render(
+            state = ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+                appDisplayOptions = AppDisplayOptions(showTime = false),
+            ),
+            onAppDisplayOptionsReset = { resetCalled = true },
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Сбросить настройки расписания").performScrollTo().performClick()
+
+        compose.runOnIdle { assertEquals(true, resetCalled) }
+    }
+
+    @Test
+    fun appearanceOffersMoreThemesAndThemeCreator() {
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+            ),
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Аметист").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Сакура").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Янтарь").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Графит").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Создать тему").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun customThemeEditorOffersColorPalettes() {
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+            ),
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Создать тему").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Открыть палитру: Основной цвет").performClick()
+        compose.onNodeWithContentDescription("Hue-колесо: Основной цвет").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Основной цвет, цвет #62D5E8").performScrollTo().performClick()
+
+        compose.onNodeWithText("#62D5E8").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Живой предпросмотр темы приложения")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun appearanceContainsAllVisualSettingsAndFontPreview() {
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+            ),
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление расписания").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Живой предпросмотр расписания")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Показывать аудиторию").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Показывать время").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Показывать цветную полосу").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Время окончания").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Переносить название").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Предпросмотр шрифта: Системный Medium")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithContentDescription("Выбрать шрифт, сейчас Системный Medium")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithContentDescription("Предпросмотр шрифта: Моноширинный")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        compose.onNodeWithText("Оформление виджета").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -386,6 +563,8 @@ class LecturialAppTest {
         onGroupSearchQueryChanged: (String) -> Unit = {},
         onGroupsRetry: () -> Unit = {},
         onAppThemeSelected: (AppTheme) -> Unit = {},
+        onDarkThemeChanged: (Boolean) -> Unit = {},
+        onAppDisplayOptionsReset: () -> Unit = {},
     ) {
         compose.setContent {
             LecturialTheme(appTheme = state.appTheme) {
@@ -400,6 +579,8 @@ class LecturialAppTest {
                     onRefresh = {},
                     onRetry = {},
                     onAppThemeSelected = onAppThemeSelected,
+                    onDarkThemeChanged = onDarkThemeChanged,
+                    onAppDisplayOptionsReset = onAppDisplayOptionsReset,
                 )
             }
         }

@@ -4,7 +4,12 @@ enum class AppTheme(val storageId: String) {
     Sirius("sirius"),
     Ocean("ocean"),
     Forest("forest"),
-    Sunset("sunset");
+    Sunset("sunset"),
+    Amethyst("amethyst"),
+    Sakura("sakura"),
+    Amber("amber"),
+    Graphite("graphite"),
+    Custom("custom");
 
     companion object {
         val default = Sirius
