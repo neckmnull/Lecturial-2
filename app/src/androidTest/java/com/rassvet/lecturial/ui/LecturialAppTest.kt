@@ -4,14 +4,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.semantics.SemanticsActions
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppUpdateState
@@ -119,7 +125,7 @@ class LecturialAppTest {
         compose.onNodeWithText("ИОП-ИТ-26/1").assertIsDisplayed()
         compose.onNodeWithText("сегодня • нет пар").assertIsDisplayed()
 
-        compose.onNodeWithText("На ближайшие две недели занятий нет").assertIsDisplayed()
+        compose.onNodeWithText("На этой неделе занятий нет").assertIsDisplayed()
     }
 
     @Test
@@ -164,7 +170,7 @@ class LecturialAppTest {
             }
         }
 
-        compose.onNodeWithText("На ближайшие две недели занятий нет").assertIsDisplayed()
+        compose.onNodeWithText("На этой неделе занятий нет").assertIsDisplayed()
 
         compose.runOnIdle {
             state = state.copy(
@@ -173,7 +179,7 @@ class LecturialAppTest {
             )
         }
 
-        compose.onNodeWithText("На ближайшие две недели занятий нет").assertDoesNotExist()
+        compose.onNodeWithText("На этой неделе занятий нет").assertDoesNotExist()
         compose.onNodeWithText("Физика").assertIsDisplayed()
     }
 
@@ -253,9 +259,9 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Оформление").performClick()
-        compose.onNodeWithText("Океан").performClick()
+        compose.onNodeWithText("Неон").performScrollTo().performClick()
 
-        compose.runOnIdle { assertEquals(AppTheme.Ocean, selectedTheme) }
+        compose.runOnIdle { assertEquals(AppTheme.Neon, selectedTheme) }
     }
 
     @Test
@@ -293,6 +299,34 @@ class LecturialAppTest {
         compose.onNodeWithText("За неделю").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(setOf(1, 0), selectedDays) }
+    }
+
+    @Test
+    fun scheduleRangeSettingsShowValuesAndForwardChanges() {
+        var weeksBack: Int? = null
+        var weeksForward: Int? = null
+        render(
+            state = ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+                scheduleWeeksBack = 1,
+                scheduleWeeksForward = 1,
+            ),
+            onScheduleWeeksBackChanged = { weeksBack = it },
+            onScheduleWeeksForwardChanged = { weeksForward = it },
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Диапазон расписания").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Недель назад: 1 неделя")
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(2f) }
+        compose.onNodeWithContentDescription("Недель вперёд: 1 неделя")
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(2f) }
+
+        compose.runOnIdle {
+            assertEquals(2, weeksBack)
+            assertEquals(2, weeksForward)
+        }
     }
 
     @Test
@@ -389,9 +423,12 @@ class LecturialAppTest {
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Оформление").performClick()
         compose.onNodeWithText("Аметист").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Сакура").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Бордовый").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Янтарь").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Графит").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Неон").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Фуксия").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Электрик").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Создать тему").performScrollTo().assertIsDisplayed()
     }
 
@@ -635,6 +672,101 @@ class LecturialAppTest {
     }
 
     @Test
+    fun scheduleWeeksAreShownInOneScrollableFeed() {
+        val currentStart = LocalDate.of(2026, 8, 31)
+        fun week(offset: Long, discipline: String): ScheduleWeek {
+            val start = currentStart.plusWeeks(offset)
+            val event = ScheduleEvent(
+                id = "shared-id",
+                date = start,
+                startTime = "08:45",
+                endTime = "10:05",
+                pairNumber = 1,
+                discipline = discipline,
+                type = "Лекция",
+                classroom = null,
+                address = null,
+                teachers = emptyList(),
+                comment = null,
+                onlineUrl = null,
+            )
+            return ScheduleWeek("ИОП-ИТ-26/1", start, listOf(ScheduleDay(start, listOf(event))))
+        }
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                selectedDate = currentStart,
+                weekStart = currentStart,
+                scheduleWeeks = listOf(
+                    week(-1, "История"),
+                    week(0, "Физика"),
+                    week(1, "Алгоритмы"),
+                ),
+                isStarting = false,
+                now = LocalDateTime.of(currentStart, LocalTime.NOON),
+            ),
+        )
+
+        compose.onNodeWithTag("schedule-list").performScrollToNode(hasText("Предыдущая неделя"))
+        compose.onNodeWithText("Предыдущая неделя").assertIsDisplayed()
+        compose.onNodeWithTag("schedule-list").performScrollToNode(hasText("История"))
+        compose.onNodeWithText("История").assertIsDisplayed()
+        compose.onNodeWithTag("schedule-list").performScrollToNode(hasText("Следующая неделя"))
+        compose.onNodeWithText("Следующая неделя").assertIsDisplayed()
+        compose.onNodeWithTag("schedule-list").performScrollToNode(hasText("Алгоритмы"))
+        compose.onNodeWithText("Алгоритмы").assertIsDisplayed()
+    }
+
+    @Test
+    fun scheduleOpensAtHighlightedCurrentWeek() {
+        val currentStart = LocalDate.of(2026, 8, 31)
+        fun week(start: LocalDate, discipline: String) = ScheduleWeek(
+            group = "ИОП-ИТ-26/1",
+            weekStart = start,
+            days = listOf(
+                ScheduleDay(
+                    date = start,
+                    events = listOf(
+                        ScheduleEvent(
+                            id = discipline,
+                            date = start,
+                            startTime = "08:45",
+                            endTime = "10:05",
+                            pairNumber = 1,
+                            discipline = discipline,
+                            type = "Лекция",
+                            classroom = null,
+                            address = null,
+                            teachers = emptyList(),
+                            comment = null,
+                            onlineUrl = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                selectedDate = currentStart,
+                weekStart = currentStart,
+                scheduleWeeks = listOf(
+                    week(currentStart.minusWeeks(2), "Старая дисциплина"),
+                    week(currentStart.minusWeeks(1), "История"),
+                    week(currentStart, "Физика"),
+                    week(currentStart.plusWeeks(1), "Алгоритмы"),
+                ),
+                isStarting = false,
+                now = LocalDateTime.of(currentStart, LocalTime.NOON),
+            ),
+        )
+
+        compose.waitForIdle()
+        compose.onNodeWithTag("current-week").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithText("Текущая неделя").assertIsDisplayed()
+    }
+
+    @Test
     fun plansTabShowsLocalPlanAndForwardsCompletion() {
         val date = LocalDate.of(2026, 11, 10)
         var completed: Pair<String, Boolean>? = null
@@ -731,6 +863,8 @@ class LecturialAppTest {
         onDarkThemeChanged: (Boolean) -> Unit = {},
         onAppDisplayOptionsReset: () -> Unit = {},
         onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
+        onScheduleWeeksBackChanged: (Int) -> Unit = {},
+        onScheduleWeeksForwardChanged: (Int) -> Unit = {},
     ) {
         compose.setContent {
             LecturialTheme(appTheme = state.appTheme) {
@@ -748,6 +882,8 @@ class LecturialAppTest {
                     onDarkThemeChanged = onDarkThemeChanged,
                     onAppDisplayOptionsReset = onAppDisplayOptionsReset,
                     onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
+                    onScheduleWeeksBackChanged = onScheduleWeeksBackChanged,
+                    onScheduleWeeksForwardChanged = onScheduleWeeksForwardChanged,
                 )
             }
         }

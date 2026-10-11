@@ -179,7 +179,7 @@ private val AmethystColors = LecturialColors.copy(
     surfaceContainerHighest = Color(0xFF36343B),
 )
 
-private val SakuraColors = LecturialColors.copy(
+private val BurgundyColors = LecturialColors.copy(
     primary = Color(0xFFFFB0C8),
     onPrimary = Color(0xFF5E1134),
     primaryContainer = Color(0xFF7B294B),
@@ -242,15 +242,105 @@ private val GraphiteColors = LecturialColors.copy(
     surfaceContainerHighest = Color(0xFF343539),
 )
 
+private val NeonColors = LecturialColors.copy(
+    primary = Color(0xFFB6FF00),
+    onPrimary = Color(0xFF1D2E00),
+    primaryContainer = Color(0xFF3B5700),
+    onPrimaryContainer = Color(0xFFD9FF8A),
+    primaryFixed = Color(0xFFD9FF8A),
+    primaryFixedDim = Color(0xFFB6FF00),
+    onPrimaryFixed = Color(0xFF142000),
+    onPrimaryFixedVariant = Color(0xFF3A5700),
+    secondary = Color(0xFF52E8D7),
+    onSecondary = Color(0xFF003733),
+    secondaryContainer = Color(0xFF005049),
+    onSecondaryContainer = Color(0xFF9CF2E8),
+    tertiary = Color(0xFFFFB866),
+    onTertiary = Color(0xFF4A2800),
+    tertiaryContainer = Color(0xFF693C00),
+    onTertiaryContainer = Color(0xFFFFDCB4),
+    background = Color(0xFF0B1004),
+    surface = Color(0xFF0B1004),
+    surfaceVariant = Color(0xFF293315),
+    surfaceContainerLowest = Color(0xFF070B02),
+    surfaceContainerLow = Color(0xFF131A09),
+    surfaceContainer = Color(0xFF18200C),
+    surfaceContainerHigh = Color(0xFF222C13),
+    surfaceContainerHighest = Color(0xFF2D381B),
+    outline = Color(0xFF5C6940),
+    outlineVariant = Color(0xFF414D29),
+)
+
+private val FuchsiaColors = LecturialColors.copy(
+    primary = Color(0xFFFF66C4),
+    onPrimary = Color(0xFF5B003C),
+    primaryContainer = Color(0xFF81005A),
+    onPrimaryContainer = Color(0xFFFFD8EA),
+    primaryFixed = Color(0xFFFFD8EA),
+    primaryFixedDim = Color(0xFFFF66C4),
+    onPrimaryFixed = Color(0xFF3D0027),
+    onPrimaryFixedVariant = Color(0xFF800059),
+    secondary = Color(0xFFB8C4FF),
+    onSecondary = Color(0xFF1E2C61),
+    secondaryContainer = Color(0xFF354379),
+    onSecondaryContainer = Color(0xFFDCE1FF),
+    tertiary = Color(0xFFFFB59B),
+    onTertiary = Color(0xFF5C1908),
+    tertiaryContainer = Color(0xFF7A2F1D),
+    onTertiaryContainer = Color(0xFFFFDBD0),
+    background = Color(0xFF19000F),
+    surface = Color(0xFF19000F),
+    surfaceVariant = Color(0xFF482535),
+    surfaceContainerLowest = Color(0xFF110008),
+    surfaceContainerLow = Color(0xFF250B18),
+    surfaceContainer = Color(0xFF2B101D),
+    surfaceContainerHigh = Color(0xFF381B29),
+    surfaceContainerHighest = Color(0xFF462635),
+    outline = Color(0xFF785466),
+    outlineVariant = Color(0xFF5C394A),
+)
+
+private val ElectricColors = LecturialColors.copy(
+    primary = Color(0xFF82B1FF),
+    onPrimary = Color(0xFF002D6A),
+    primaryContainer = Color(0xFF00449C),
+    onPrimaryContainer = Color(0xFFD8E2FF),
+    primaryFixed = Color(0xFFD8E2FF),
+    primaryFixedDim = Color(0xFF82B1FF),
+    onPrimaryFixed = Color(0xFF001A41),
+    onPrimaryFixedVariant = Color(0xFF00449B),
+    secondary = Color(0xFF55E7FF),
+    onSecondary = Color(0xFF00363E),
+    secondaryContainer = Color(0xFF004E59),
+    onSecondaryContainer = Color(0xFFA2EEFF),
+    tertiary = Color(0xFFFF79B0),
+    onTertiary = Color(0xFF5D0030),
+    tertiaryContainer = Color(0xFF830047),
+    onTertiaryContainer = Color(0xFFFFD8E5),
+    background = Color(0xFF020B1C),
+    surface = Color(0xFF020B1C),
+    surfaceVariant = Color(0xFF203552),
+    surfaceContainerLowest = Color(0xFF000612),
+    surfaceContainerLow = Color(0xFF0B1528),
+    surfaceContainer = Color(0xFF101B2E),
+    surfaceContainerHigh = Color(0xFF1A2639),
+    surfaceContainerHighest = Color(0xFF253145),
+    outline = Color(0xFF516681),
+    outlineVariant = Color(0xFF354A65),
+)
+
 private fun builtInDarkColors(theme: AppTheme) = when (theme) {
     AppTheme.Sirius -> LecturialColors
     AppTheme.Ocean -> OceanColors
     AppTheme.Forest -> ForestColors
     AppTheme.Sunset -> SunsetColors
     AppTheme.Amethyst -> AmethystColors
-    AppTheme.Sakura -> SakuraColors
+    AppTheme.Burgundy -> BurgundyColors
     AppTheme.Amber -> AmberColors
     AppTheme.Graphite -> GraphiteColors
+    AppTheme.Neon -> NeonColors
+    AppTheme.Fuchsia -> FuchsiaColors
+    AppTheme.Electric -> ElectricColors
     AppTheme.Custom -> LecturialColors
 }
 
@@ -273,9 +363,12 @@ fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
         AppTheme.Forest -> ThemePalette(0xFF2D6A3A.toInt(), 0xFF52634F.toInt(), 0xFF6C5D2F.toInt(), 0xFFF7FBF5.toInt(), 0xFFEEF5EB.toInt(), 0xFF191D18.toInt())
         AppTheme.Sunset -> ThemePalette(0xFF9C4230.toInt(), 0xFF77574F.toInt(), 0xFF705B2E.toInt(), 0xFFFFF8F5.toInt(), 0xFFF9EFEB.toInt(), 0xFF211A18.toInt())
         AppTheme.Amethyst -> ThemePalette(0xFF6750A4.toInt(), 0xFF625B71.toInt(), 0xFF7D5260.toInt(), 0xFFFFF7FF.toInt(), 0xFFF7F2FA.toInt(), 0xFF1D1B20.toInt())
-        AppTheme.Sakura -> ThemePalette(0xFF984061.toInt(), 0xFF76565F.toInt(), 0xFF865327.toInt(), 0xFFFFF8F8.toInt(), 0xFFFFF0F3.toInt(), 0xFF211A1C.toInt())
+        AppTheme.Burgundy -> ThemePalette(0xFF984061.toInt(), 0xFF76565F.toInt(), 0xFF865327.toInt(), 0xFFFFF8F8.toInt(), 0xFFFFF0F3.toInt(), 0xFF211A1C.toInt())
         AppTheme.Amber -> ThemePalette(0xFF735C00.toInt(), 0xFF685F45.toInt(), 0xFF49652F.toInt(), 0xFFFFFAEE.toInt(), 0xFFFFF4D6.toInt(), 0xFF1E1B13.toInt())
         AppTheme.Graphite -> ThemePalette(0xFF595C64.toInt(), 0xFF5B5E68.toInt(), 0xFF745563.toInt(), 0xFFFAF8FC.toInt(), 0xFFF2F2F6.toInt(), 0xFF1B1B1F.toInt())
+        AppTheme.Neon -> ThemePalette(0xFF567D00.toInt(), 0xFF006B62.toInt(), 0xFF925400.toInt(), 0xFFFBFFF1.toInt(), 0xFFF1F8E4.toInt(), 0xFF1A1D14.toInt())
+        AppTheme.Fuchsia -> ThemePalette(0xFFB00073.toInt(), 0xFF4E5D96.toInt(), 0xFF9B3D29.toInt(), 0xFFFFF7FA.toInt(), 0xFFFFECF4.toInt(), 0xFF23191E.toInt())
+        AppTheme.Electric -> ThemePalette(0xFF005AC6.toInt(), 0xFF006875.toInt(), 0xFFA60058.toInt(), 0xFFF8F9FF.toInt(), 0xFFEDF2FF.toInt(), 0xFF191C20.toInt())
         AppTheme.Custom -> error("Custom theme has no built-in palette")
     }
 }

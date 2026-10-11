@@ -56,6 +56,8 @@ class UserPreferences(private val context: Context) {
     private val darkThemeKey = booleanPreferencesKey("dark_theme")
     private val builtInThemeOverridesKey = stringPreferencesKey("built_in_theme_overrides")
     private val deadlineReminderDaysKey = stringPreferencesKey("deadline_reminder_days")
+    private val scheduleWeeksBackKey = intPreferencesKey("schedule_weeks_back")
+    private val scheduleWeeksForwardKey = intPreferencesKey("schedule_weeks_forward")
 
     private val safePreferences = context.dataStore.data
         .catch { failure ->
@@ -93,6 +95,14 @@ class UserPreferences(private val context: Context) {
             ?.mapNotNull(String::toIntOrNull)
             ?.filterTo(linkedSetOf()) { it in DeadlineReminder.supportedDays }
             ?: DeadlineReminder.default
+    }
+
+    val scheduleWeeksBack: Flow<Int> = safePreferences.map { preferences ->
+        (preferences[scheduleWeeksBackKey] ?: DEFAULT_SCHEDULE_WEEKS_BACK).coerceIn(SCHEDULE_WEEKS_RANGE)
+    }
+
+    val scheduleWeeksForward: Flow<Int> = safePreferences.map { preferences ->
+        (preferences[scheduleWeeksForwardKey] ?: DEFAULT_SCHEDULE_WEEKS_FORWARD).coerceIn(SCHEDULE_WEEKS_RANGE)
     }
 
     fun languageTeacher(group: String): Flow<String?> = safePreferences.map {
@@ -252,6 +262,16 @@ class UserPreferences(private val context: Context) {
         DeadlineAlerts.sync(context)
     }
 
+    suspend fun setScheduleWeeksBack(value: Int) {
+        require(value in SCHEDULE_WEEKS_RANGE)
+        context.dataStore.edit { it[scheduleWeeksBackKey] = value }
+    }
+
+    suspend fun setScheduleWeeksForward(value: Int) {
+        require(value in SCHEDULE_WEEKS_RANGE)
+        context.dataStore.edit { it[scheduleWeeksForwardKey] = value }
+    }
+
     private suspend fun setWidgetBoolean(
         key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
         value: Boolean,
@@ -268,6 +288,12 @@ class UserPreferences(private val context: Context) {
         require(value in range)
         context.dataStore.edit { it[key] = value }
         TodayScheduleWidget.updateAll(context)
+    }
+
+    companion object {
+        const val DEFAULT_SCHEDULE_WEEKS_BACK = 2
+        const val DEFAULT_SCHEDULE_WEEKS_FORWARD = 2
+        val SCHEDULE_WEEKS_RANGE = 0..2
     }
 }
 

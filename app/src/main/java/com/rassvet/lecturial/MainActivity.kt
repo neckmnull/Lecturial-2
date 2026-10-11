@@ -98,6 +98,8 @@ class MainActivity : ComponentActivity() {
                     onStudyPlanCompletedChanged = viewModel::setStudyPlanCompleted,
                     onStudyPlanDeleted = viewModel::deleteStudyPlan,
                     onDeadlineReminderDaysChanged = viewModel::setDeadlineReminderDays,
+                    onScheduleWeeksBackChanged = viewModel::setScheduleWeeksBack,
+                    onScheduleWeeksForwardChanged = viewModel::setScheduleWeeksForward,
                     onCheckForUpdates = viewModel::checkForUpdates,
                 )
             }

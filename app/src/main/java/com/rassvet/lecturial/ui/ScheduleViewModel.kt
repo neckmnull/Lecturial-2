@@ -48,6 +48,9 @@ data class ScheduleUiState(
     val weekStart: LocalDate = LocalDate.now().with(DayOfWeek.MONDAY),
     val week: ScheduleWeek? = null,
     val nextWeek: ScheduleWeek? = null,
+    val scheduleWeeks: List<ScheduleWeek> = emptyList(),
+    val scheduleWeeksBack: Int = UserPreferences.DEFAULT_SCHEDULE_WEEKS_BACK,
+    val scheduleWeeksForward: Int = UserPreferences.DEFAULT_SCHEDULE_WEEKS_FORWARD,
     val events: List<ScheduleEvent> = emptyList(),
     val availableGroups: List<String> = emptyList(),
     val groupSearchQuery: String = "",
@@ -116,6 +119,8 @@ class ScheduleViewModel(
             val selectedCustomThemeId = preferences.selectedCustomThemeId.first()
             val appDisplayOptions = preferences.appDisplayOptions.first()
             val deadlineReminderDays = preferences.deadlineReminderDays.first()
+            val scheduleWeeksBack = preferences.scheduleWeeksBack.first()
+            val scheduleWeeksForward = preferences.scheduleWeeksForward.first()
             val validCustomThemeId = selectedCustomThemeId?.takeIf { id -> customThemes.any { it.id == id } }
             val date = today()
             _state.update {
@@ -127,6 +132,8 @@ class ScheduleViewModel(
                     selectedCustomThemeId = validCustomThemeId,
                     appDisplayOptions = appDisplayOptions,
                     deadlineReminderDays = deadlineReminderDays,
+                    scheduleWeeksBack = scheduleWeeksBack,
+                    scheduleWeeksForward = scheduleWeeksForward,
                     selectedGroup = group,
                     languageTeacher = savedTeacher,
                     choosingLanguageTeacher = group != null && savedTeacher == null,
@@ -182,6 +189,7 @@ class ScheduleViewModel(
                 weekStart = date.with(DayOfWeek.MONDAY),
                 week = null,
                 nextWeek = null,
+                scheduleWeeks = emptyList(),
                 events = emptyList(),
                 errorMessage = null,
                 showingCachedData = false,
@@ -283,6 +291,7 @@ class ScheduleViewModel(
                 selectedDate = nextStart.plusDays(weekdayOffset),
                 week = null,
                 nextWeek = null,
+                scheduleWeeks = emptyList(),
                 events = emptyList(),
                 errorMessage = null,
             )
@@ -298,6 +307,7 @@ class ScheduleViewModel(
                 weekStart = date.with(DayOfWeek.MONDAY),
                 week = null,
                 nextWeek = null,
+                scheduleWeeks = emptyList(),
                 events = emptyList(),
                 errorMessage = null,
             )
@@ -326,6 +336,33 @@ class ScheduleViewModel(
         if (_state.value.deadlineReminderDays == days) return
         _state.update { it.copy(deadlineReminderDays = days) }
         viewModelScope.launch { preferences.setDeadlineReminderDays(days) }
+    }
+
+    fun setScheduleWeeksBack(value: Int) = setScheduleRange(value, _state.value.scheduleWeeksForward)
+
+    fun setScheduleWeeksForward(value: Int) = setScheduleRange(_state.value.scheduleWeeksBack, value)
+
+    private fun setScheduleRange(weeksBack: Int, weeksForward: Int) {
+        if (weeksBack !in UserPreferences.SCHEDULE_WEEKS_RANGE ||
+            weeksForward !in UserPreferences.SCHEDULE_WEEKS_RANGE
+        ) return
+        val current = _state.value
+        if (current.scheduleWeeksBack == weeksBack && current.scheduleWeeksForward == weeksForward) return
+        _state.update {
+            it.copy(
+                scheduleWeeksBack = weeksBack,
+                scheduleWeeksForward = weeksForward,
+                scheduleWeeks = emptyList(),
+                week = null,
+                nextWeek = null,
+                events = emptyList(),
+            )
+        }
+        viewModelScope.launch {
+            if (current.scheduleWeeksBack != weeksBack) preferences.setScheduleWeeksBack(weeksBack)
+            if (current.scheduleWeeksForward != weeksForward) preferences.setScheduleWeeksForward(weeksForward)
+        }
+        loadCurrentWeek()
     }
 
     fun setAppTheme(theme: AppTheme) {
@@ -547,71 +584,77 @@ class ScheduleViewModel(
     private fun loadCurrentWeek(isManualRefresh: Boolean = false) {
         val group = _state.value.selectedGroup ?: return
         val weekStart = _state.value.weekStart
-        val nextStart = weekStart.plusWeeks(1)
+        val weeksBack = _state.value.scheduleWeeksBack
+        val weeksForward = _state.value.scheduleWeeksForward
+        val starts = scheduleWeekStarts(weekStart, weeksBack, weeksForward)
+        fun ScheduleUiState.matchesRequest(): Boolean =
+            selectedGroup == group &&
+                this.weekStart == weekStart &&
+                scheduleWeeksBack == weeksBack &&
+                scheduleWeeksForward == weeksForward
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val cached = runCatching { repository.cachedWeek(group, weekStart) }.getOrNull()
-            val cachedNext = runCatching { repository.cachedWeek(group, nextStart) }.getOrNull()
-            if (cached != null || cachedNext != null) {
+            val cached = starts.mapNotNull { start ->
+                runCatching { repository.cachedWeek(group, start) }.getOrNull()
+            }
+            if (cached.isNotEmpty()) {
+                val cachedWeeks = cached.map { it.week }.sortedBy { it.weekStart }
                 _state.update {
-                    if (it.selectedGroup != group || it.weekStart != weekStart) it else it.copy(
-                        week = cached?.week ?: it.week,
-                        nextWeek = cachedNext?.week ?: it.nextWeek,
-                        events = (cached?.week ?: it.week)?.eventsFor(it.selectedDate).orEmpty(),
-                        lastUpdatedMillis = listOfNotNull(cached?.updatedAtMillis, cachedNext?.updatedAtMillis).maxOrNull()
-                            ?: it.lastUpdatedMillis,
-                        showingCachedData = false,
+                    if (!it.matchesRequest()) it else it.copy(
+                        scheduleWeeks = cachedWeeks,
+                        week = cachedWeeks.firstOrNull { item -> item.weekStart == weekStart } ?: it.week,
+                        nextWeek = cachedWeeks.firstOrNull { item -> item.weekStart == weekStart.plusWeeks(1) } ?: it.nextWeek,
+                        events = cachedWeeks.firstOrNull { item -> item.weekStart == weekStart }
+                            ?.eventsFor(it.selectedDate).orEmpty(),
+                        lastUpdatedMillis = cached.maxOfOrNull { item -> item.updatedAtMillis } ?: it.lastUpdatedMillis,
+                        showingCachedData = true,
                     )
                 }
             }
             _state.update {
-                it.copy(
-                    isLoading = cached == null && cachedNext == null && !isManualRefresh,
-                    isRefreshing = isManualRefresh || cached != null || cachedNext != null,
+                if (!it.matchesRequest()) it else it.copy(
+                    isLoading = cached.isEmpty() && !isManualRefresh,
+                    isRefreshing = isManualRefresh || cached.isNotEmpty(),
                     errorMessage = null,
                 )
             }
-            try {
-                val fresh = repository.refreshWeek(group, weekStart)
-                _state.update {
-                    if (it.selectedGroup != group || it.weekStart != weekStart) it else it.copy(
-                        week = fresh.week,
-                        events = fresh.week.eventsFor(it.selectedDate),
-                        isLoading = false,
-                        isRefreshing = true,
-                        errorMessage = null,
-                        showingCachedData = false,
-                        lastUpdatedMillis = fresh.updatedAtMillis,
-                    )
+            var firstFailure: Throwable? = null
+            starts.forEach { start ->
+                try {
+                    val fresh = repository.refreshWeek(group, start)
+                    _state.update {
+                        if (!it.matchesRequest()) it else {
+                            val updatedWeeks = (it.scheduleWeeks.filterNot { item -> item.weekStart == start } + fresh.week)
+                                .sortedBy { item -> item.weekStart }
+                            it.copy(
+                                scheduleWeeks = updatedWeeks,
+                                week = updatedWeeks.firstOrNull { item -> item.weekStart == weekStart },
+                                nextWeek = updatedWeeks.firstOrNull { item -> item.weekStart == weekStart.plusWeeks(1) },
+                                events = updatedWeeks.firstOrNull { item -> item.weekStart == weekStart }
+                                    ?.eventsFor(it.selectedDate).orEmpty(),
+                                isLoading = false,
+                                isRefreshing = true,
+                                errorMessage = null,
+                                showingCachedData = false,
+                                lastUpdatedMillis = fresh.updatedAtMillis,
+                            )
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    if (firstFailure == null) firstFailure = failure
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Throwable) {
-                _state.update {
-                    if (it.selectedGroup != group || it.weekStart != weekStart) it else it.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        errorMessage = failure.message ?: "Не удалось обновить расписание",
-                        showingCachedData = cached != null || cachedNext != null,
-                    )
-                }
-                return@launch
             }
-            try {
-                val freshNext = repository.refreshWeek(group, nextStart)
-                _state.update {
-                    if (it.selectedGroup != group || it.weekStart != weekStart) it else it.copy(
-                        nextWeek = freshNext.week,
-                        isRefreshing = false,
-                        lastUpdatedMillis = freshNext.updatedAtMillis,
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Throwable) {
-                _state.update {
-                    if (it.selectedGroup != group || it.weekStart != weekStart) it else it.copy(isRefreshing = false)
-                }
+            _state.update {
+                if (!it.matchesRequest()) it else it.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    errorMessage = firstFailure?.let { failure ->
+                        failure.message ?: "Не удалось обновить часть расписания"
+                    },
+                    showingCachedData = firstFailure != null && it.scheduleWeeks.isNotEmpty(),
+                )
             }
         }
     }
@@ -626,4 +669,14 @@ class ScheduleViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker) as T
     }
+}
+
+internal fun scheduleWeekStarts(
+    currentWeekStart: LocalDate,
+    weeksBack: Int,
+    weeksForward: Int,
+): List<LocalDate> {
+    require(weeksBack in UserPreferences.SCHEDULE_WEEKS_RANGE)
+    require(weeksForward in UserPreferences.SCHEDULE_WEEKS_RANGE)
+    return (-weeksBack..weeksForward).map { offset -> currentWeekStart.plusWeeks(offset.toLong()) }
 }

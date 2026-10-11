@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.5.0/Lecturial-2-v1.5.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.5.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.5.0 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.0/Lecturial-2-v1.6.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.6.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.6.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -59,11 +59,11 @@ keep common actions one tap away.
 | **Schedule** | Daily feed, week navigation, pull-to-refresh, current class, remaining time, and meaningful gaps |
 | **Study context** | Group selection, foreign-language instructor selection, custom subject names, rooms, and instructors |
 | **Offline behavior** | Cache-first loading with previously fetched weeks stored in Room |
-| **Appearance** | 8 built-in themes, custom palettes, light/dark modes, font styles, sizing, spacing, and title wrapping |
+| **Appearance** | 11 built-in themes, custom palettes, light/dark modes, font styles, sizing, spacing, and title wrapping |
 | **At a glance** | Resizable Today widget with configurable fields, colors, text sizes, and spacing |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.5.0` (`versionCode 25`) · minimum Android version:
+> **Current release:** `1.6.0` (`versionCode 26`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,12 +94,12 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.5.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.5.0/Lecturial-2-v1.5.0.apk).
+1. Download [`Lecturial-2-v1.6.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.0/Lecturial-2-v1.6.0.apk).
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  540350261fc93da0486dc9486c87a4440f98315d4255766c2d5299211ddc86cf
+SHA-256  6c83f8e4e6e48079f970c0cb8cf8b74c5500744cfaa4ae43b9e4bbf76243ad12
 Package  com.rassvet.lecturial2
 ```
 

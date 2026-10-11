@@ -2,6 +2,7 @@ package com.rassvet.lecturial.ui
 
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.BuildConfig
+import com.rassvet.lecturial.data.local.UserPreferences
 import com.rassvet.lecturial.notify.LessonAlerts
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -111,6 +112,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -201,6 +203,12 @@ private val TextThemeColors = listOf(
 
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
 private enum class MainSection { Schedule, Plans, Settings }
+private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
+
+private fun ScheduleUiState.loadedScheduleWeeks(): List<ScheduleWeek> =
+    scheduleWeeks.ifEmpty { listOfNotNull(week, nextWeek) }
+        .distinctBy(ScheduleWeek::weekStart)
+        .sortedBy(ScheduleWeek::weekStart)
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -245,6 +253,8 @@ fun LecturialApp(
     onStudyPlanCompletedChanged: (String, Boolean) -> Unit = { _, _ -> },
     onStudyPlanDeleted: (String) -> Unit = {},
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
+    onScheduleWeeksBackChanged: (Int) -> Unit = {},
+    onScheduleWeeksForwardChanged: (Int) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
@@ -285,6 +295,7 @@ fun LecturialApp(
                 else -> ScheduleScreen(
                     state.copy(week = state.week?.forLanguageTeacher(state.languageTeacher),
                         nextWeek = state.nextWeek?.forLanguageTeacher(state.languageTeacher),
+                        scheduleWeeks = state.scheduleWeeks.map { it.forLanguageTeacher(state.languageTeacher) },
                         events = state.events.filter { com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, state.languageTeacher) }),
                     onGroupSelected,
                     onGroupSearchQueryChanged,
@@ -325,6 +336,8 @@ fun LecturialApp(
                     onStudyPlanCompletedChanged,
                     onStudyPlanDeleted,
                     onDeadlineReminderDaysChanged,
+                    onScheduleWeeksBackChanged,
+                    onScheduleWeeksForwardChanged,
                     onCheckForUpdates,
                 )
             }
@@ -342,10 +355,10 @@ private fun LanguageTeacherSelectionScreen(
     backContentDescription: String = "Назад к выбору группы",
 ) {
     var selectedTeacher by rememberSaveable(state.selectedGroup) { mutableStateOf(state.languageTeacher) }
-    val teachers = listOfNotNull(state.week, state.nextWeek).flatMap { it.days }
+    val teachers = state.loadedScheduleWeeks().flatMap { it.days }
         .flatMap { it.events }.filter { isForeignLanguage(it.discipline) }
         .flatMap { it.teachers }.map { it.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
-    val loading = state.isLoading || state.isRefreshing || (state.week == null && state.errorMessage == null)
+    val loading = state.isLoading || state.isRefreshing || (state.loadedScheduleWeeks().isEmpty() && state.errorMessage == null)
     BackHandler(onBack = onBack)
     Column(
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
@@ -382,7 +395,7 @@ private fun LanguageTeacherSelectionScreen(
                     TeacherChoiceCard(teacher, selectedTeacher == teacher) { selectedTeacher = teacher }
                 }
                 if (!loading && teachers.isEmpty()) {
-                    Text(state.errorMessage ?: "В расписании ближайших двух недель пока нет преподавателей иностранного языка.")
+                    Text(state.errorMessage ?: "В выбранном диапазоне расписания пока нет преподавателей иностранного языка.")
                 }
                 if (state.errorMessage != null) {
                     TextButton(onClick = onRetry) { Text("Повторить загрузку") }
@@ -586,6 +599,8 @@ private fun ScheduleScreen(
     onStudyPlanCompletedChanged: (String, Boolean) -> Unit,
     onStudyPlanDeleted: (String) -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
+    onScheduleWeeksBackChanged: (Int) -> Unit,
+    onScheduleWeeksForwardChanged: (Int) -> Unit,
     onCheckForUpdates: () -> Unit,
 ) {
     var mainSection by remember { mutableStateOf(MainSection.Schedule) }
@@ -704,7 +719,7 @@ private fun ScheduleScreen(
                     )
                     SettingsSection.Names -> LessonNamesScreen(
                         modifier = nestedModifier,
-                        names = uniqueDisciplines(state.week, state.nextWeek),
+                        names = uniqueDisciplines(*state.loadedScheduleWeeks().toTypedArray()),
                         aliases = state.lessonAliases,
                         onAliasChanged = onLessonAliasChanged,
                         onBack = { settingsSection = null },
@@ -735,6 +750,8 @@ private fun ScheduleScreen(
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
+                        onScheduleWeeksBackChanged = onScheduleWeeksBackChanged,
+                        onScheduleWeeksForwardChanged = onScheduleWeeksForwardChanged,
                     )
                 }
             } else if (selectedSection == MainSection.Plans) {
@@ -785,7 +802,8 @@ private fun LecturialBottomBar(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .navigationBarsPadding()
-            .height(56.dp),
+            .height(56.dp)
+            .testTag("bottom-navigation"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LecturialBottomBarItem(
@@ -833,7 +851,7 @@ private fun RowScope.LecturialBottomBarItem(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick,
+                onClick = { if (!selected) onClick() },
             )
             .semantics { this.selected = selected },
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -868,6 +886,8 @@ private fun AppSettingsScreen(
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
+    onScheduleWeeksBackChanged: (Int) -> Unit,
+    onScheduleWeeksForwardChanged: (Int) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -919,6 +939,12 @@ private fun AppSettingsScreen(
             onOpenAppearance,
         )
         SettingsNavigationRow("Названия пар", "Сокращения предметов", onOpenLessonNames)
+        ScheduleRangeSettings(
+            weeksBack = state.scheduleWeeksBack,
+            weeksForward = state.scheduleWeeksForward,
+            onWeeksBackChanged = onScheduleWeeksBackChanged,
+            onWeeksForwardChanged = onScheduleWeeksForwardChanged,
+        )
         NotificationSettings(
             selectedDays = state.deadlineReminderDays,
             onSelectedDaysChanged = onDeadlineReminderDaysChanged,
@@ -966,6 +992,54 @@ private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -
 }
 
 @Composable
+private fun ScheduleRangeSettings(
+    weeksBack: Int,
+    weeksForward: Int,
+    onWeeksBackChanged: (Int) -> Unit,
+    onWeeksForwardChanged: (Int) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Диапазон расписания", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Какие недели загружать и показывать в общей ленте",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            WidgetDimensionSlider(
+                title = "Недель назад",
+                description = "Прошедшие недели до текущей",
+                value = weeksBack,
+                range = UserPreferences.SCHEDULE_WEEKS_RANGE,
+                unit = weekUnit(weeksBack),
+                onValueChanged = onWeeksBackChanged,
+            )
+            WidgetDimensionSlider(
+                title = "Недель вперёд",
+                description = "Будущие недели после текущей",
+                value = weeksForward,
+                range = UserPreferences.SCHEDULE_WEEKS_RANGE,
+                unit = weekUnit(weeksForward),
+                onValueChanged = onWeeksForwardChanged,
+            )
+        }
+    }
+}
+
+private fun weekUnit(value: Int): String = when {
+    value % 10 == 1 && value % 100 != 11 -> "неделя"
+    value % 10 in 2..4 && value % 100 !in 12..14 -> "недели"
+    else -> "недель"
+}
+
+@Composable
 private fun AppearanceSettingsScreen(
     selectedTheme: AppTheme,
     darkTheme: Boolean,
@@ -989,72 +1063,91 @@ private fun AppearanceSettingsScreen(
     var editedTheme by remember { mutableStateOf<CustomAppTheme?>(null) }
     var editedBuiltInTheme by remember { mutableStateOf<AppTheme?>(null) }
     var creatingTheme by remember { mutableStateOf(false) }
-    if (editedBuiltInTheme != null) {
-        val builtInTheme = editedBuiltInTheme!!
-        val savedOverride = builtInThemeOverrides.firstOrNull {
-            it.theme == builtInTheme && it.isDark == darkTheme
-        }
-        val palette = savedOverride?.palette ?: defaultThemePalette(builtInTheme, darkTheme)
-        CustomThemeEditor(
-            modifier = modifier,
-            theme = CustomAppTheme(
-                id = "built-in-${builtInTheme.storageId}-$darkTheme",
-                name = appThemeTitle(builtInTheme),
-                primary = palette.primary,
-                secondary = palette.secondary,
-                tertiary = palette.tertiary,
-                background = palette.background,
-                surface = palette.surface,
-                onSurface = palette.onSurface,
-            ),
-            title = "Тема «${appThemeTitle(builtInTheme)}»",
-            allowRename = false,
-            darkTheme = darkTheme,
-            previewAppTheme = builtInTheme,
-            onSave = {
-                onBuiltInThemeSaved(builtInTheme, it.toPalette())
-                editedBuiltInTheme = null
-            },
-            onReset = if (savedOverride != null) {
-                {
-                    onBuiltInThemeReset(builtInTheme)
-                    editedBuiltInTheme = null
-                }
-            } else null,
-            onBack = { editedBuiltInTheme = null },
-        )
-        return
+    val appearanceSection = when {
+        editedBuiltInTheme != null -> AppearanceSection.BuiltInEditor
+        creatingTheme || editedTheme != null -> AppearanceSection.CustomEditor
+        else -> AppearanceSection.Settings
     }
-    if (creatingTheme || editedTheme != null) {
-        CustomThemeEditor(
-            modifier = modifier,
-            theme = editedTheme,
-            darkTheme = darkTheme,
-            onSave = {
-                onCustomThemeSaved(it)
-                creatingTheme = false
-                editedTheme = null
-            },
-            onDelete = editedTheme?.let { theme ->
-                {
-                    onCustomThemeDeleted(theme.id)
-                    editedTheme = null
-                }
-            },
-            onBack = {
-                creatingTheme = false
-                editedTheme = null
-            },
-        )
-        return
+    fun closeEditor() {
+        editedBuiltInTheme = null
+        creatingTheme = false
+        editedTheme = null
     }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    BackHandler(enabled = appearanceSection != AppearanceSection.Settings, onBack = ::closeEditor)
+    AnimatedContent(
+        targetState = appearanceSection,
+        modifier = modifier.fillMaxSize().clipToBounds(),
+        transitionSpec = {
+            if (targetState == AppearanceSection.Settings) {
+                (slideInHorizontally(screenSlideSpec()) { -it / 10 } + fadeIn(screenFadeSpec())) togetherWith
+                    (slideOutHorizontally(screenSlideSpec()) { it / 5 } + fadeOut(screenFadeSpec()))
+            } else {
+                (slideInHorizontally(screenSlideSpec()) { it / 5 } + fadeIn(screenFadeSpec())) togetherWith
+                    (slideOutHorizontally(screenSlideSpec()) { -it / 10 } + fadeOut(screenFadeSpec()))
+            }
+        },
+        label = "appearance-navigation",
+    ) { section ->
+        when (section) {
+            AppearanceSection.BuiltInEditor -> {
+                val builtInTheme = remember { editedBuiltInTheme } ?: return@AnimatedContent
+                val savedOverride = builtInThemeOverrides.firstOrNull {
+                    it.theme == builtInTheme && it.isDark == darkTheme
+                }
+                val palette = savedOverride?.palette ?: defaultThemePalette(builtInTheme, darkTheme)
+                CustomThemeEditor(
+                    theme = CustomAppTheme(
+                        id = "built-in-${builtInTheme.storageId}-$darkTheme",
+                        name = appThemeTitle(builtInTheme),
+                        primary = palette.primary,
+                        secondary = palette.secondary,
+                        tertiary = palette.tertiary,
+                        background = palette.background,
+                        surface = palette.surface,
+                        onSurface = palette.onSurface,
+                    ),
+                    title = "Тема «${appThemeTitle(builtInTheme)}»",
+                    allowRename = false,
+                    darkTheme = darkTheme,
+                    previewAppTheme = builtInTheme,
+                    onSave = {
+                        onBuiltInThemeSaved(builtInTheme, it.toPalette())
+                        closeEditor()
+                    },
+                    onReset = if (savedOverride != null) {
+                        {
+                            onBuiltInThemeReset(builtInTheme)
+                            closeEditor()
+                        }
+                    } else null,
+                    onBack = ::closeEditor,
+                )
+            }
+            AppearanceSection.CustomEditor -> {
+                val theme = remember { editedTheme }
+                CustomThemeEditor(
+                    theme = theme,
+                    darkTheme = darkTheme,
+                    onSave = {
+                        onCustomThemeSaved(it)
+                        closeEditor()
+                    },
+                    onDelete = theme?.let {
+                        {
+                            onCustomThemeDeleted(it.id)
+                            closeEditor()
+                        }
+                    },
+                    onBack = ::closeEditor,
+                )
+            }
+            AppearanceSection.Settings -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "‹",
@@ -1164,6 +1257,8 @@ private fun AppearanceSettingsScreen(
             onClick = onOpenWidgetSettings,
         )
         Spacer(Modifier.height(12.dp))
+            }
+        }
     }
 }
 
@@ -1478,9 +1573,12 @@ private fun appThemeTitle(theme: AppTheme): String = when (theme) {
     AppTheme.Forest -> "Лес"
     AppTheme.Sunset -> "Закат"
     AppTheme.Amethyst -> "Аметист"
-    AppTheme.Sakura -> "Сакура"
+    AppTheme.Burgundy -> "Бордовый"
     AppTheme.Amber -> "Янтарь"
     AppTheme.Graphite -> "Графит"
+    AppTheme.Neon -> "Неон"
+    AppTheme.Fuchsia -> "Фуксия"
+    AppTheme.Electric -> "Электрик"
     AppTheme.Custom -> "Своя тема"
 }
 
@@ -1490,9 +1588,12 @@ private fun appThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.Forest -> "Зелёный и природный"
     AppTheme.Sunset -> "Коралловый и тёплый"
     AppTheme.Amethyst -> "Фиолетовый и выразительный"
-    AppTheme.Sakura -> "Розовый и мягкий"
+    AppTheme.Burgundy -> "Глубокий бордовый"
     AppTheme.Amber -> "Золотистый и контрастный"
     AppTheme.Graphite -> "Нейтральный монохром"
+    AppTheme.Neon -> "Кислотный зелёный"
+    AppTheme.Fuchsia -> "Яркий розовый"
+    AppTheme.Electric -> "Насыщенный синий"
     AppTheme.Custom -> "Пользовательская палитра"
 }
 
@@ -1502,9 +1603,12 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
     AppTheme.Forest -> Color(0xFF8ED29A)
     AppTheme.Sunset -> Color(0xFFFFB59D)
     AppTheme.Amethyst -> Color(0xFFD0BCFF)
-    AppTheme.Sakura -> Color(0xFFFFB0C8)
+    AppTheme.Burgundy -> Color(0xFFFFB0C8)
     AppTheme.Amber -> Color(0xFFFFC107)
     AppTheme.Graphite -> Color(0xFFC5C7CE)
+    AppTheme.Neon -> Color(0xFFB6FF00)
+    AppTheme.Fuchsia -> Color(0xFFFF3CAC)
+    AppTheme.Electric -> Color(0xFF2979FF)
     AppTheme.Custom -> Color(0xFF8AABFF)
 }
 
@@ -2445,23 +2549,26 @@ private fun ScheduleContent(
     var editingPlan by remember { mutableStateOf<StudyPlan?>(null) }
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
-        state.week == null && state.nextWeek == null && state.errorMessage != null -> FullError(state.errorMessage, onRetry)
+        state.scheduleWeeks.isEmpty() && state.week == null && state.nextWeek == null && state.errorMessage != null ->
+            FullError(state.errorMessage, onRetry)
         else -> {
             val rows = remember(
+                state.scheduleWeeks,
                 state.week,
                 state.nextWeek,
-                state.selectedDate,
                 state.errorMessage,
                 state.lastUpdatedMillis,
                 state.selectedGroup,
+                state.weekStart,
                 state.now,
                 state.lessonAliases,
                 state.studyPlans,
             ) {
                 buildScheduleRows(
+                    scheduleWeeks = state.scheduleWeeks,
                     week = state.week,
                     nextWeek = state.nextWeek,
-                    selectedDate = state.selectedDate,
+                    currentWeekStart = state.weekStart,
                     errorMessage = state.errorMessage,
                     lastUpdatedMillis = state.lastUpdatedMillis,
                     group = state.selectedGroup.orEmpty(),
@@ -2477,18 +2584,15 @@ private fun ScheduleContent(
                 LaunchedEffect(rows, scrollSession) {
                     if (state.isLoading) return@LaunchedEffect
                     if (scrolledFor == scrollSession) return@LaunchedEffect
-                    val liveIndex = rows.indexOfFirst { it is ScheduleRow.Lesson && it.liveLabel != null }
-                    val todayIndex = rows.indexOfFirst { it is ScheduleRow.Day && it.title == "Сегодня" }
-                    val index = when {
-                        liveIndex >= 0 -> (liveIndex - 1).coerceAtLeast(0)
-                        todayIndex >= 0 -> todayIndex
-                        else -> return@LaunchedEffect
+                    val index = rows.indexOfFirst {
+                        it is ScheduleRow.WeekBreak && it.isCurrent
                     }
+                    if (index < 0) return@LaunchedEffect
                     listState.scrollToItem(index)
                     scrolledFor = scrollSession
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("schedule-list"),
                     state = listState,
                     contentPadding = PaddingValues(
                         start = state.appDisplayOptions.outerPaddingDp.dp,
@@ -2506,7 +2610,8 @@ private fun ScheduleContent(
                             is ScheduleRow.Header -> ScheduleHeader(row.group, row.subtitle)
                             is ScheduleRow.Banner -> OfflineBanner(row.message, row.updatedAt)
                             is ScheduleRow.Empty -> EmptyScheduleState()
-                            is ScheduleRow.WeekBreak -> NextWeekDivider(row.range)
+                            is ScheduleRow.WeekBreak -> WeekDivider(row.title, row.range, row.isCurrent)
+                            is ScheduleRow.EmptyWeek -> EmptyWeekState()
                             is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
                             is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions)
                             is ScheduleRow.Plan -> StudyPlanTimelineItem(
@@ -2582,7 +2687,7 @@ private fun EmptyScheduleState() {
                 textAlign = TextAlign.Center,
             )
             Text(
-                "На ближайшие две недели занятий нет",
+                "В выбранном диапазоне занятий нет",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -2592,7 +2697,57 @@ private fun EmptyScheduleState() {
 }
 
 @Composable
-private fun NextWeekDivider(range: String) {
+private fun EmptyWeekState() {
+    Text(
+        "На этой неделе занятий нет",
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun WeekDivider(title: String, range: String, isCurrent: Boolean) {
+    if (isCurrent) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp, bottom = 16.dp)
+                .testTag("current-week")
+                .semantics { selected = true },
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.DateRange,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        range,
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                    )
+                }
+            }
+        }
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2608,7 +2763,7 @@ private fun NextWeekDivider(range: String) {
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
             Text(
-                "Следующая неделя",
+                title,
                 modifier = Modifier.padding(horizontal = 12.dp),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primaryFixed,
@@ -2931,9 +3086,19 @@ private sealed class ScheduleRow {
         override val contentType = "empty"
     }
 
-    data class WeekBreak(val range: String) : ScheduleRow() {
-        override val key = "week-break"
+    data class WeekBreak(
+        val weekStart: LocalDate,
+        val title: String,
+        val range: String,
+        val isCurrent: Boolean,
+    ) : ScheduleRow() {
+        override val key = "week-break-$weekStart"
         override val contentType = "week-break"
+    }
+
+    data class EmptyWeek(val weekStart: LocalDate) : ScheduleRow() {
+        override val key = "empty-week-$weekStart"
+        override val contentType = "empty-week"
     }
 
     data class Day(
@@ -2974,9 +3139,10 @@ private sealed class ScheduleRow {
 }
 
 private fun buildScheduleRows(
+    scheduleWeeks: List<ScheduleWeek>,
     week: ScheduleWeek?,
     nextWeek: ScheduleWeek?,
-    selectedDate: LocalDate,
+    currentWeekStart: LocalDate,
     errorMessage: String?,
     lastUpdatedMillis: Long?,
     group: String,
@@ -2984,40 +3150,55 @@ private fun buildScheduleRows(
     aliases: Map<String, String>,
     plans: List<StudyPlan>,
 ): List<ScheduleRow> {
-    val rows = ArrayList<ScheduleRow>(48)
+    val rows = ArrayList<ScheduleRow>(96)
     if (errorMessage != null) rows += ScheduleRow.Banner(errorMessage, lastUpdatedMillis)
     val today = now.toLocalDate()
-    val todayCount = week?.eventsFor(today)?.size ?: nextWeek?.eventsFor(today)?.size ?: 0
+    val weeks = (scheduleWeeks.ifEmpty { listOfNotNull(week, nextWeek) })
+        .distinctBy(ScheduleWeek::weekStart)
+        .sortedBy(ScheduleWeek::weekStart)
+    val todayCount = weeks.firstOrNull { today in it.weekStart..it.weekStart.plusDays(6) }
+        ?.eventsFor(today)?.size ?: 0
     val todaySubtitle = if (todayCount == 0) "сегодня • нет пар" else "сегодня • ${pairCountText(todayCount)}"
     rows += ScheduleRow.Header(group, todaySubtitle)
-    val currentPlans = plans.filter { plan ->
-        val date = plan.dueDate ?: return@filter false
-        val start = week?.weekStart ?: selectedDate.with(java.time.DayOfWeek.MONDAY)
-        !date.isBefore(selectedDate) && !date.isBefore(start) && !date.isAfter(start.plusDays(6))
+    val sections = weeks.map { scheduleWeek ->
+        val start = scheduleWeek.weekStart
+        val weekPlans = plans.filter { plan ->
+            val date = plan.dueDate ?: return@filter false
+            !date.isBefore(start) && !date.isAfter(start.plusDays(6))
+        }
+        Triple(scheduleWeek, weekPlans, scheduleDays(scheduleWeek, weekPlans))
     }
-    val currentDays = scheduleDays(week, currentPlans, selectedDate)
-    val upcomingPlans = plans.filter { plan ->
-        val date = plan.dueDate ?: return@filter false
-        val start = nextWeek?.weekStart ?: return@filter false
-        !date.isBefore(start) && !date.isAfter(start.plusDays(6))
-    }
-    val upcomingDays = scheduleDays(nextWeek, upcomingPlans)
-    if (currentDays.isEmpty() && upcomingDays.isEmpty()) {
+    if (sections.isEmpty()) {
         rows += ScheduleRow.Empty
         return rows
     }
     val live = liveLessonState(
-        (week?.days.orEmpty() + nextWeek?.days.orEmpty()).flatMap { it.events },
+        weeks.flatMap { it.days }.flatMap { it.events },
         today,
         now.toLocalTime(),
     )
-    rows.addDays(currentDays, currentPlans, today, live, startSeparated = false, aliases = aliases)
-    if (upcomingDays.isNotEmpty()) {
-        val start = nextWeek?.weekStart ?: upcomingDays.first().date
-        rows += ScheduleRow.WeekBreak(weekRangeLabel(start, start.plusDays(6)))
-        rows.addDays(upcomingDays, upcomingPlans, today, live, startSeparated = false, aliases = aliases)
+    sections.forEach { (scheduleWeek, weekPlans, days) ->
+        val start = scheduleWeek.weekStart
+        rows += ScheduleRow.WeekBreak(
+            weekStart = start,
+            title = weekSectionTitle(start, currentWeekStart),
+            range = weekRangeLabel(start, start.plusDays(6)),
+            isCurrent = start == currentWeekStart,
+        )
+        if (days.isEmpty()) {
+            rows += ScheduleRow.EmptyWeek(start)
+        } else {
+            rows.addDays(days, weekPlans, today, live, startSeparated = false, aliases = aliases)
+        }
     }
     return rows
+}
+
+private fun weekSectionTitle(weekStart: LocalDate, currentWeekStart: LocalDate): String = when (weekStart) {
+    currentWeekStart.minusWeeks(1) -> "Предыдущая неделя"
+    currentWeekStart -> "Текущая неделя"
+    currentWeekStart.plusWeeks(1) -> "Следующая неделя"
+    else -> "Неделя"
 }
 
 private fun scheduleDays(

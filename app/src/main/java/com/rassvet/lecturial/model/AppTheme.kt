@@ -6,9 +6,12 @@ enum class AppTheme(val storageId: String) {
     Forest("forest"),
     Sunset("sunset"),
     Amethyst("amethyst"),
-    Sakura("sakura"),
+    Burgundy("sakura"),
     Amber("amber"),
     Graphite("graphite"),
+    Neon("neon"),
+    Fuchsia("fuchsia"),
+    Electric("electric"),
     Custom("custom");
 
     companion object {

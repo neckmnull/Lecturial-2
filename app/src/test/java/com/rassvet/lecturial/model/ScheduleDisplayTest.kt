@@ -11,6 +11,10 @@ class ScheduleDisplayTest {
     fun appThemeUsesSiriusAsDefaultAndFallsBackForUnknownValues() {
         assertEquals(AppTheme.Sirius, AppTheme.default)
         assertEquals(AppTheme.Ocean, AppTheme.fromStorageId("ocean"))
+        assertEquals(AppTheme.Burgundy, AppTheme.fromStorageId("sakura"))
+        assertEquals(AppTheme.Neon, AppTheme.fromStorageId("neon"))
+        assertEquals(AppTheme.Fuchsia, AppTheme.fromStorageId("fuchsia"))
+        assertEquals(AppTheme.Electric, AppTheme.fromStorageId("electric"))
         assertEquals(AppTheme.Sirius, AppTheme.fromStorageId("unknown"))
         assertEquals(AppTheme.Sirius, AppTheme.fromStorageId(null))
     }
