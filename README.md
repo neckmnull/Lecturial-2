@@ -1,81 +1,157 @@
-# Lecturial 2
+<div align="center">
+  <img src="./artwork/readme-header.svg" width="100%" alt="Lecturial 2 — your schedule, without the noise" />
+</div>
 
-<img src="artwork/play-store-icon-512.png" alt="Lecturial 2 icon" width="112">
+<div align="center">
 
-An unofficial Android app for viewing the Sirius University schedule. It presents classes, instructors, and classrooms in a dark interface with offline caching, a home-screen widget, and notifications.
+<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/github/v/release/neckmnull/Lecturial-2?style=flat-square&amp;label=release&amp;labelColor=07111F&amp;color=00E5FF" alt="Release" /></a> <img src="https://img.shields.io/badge/Android-8.0%2B-8AABFF?style=flat-square&amp;labelColor=07111F" alt="Android" /> <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7C3AED?style=flat-square&amp;labelColor=07111F&amp;logo=kotlin&amp;logoColor=white" alt="Kotlin" /> <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-A9B7C6?style=flat-square&amp;labelColor=07111F" alt="License" /></a>
 
-**Android 8.0+ · Kotlin · Jetpack Compose · Material 3 · Apache 2.0**
+**An unofficial, offline-first Android schedule app for Sirius University.**
 
-## Features
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.4.5/Lecturial-2-v1.4.5.apk"><img src="https://img.shields.io/badge/Download_APK-v1.4.5-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.4.5 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
-- Daily schedules, week navigation, and a quick return to today.
-- Class times, lesson types, instructors, and classrooms, including current-class highlighting and remaining time.
-- Pull-to-refresh and cache-first loading backed by Room. Previously loaded weeks remain available offline.
-- Group and foreign-language instructor selection, plus custom subject names.
-- Configurable Today widget with stripe colors, visible fields, text sizes, and spacing.
-- Reminders, class start/end notifications, and a live notification for the current class.
-- Light and dark appearance modes, editable built-in palettes, custom themes, and configurable schedule typography.
+</div>
 
-Available groups and search results are loaded from the Sirius University schedule website.
+<br />
 
-## Technology and version
+```console
+$ lecturial --about
+Classes, rooms, instructors, reminders, and a home-screen widget—kept clear and close.
 
-| Component | Value |
-| --- | --- |
-| App version | 1.4.5 (`versionCode` 24) |
-| Minimum Android version | API 26 / Android 8.0 |
-| `compileSdk` / `targetSdk` | 37 / 37 |
-| JDK | 17 |
-| Gradle Wrapper | 9.5.0 |
-| Android Gradle Plugin | 9.3.1 with built-in Kotlin support |
-| Compose Compiler plugin | 2.3.21 |
-| Compose BOM | 2026.08.00 |
-| Material 3 | 1.5.0-alpha27 |
-| Storage | Room 2.8.4, DataStore 1.2.1 |
-| Networking | OkHttp 5.1.0, JSON |
+$ lecturial --pipeline
+schedule source → local cache → app state → Compose UI → widget + notifications
+```
 
-## Quick start
+## `01. Product signal`
 
-1. Download the source or clone the repository and open its root directory in an Android Studio version compatible with AGP 9.3.1.
-2. Select JDK 17 for Gradle. Install Android SDK Platform 37.0 (API 37) and Build Tools 36.0.0 through SDK Manager.
-3. Wait for Gradle Sync. Android Studio creates a local `local.properties` file containing the SDK path. For command-line builds, `ANDROID_HOME` can be used instead.
-4. Run the `app` configuration on an Android 8.0+ device or emulator.
+Lecturial turns a changing university schedule into a calm daily view. It is designed
+to stay useful with an unreliable connection, surface the class that matters now, and
+keep common actions one tap away.
 
-PowerShell from the project root:
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>◈ Read the day at a glance</h3>
+      <p>Week navigation, lesson type, time, instructor, classroom, and current-class highlighting in one focused feed.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>◈ Keep working offline</h3>
+      <p>Room-backed cache-first loading keeps previously viewed weeks available when the schedule site or network is not.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>◈ Make it yours</h3>
+      <p>Light and dark modes, editable palettes, custom themes, typography controls, and configurable schedule density.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>◈ See it outside the app</h3>
+      <p>A configurable Today widget plus reminders, class boundaries, and an optional live notification.</p>
+    </td>
+  </tr>
+</table>
+
+## `02. Experience map`
+
+| Area | What Lecturial provides |
+|---|---|
+| **Schedule** | Daily feed, week navigation, pull-to-refresh, current class, remaining time, and meaningful gaps |
+| **Study context** | Group selection, foreign-language instructor selection, custom subject names, rooms, and instructors |
+| **Offline behavior** | Cache-first loading with previously fetched weeks stored in Room |
+| **Appearance** | 8 built-in themes, custom palettes, light/dark modes, font styles, sizing, spacing, and title wrapping |
+| **At a glance** | Resizable Today widget with configurable fields, colors, text sizes, and spacing |
+| **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
+
+> **Current release:** `1.4.5` (`versionCode 24`) · minimum Android version:
+> Android 8.0 / API 26.
+
+## `03. System map`
+
+```text
+Sirius schedule website
+        │  cookies · CSRF · structured Livewire responses
+        ▼
+SiriusScheduleDataSource
+        ▼
+ScheduleRepository ───────────────► Room cache
+        │                               │
+        ▼                               └── offline weeks
+ScheduleViewModel
+        ├────────► Jetpack Compose UI
+        ├────────► Today widget
+        └────────► reminders + live notification
+
+DataStore ───────► group · appearance · notification preferences
+```
+
+The adapter owns the website contract, the repository coordinates network and local
+state, and the UI consumes a single observable schedule state. Cache updates also
+synchronize the widget and notifications. Read the full
+[architecture notes](./docs/ARCHITECTURE.md) and [design direction](./DESIGN.md).
+
+## `04. Get the app`
+
+### Install the signed release
+
+1. Download [`Lecturial-2-v1.4.5.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.4.5/Lecturial-2-v1.4.5.apk).
+2. Allow installation from your browser or file manager if Android requests it.
+3. Open the APK and install or update Lecturial 2.
+
+```text
+SHA-256  840d099bd16f7ec4ece1f2c49b5a50e1412848bf9329d993b2094a249865f9b6
+Package  com.rassvet.lecturial
+```
+
+The release APK is signed for in-place updates. Android will reject an update if the
+installed app was signed with a different key. See all builds and release notes on the
+[Releases page](https://github.com/neckmnull/Lecturial-2/releases).
+
+> [!IMPORTANT]
+> Lecturial 2 is an independent project and is **not** an official Sirius University
+> application. Schedule availability depends on the university website and its current
+> Livewire contract.
+
+## `05. Build and verify`
+
+### Requirements
+
+- JDK 17
+- Android Studio compatible with Android Gradle Plugin 9.3.1
+- Android SDK Platform 37 and Build Tools 36.0.0
+- An Android 8.0+ device or emulator
 
 ```powershell
+git clone https://github.com/neckmnull/Lecturial-2.git
+Set-Location Lecturial-2
 .\gradlew.bat assembleDebug
 ```
 
-Linux/macOS with JDK and Android SDK installed:
+On Linux or macOS:
 
 ```bash
+git clone https://github.com/neckmnull/Lecturial-2.git
+cd Lecturial-2
 chmod +x gradlew
 ./gradlew assembleDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Its package
+name is `com.rassvet.lecturial.debug`, so debug and release builds can be installed
+side by side without sharing app data.
 
-Install it with Android Platform Tools:
-
-```powershell
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.rassvet.lecturial.debug/com.rassvet.lecturial.MainActivity
-```
-
-The debug build uses `com.rassvet.lecturial.debug`; the release build uses `com.rassvet.lecturial`. They can be installed side by side and keep separate data. Updating an installed release requires the same signing key.
-
-## Verification
-
-The project includes unit and instrumented tests:
+Run the local verification suite with:
 
 ```powershell
-.\gradlew.bat testDebugUnitTest
-.\gradlew.bat lintDebug
-.\gradlew.bat connectedDebugAndroidTest
+.\gradlew.bat testDebugUnitTest lintDebug
+.\gradlew.bat connectedDebugAndroidTest # requires a device or emulator
 ```
 
-The last command requires a device or emulator. The live-site integration test is disabled by default and can be run separately:
+<details>
+<summary><strong>Live-site test and signed release build</strong></summary>
+
+The live integration test is intentionally opt-in because it depends on network access
+and the schedule website's current contract:
 
 ```powershell
 $env:LECTURIAL_LIVE_TEST = '1'
@@ -83,77 +159,73 @@ $env:LECTURIAL_LIVE_TEST = '1'
 Remove-Item Env:LECTURIAL_LIVE_TEST
 ```
 
-That test depends on network access and the website’s current contract. A successful build alone does not verify the UI, widget, or notifications on a physical device.
-
-## Release build
-
-Copy the template and fill it with your local signing-key values:
+To build signed APK/AAB artifacts, copy the secret-free template and provide your own
+release key values:
 
 ```powershell
 Copy-Item keystore.properties.example keystore.properties
-```
-
-Then build the release artifacts:
-
-```powershell
 .\gradlew.bat assembleRelease bundleRelease
 ```
 
-Outputs are written to `app/build/outputs/apk/release/` and `app/build/outputs/bundle/release/`. Without signing configuration, release artifacts are not ready for installation or store submission. Signing keys and passwords are excluded from Git; debug builds do not require them.
+Signing keys, passwords, generated artifacts, and local SDK configuration are excluded
+from Git. Without signing configuration, release outputs are not ready for installation
+or store submission.
 
-## Project structure
+</details>
 
-```text
-Lecturial/
-├── README.md                       # Overview, setup, build, and structure
-├── LICENSE                         # Apache License 2.0
-├── NOTICE                          # Attribution and third-party notice
-├── THIRD_PARTY_NOTICES.md          # Fonts, logo, data, and dependencies
-├── CONTRIBUTING.md                 # Contribution guidelines
-├── DESIGN.md                       # Interface guidelines
-├── docs/
-│   ├── ARCHITECTURE.md             # Layers and data flow
-│   └── PUBLISHING.md               # GitHub and release process
-├── licenses/Manrope-OFL.txt        # Embedded font license
-├── .github/                        # Issue and pull-request templates
-├── build.gradle.kts                # Gradle plugin versions
-├── settings.gradle.kts             # Repositories and app module
-├── gradle/                         # Gradle Wrapper files
-├── gradlew / gradlew.bat           # Pinned Gradle launchers
-├── keystore.properties.example     # Secret-free signing template
-├── artwork/                        # App icon source artwork
-└── app/
-    ├── build.gradle.kts            # SDK, variants, versions, dependencies
-    ├── proguard-rules.pro          # Release optimization rules
-    └── src/
-        ├── main/                   # Production app, resources, widget
-        ├── debug/                  # Compose test activity and manifest
-        ├── test/                   # JVM tests
-        └── androidTest/            # Android and Compose UI tests
-```
+<details>
+<summary><strong>Toolchain and dependencies</strong></summary>
 
-Local `local.properties`, `keystore.properties`, `keystore/`, `.gradle/`, `.kotlin/`, `build/`, and `publication/` paths are excluded from published source.
+| Component | Version / choice |
+|---|---|
+| Language and UI | Kotlin with Jetpack Compose |
+| `compileSdk` / `targetSdk` | 37 / 37 |
+| JDK | 17 |
+| Gradle Wrapper | 9.5.0 |
+| Android Gradle Plugin | 9.3.1 with built-in Kotlin support |
+| Compose Compiler plugin | 2.3.21 |
+| Compose BOM | 2026.08.00 |
+| Material 3 | 1.5.0-alpha27 |
+| Persistence | Room 2.8.4 and DataStore 1.2.1 |
+| Networking | OkHttp 5.1.0 and Kotlin serialization JSON |
 
-## Architecture and data source
+</details>
 
-`SiriusScheduleDataSource → ScheduleRepository → ScheduleViewModel → Compose UI`.
+## `06. Repository map`
 
-The adapter manages cookies, CSRF, and structured Livewire responses from the [schedule website](https://schedule.siriusuniversity.ru/). The repository stores weeks in Room, while preferences are stored in DataStore. Cache updates synchronize the widget and notifications.
+| Path | Purpose |
+|---|---|
+| [`app/src/main`](./app/src/main) | Production UI, data layer, resources, widget, and notifications |
+| [`app/src/test`](./app/src/test) | JVM unit and contract tests |
+| [`app/src/androidTest`](./app/src/androidTest) | Android integration and Compose UI tests |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, responsibilities, data flow, and state ownership |
+| [`DESIGN.md`](./DESIGN.md) | Interface hierarchy, palette, accessibility, and widget direction |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Contribution workflow and verification expectations |
+| [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) | Fonts, third-party material, schedule data, and dependency notices |
+| [`docs/PUBLISHING.md`](./docs/PUBLISHING.md) | Repository and signed-release checklist |
 
-See [Architecture](docs/ARCHITECTURE.md), [Design](DESIGN.md), and [Publishing](docs/PUBLISHING.md) for details.
+## `07. Scope and contribution`
 
-## Limitations
+- Only previously cached weeks are available offline, and cached data can become stale.
+- The schedule website does not expose a stable public API; upstream changes can break
+  synchronization until the adapter is updated.
+- Notifications are subject to Android permissions and background-execution limits.
+- Material 3 is currently pinned to an alpha release.
 
-- This app is not an official university project.
-- The website’s Livewire contract is not a public API and may change.
-- Only previously cached weeks are available offline, and cached data may become stale.
-- Notifications depend on permissions and Android background-execution restrictions.
-- The project currently uses an alpha version of Material 3.
+Issues and focused pull requests are welcome. Before contributing, read the
+[contribution guide](./CONTRIBUTING.md), explain the behavior change, run the relevant
+checks, and remove personal schedule data from screenshots and logs.
 
-## Contributing and license
+Original code and documentation are available under the
+[Apache License 2.0](./LICENSE). Manrope is licensed under SIL OFL 1.1. Third-party
+names, logos, and schedule data are not relicensed; details are in
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
-Suggestions and bug reports are welcome through GitHub Issues. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
+---
 
-Original code and documentation are licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Lecturial 2 contributors. Apache 2.0 permits commercial use and closed-source derivatives subject to its terms.
-
-Manrope is licensed under SIL OFL 1.1. Third-party names, logos, and data are not relicensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Verify permission to distribute the Sirius logo before making the repository or binaries public.
+<div align="center">
+  <b>Built to make the next class obvious.</b><br /><br />
+  <a href="https://github.com/neckmnull">@neckmnull</a>
+  <br /><br />
+  <sub>Understand the system · Remove the noise · Ship something useful</sub>
+</div>
