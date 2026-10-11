@@ -17,6 +17,8 @@ import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
+import com.rassvet.lecturial.model.DeadlineReminder
+import com.rassvet.lecturial.notify.DeadlineAlerts
 import com.rassvet.lecturial.widget.TodayScheduleWidget
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -53,6 +55,7 @@ class UserPreferences(private val context: Context) {
     private val appDisplayOptionsKey = stringPreferencesKey("app_display_options")
     private val darkThemeKey = booleanPreferencesKey("dark_theme")
     private val builtInThemeOverridesKey = stringPreferencesKey("built_in_theme_overrides")
+    private val deadlineReminderDaysKey = stringPreferencesKey("deadline_reminder_days")
 
     private val safePreferences = context.dataStore.data
         .catch { failure ->
@@ -82,6 +85,14 @@ class UserPreferences(private val context: Context) {
 
     val appDisplayOptions: Flow<AppDisplayOptions> = safePreferences.map { preferences ->
         parseAppDisplayOptions(preferences[appDisplayOptionsKey])
+    }
+
+    val deadlineReminderDays: Flow<Set<Int>> = safePreferences.map { preferences ->
+        preferences[deadlineReminderDaysKey]
+            ?.split(',')
+            ?.mapNotNull(String::toIntOrNull)
+            ?.filterTo(linkedSetOf()) { it in DeadlineReminder.supportedDays }
+            ?: DeadlineReminder.default
     }
 
     fun languageTeacher(group: String): Flow<String?> = safePreferences.map {
@@ -231,6 +242,14 @@ class UserPreferences(private val context: Context) {
             if (encoded == null) preferences.remove(lessonAliasesKey) else preferences[lessonAliasesKey] = encoded
         }
         TodayScheduleWidget.updateAll(context)
+    }
+
+    suspend fun setDeadlineReminderDays(days: Set<Int>) {
+        require(days.all { it in DeadlineReminder.supportedDays })
+        context.dataStore.edit { preferences ->
+            preferences[deadlineReminderDaysKey] = days.sortedDescending().joinToString(",")
+        }
+        DeadlineAlerts.sync(context)
     }
 
     private suspend fun setWidgetBoolean(

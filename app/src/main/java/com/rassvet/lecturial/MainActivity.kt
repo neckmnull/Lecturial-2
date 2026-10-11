@@ -41,7 +41,12 @@ class MainActivity : ComponentActivity() {
         val app = application as LecturialApplication
         setContent {
             val viewModel: ScheduleViewModel = viewModel(
-                factory = ScheduleViewModel.Factory(app.repository, app.preferences),
+                factory = ScheduleViewModel.Factory(
+                    app.repository,
+                    app.preferences,
+                    app.studyPlanRepository,
+                    app.updateChecker,
+                ),
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
             LecturialTheme(
@@ -89,6 +94,11 @@ class MainActivity : ComponentActivity() {
                     onCustomThemeDeleted = viewModel::deleteCustomTheme,
                     onAppDisplayOptionsChanged = viewModel::setAppDisplayOptions,
                     onAppDisplayOptionsReset = viewModel::resetAppDisplayOptions,
+                    onStudyPlanSaved = viewModel::saveStudyPlan,
+                    onStudyPlanCompletedChanged = viewModel::setStudyPlanCompleted,
+                    onStudyPlanDeleted = viewModel::deleteStudyPlan,
+                    onDeadlineReminderDaysChanged = viewModel::setDeadlineReminderDays,
+                    onCheckForUpdates = viewModel::checkForUpdates,
                 )
             }
         }

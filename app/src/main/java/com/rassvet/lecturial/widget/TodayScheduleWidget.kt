@@ -30,11 +30,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 class TodayScheduleWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
-        appWidgetIds.forEach { id -> manager.updateAppWidget(id, widgetViews(context, id, 9)) }
+        appWidgetIds.forEach { id ->
+            manager.updateAppWidget(id, widgetViews(context, id, 9, 0, 0, null))
+        }
         manager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list)
         val pendingResult = goAsync()
         widgetScope.launch {
@@ -67,7 +71,39 @@ class TodayScheduleWidget : AppWidgetProvider() {
             val outerPaddingDp = runCatching {
                 app.preferences.widgetDisplayOptions.first().outerPaddingDp
             }.getOrDefault(9)
-            ids.forEach { id -> manager.updateAppWidget(id, widgetViews(context, id, outerPaddingDp)) }
+            val group = runCatching { app.preferences.selectedGroup.first() }.getOrNull()
+            val lessons = if (group == null) {
+                emptyList()
+            } else {
+                val teacher = runCatching { app.preferences.languageTeacher(group).first() }.getOrNull()
+                runCatching {
+                    app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString())
+                }.getOrDefault(emptyList()).filter {
+                    com.rassvet.lecturial.model.matchesLanguageTeacher(
+                        it.discipline,
+                        it.teachers.split("\u001F"),
+                        teacher,
+                    )
+                }
+            }
+            val activePlanCount = runCatching { app.database.studyPlanDao().activeCount() }.getOrDefault(0)
+            val nearestPlan = runCatching { app.database.studyPlanDao().nearestActive() }.getOrNull()
+            ids.forEach { id ->
+                manager.updateAppWidget(
+                    id,
+                    widgetViews(
+                        context = context,
+                        appWidgetId = id,
+                        outerPaddingDp = outerPaddingDp,
+                        lessonCount = lessons.size,
+                        activePlanCount = activePlanCount,
+                        nearestPlan = nearestPlan?.let { plan ->
+                            val dateLabel = plan.dueDate?.let { dueDateLabel(LocalDate.parse(it)) }
+                            listOfNotNull(dateLabel, plan.title).joinToString(" · ")
+                        },
+                    ),
+                )
+            }
             manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_list)
         }
 
@@ -75,6 +111,9 @@ class TodayScheduleWidget : AppWidgetProvider() {
             context: Context,
             appWidgetId: Int,
             outerPaddingDp: Int,
+            lessonCount: Int,
+            activePlanCount: Int,
+            nearestPlan: String?,
         ): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_today_schedule).apply {
                 val openApp = Intent(context, MainActivity::class.java)
@@ -91,8 +130,21 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 setRemoteAdapter(R.id.widget_list, serviceIntent)
                 setEmptyView(R.id.widget_list, R.id.widget_empty)
                 setOnClickPendingIntent(R.id.widget_empty, openPendingIntent)
+                setOnClickPendingIntent(R.id.widget_header, openPendingIntent)
+                setTextViewText(
+                    R.id.widget_date,
+                    LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM, EEE", Locale.forLanguageTag("ru"))),
+                )
+                setTextViewText(R.id.widget_lesson_count, pluralCount(lessonCount, "пара", "пары", "пар"))
+                setTextViewText(R.id.widget_plan_count, pluralCount(activePlanCount, "план", "плана", "планов"))
+                setTextViewText(R.id.widget_nearest_plan_text, nearestPlan.orEmpty())
+                setViewVisibility(
+                    R.id.widget_nearest_plan,
+                    if (nearestPlan.isNullOrBlank()) View.GONE else View.VISIBLE,
+                )
                 val paddingPx = context.dpToPx(outerPaddingDp)
-                setViewPadding(R.id.widget_list, paddingPx, paddingPx, paddingPx, paddingPx)
+                setViewPadding(R.id.widget_header, paddingPx, paddingPx, paddingPx, context.dpToPx(8))
+                setViewPadding(R.id.widget_list, paddingPx, context.dpToPx(4), paddingPx, paddingPx)
                 setViewPadding(R.id.widget_empty, paddingPx, paddingPx, paddingPx, paddingPx)
             }
     }
@@ -248,6 +300,23 @@ private class ScheduleWidgetFactory(
 }
 
 private fun Context.dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).roundToInt()
+
+private fun dueDateLabel(date: LocalDate, today: LocalDate = LocalDate.now()): String = when {
+    date.isBefore(today) -> "Просрочено"
+    date == today -> "Сегодня"
+    date == today.plusDays(1) -> "Завтра"
+    else -> date.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("ru")))
+}
+
+private fun pluralCount(value: Int, one: String, few: String, many: String): String {
+    val form = when {
+        value % 100 in 11..14 -> many
+        value % 10 == 1 -> one
+        value % 10 in 2..4 -> few
+        else -> many
+    }
+    return "$value $form"
+}
 
 private fun styleWidgetText(text: String, styleId: String): CharSequence {
     if (text.isEmpty()) return text

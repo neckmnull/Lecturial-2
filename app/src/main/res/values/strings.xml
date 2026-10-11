@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Lecturial 2</string>
     <string name="app_full_name">Lecturial 2</string>
-    <string name="widget_description">Расписание выбранной группы на сегодня</string>
+    <string name="widget_description">Расписание и ближайшие планы на сегодня</string>
     <string name="widget_no_lessons">Нет занятий</string>
+    <string name="widget_today">Сегодня</string>
 </resources>

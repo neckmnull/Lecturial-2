@@ -9,6 +9,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "schedule_events", primaryKeys = ["groupName", "id"])
 data class ScheduleEventEntity(
@@ -56,18 +58,44 @@ interface ScheduleDao {
 }
 
 @Database(
-    entities = [ScheduleEventEntity::class, WeekCacheEntity::class],
-    version = 1,
+    entities = [ScheduleEventEntity::class, WeekCacheEntity::class, StudyPlanEntity::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class LecturialDatabase : RoomDatabase() {
     abstract fun scheduleDao(): ScheduleDao
+    abstract fun studyPlanDao(): StudyPlanDao
 
     companion object {
+        private val migration1To2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `study_plans` (
+                        `id` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `note` TEXT NOT NULL,
+                        `dueDate` TEXT,
+                        `isCompleted` INTEGER NOT NULL,
+                        `createdAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        private val migration2To3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `dueTime` TEXT")
+            }
+        }
+
         fun create(context: Context): LecturialDatabase = Room.databaseBuilder(
             context,
             LecturialDatabase::class.java,
             "lecturial.db",
-        ).build()
+        ).addMigrations(migration1To2, migration2To3).build()
     }
 }

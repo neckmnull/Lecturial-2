@@ -8,7 +8,7 @@ Lecturial 2 has one Android module, `app`, a Jetpack Compose UI, and manually co
 flowchart TD
     Site[Schedule website / Livewire] --> Network[SiriusScheduleDataSource]
     Network --> Repository[ScheduleRepository]
-    Repository <--> Room[(Room: cached weeks)]
+    Repository <--> Room[(Room: cached weeks and local plans)]
     Repository --> VM[ScheduleViewModel]
     Preferences[(DataStore: preferences)] --> VM
     VM --> UI[Compose UI]
@@ -29,6 +29,7 @@ flowchart TD
 | `data/local/ScheduleDatabase.kt` | Room storage for schedule weeks |
 | `data/local/UserPreferences.kt` | Group, language instructor, subject aliases, theme, and widget preferences |
 | `data/ScheduleRepository.kt` | Network access, cache reads and updates, and consumer notifications |
+| `data/StudyPlanRepository.kt` | Local goals, tasks, and deadlines stored in Room |
 | `model` | Models, formatting, time calculations, and appearance settings |
 | `ui/ScheduleViewModel.kt` | Screen state, date/group selection, loading, and settings actions |
 | `ui/LecturialApp.kt` | Screens and Compose components |
@@ -46,7 +47,7 @@ The Livewire adapter is isolated from the UI. It retrieves page state, maintains
 
 `LessonAlertPlanning.kt` calculates event times. `LessonAlerts` schedules events and creates notifications. `LessonAlertReceiver.kt` handles alarms, reboot, package updates, time changes, and exact-alarm permission changes. `LessonLiveService` updates the current-class state.
 
-The widget uses RemoteViews. Resources and DataStore preferences define its appearance. A cache update triggers widget refresh and notification synchronization.
+The widget uses RemoteViews. Resources and DataStore preferences define its appearance. It combines today's cached lessons with an active-plan summary from Room. A schedule cache or plan update triggers a widget refresh; schedule updates also synchronize notifications.
 
 ## Where to change behavior
 

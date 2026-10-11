@@ -14,9 +14,12 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
+import com.rassvet.lecturial.model.StudyPlan
+import com.rassvet.lecturial.model.StudyPlanType
 import com.rassvet.lecturial.ui.theme.LecturialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,6 +27,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.concurrent.atomic.AtomicInteger
 
 class LecturialAppTest {
     @get:Rule
@@ -270,6 +274,28 @@ class LecturialAppTest {
     }
 
     @Test
+    fun deadlineReminderSelectionIsShownAndForwarded() {
+        var selectedDays: Set<Int>? = null
+        render(
+            state = ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+                deadlineReminderDays = setOf(7, 1, 0),
+            ),
+            onDeadlineReminderDaysChanged = { selectedDays = it },
+        )
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("Напоминания о сроках").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Выбрано: за неделю, за день, в день срока")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("За неделю").performScrollTo().performClick()
+
+        compose.runOnIdle { assertEquals(setOf(1, 0), selectedDays) }
+    }
+
+    @Test
     fun builtInThemeCanBeOpenedForEditing() {
         render(ScheduleUiState(selectedGroup = "ИОП-ИТ-26/1", isStarting = false))
 
@@ -298,6 +324,57 @@ class LecturialAppTest {
         compose.onNodeWithText("Сбросить настройки расписания").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(true, resetCalled) }
+    }
+
+    @Test
+    fun aboutShowsAvailableGitHubUpdateAndChecksWhenIdle() {
+        val checks = AtomicInteger()
+        var state by mutableStateOf(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                isStarting = false,
+                appUpdateState = AppUpdateState.Idle,
+            ),
+        )
+        compose.setContent {
+            LecturialTheme(appTheme = state.appTheme) {
+                LecturialApp(
+                    state = state,
+                    onGroupSelected = {},
+                    onDateSelected = {},
+                    onMoveWeek = {},
+                    onToday = {},
+                    onRefresh = {},
+                    onRetry = {},
+                    onCheckForUpdates = { checks.incrementAndGet() },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Настройки").performClick()
+        compose.onNodeWithText("О приложении").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("Версия 1.5.0-debug")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.waitUntil(timeoutMillis = 5_000) { checks.get() == 1 }
+        compose.runOnIdle {
+            assertEquals(1, checks.get())
+            state = state.copy(
+                appUpdateState = AppUpdateState.Available(
+                    "1.5.0",
+                    "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
+                ),
+            )
+        }
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("Доступна версия 1.5.0.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNodeWithText("Доступна версия 1.5.0.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Открыть релиз на GitHub").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -557,6 +634,94 @@ class LecturialAppTest {
         compose.onNodeWithText("Алгоритмы").assertIsDisplayed()
     }
 
+    @Test
+    fun plansTabShowsLocalPlanAndForwardsCompletion() {
+        val date = LocalDate.of(2026, 11, 10)
+        var completed: Pair<String, Boolean>? = null
+        val state = ScheduleUiState(
+            selectedGroup = "ИОП-ИТ-26/1",
+            selectedDate = date,
+            weekStart = date,
+            isStarting = false,
+            studyPlans = listOf(
+                StudyPlan(
+                    id = "deadline-1",
+                    type = StudyPlanType.Deadline,
+                    title = "Сдать лабораторную",
+                    dueDate = LocalDate.now(),
+                    createdAtMillis = 1L,
+                ),
+            ),
+        )
+
+        compose.setContent {
+            LecturialTheme(appTheme = state.appTheme) {
+                LecturialApp(
+                    state = state,
+                    onGroupSelected = {},
+                    onDateSelected = {},
+                    onMoveWeek = {},
+                    onToday = {},
+                    onRefresh = {},
+                    onRetry = {},
+                    onStudyPlanCompletedChanged = { id, value -> completed = id to value },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Планы").performClick()
+        compose.onNodeWithText("Сдать лабораторную").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Отметить выполненным").performClick()
+        compose.runOnIdle { assertEquals("deadline-1" to true, completed) }
+    }
+
+    @Test
+    fun datedPlanAppearsInScheduleWithTimeAndUndatedPlanDoesNot() {
+        val date = LocalDate.of(2026, 11, 10)
+        var completed: Pair<String, Boolean>? = null
+        val timedPlan = StudyPlan(
+            id = "timed-plan",
+            type = StudyPlanType.Task,
+            title = "Повторить конспект",
+            dueDate = date,
+            dueTime = LocalTime.of(14, 30),
+            createdAtMillis = 1L,
+        )
+        val state = ScheduleUiState(
+            selectedGroup = "ИОП-ИТ-26/1",
+            selectedDate = date,
+            weekStart = date.with(java.time.DayOfWeek.MONDAY),
+            week = ScheduleWeek("ИОП-ИТ-26/1", date.with(java.time.DayOfWeek.MONDAY), emptyList()),
+            isStarting = false,
+            now = LocalDateTime.of(date, LocalTime.NOON),
+            studyPlans = listOf(
+                timedPlan,
+                timedPlan.copy(id = "undated-plan", title = "План без даты", dueDate = null, dueTime = null),
+            ),
+        )
+
+        compose.setContent {
+            LecturialTheme(appTheme = state.appTheme) {
+                LecturialApp(
+                    state = state,
+                    onGroupSelected = {},
+                    onDateSelected = {},
+                    onMoveWeek = {},
+                    onToday = {},
+                    onRefresh = {},
+                    onRetry = {},
+                    onStudyPlanCompletedChanged = { id, value -> completed = id to value },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Повторить конспект").assertIsDisplayed()
+        compose.onNodeWithText("14:30").assertIsDisplayed()
+        compose.onNodeWithText("План без даты").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Отметить выполненным").performClick()
+        compose.runOnIdle { assertEquals("timed-plan" to true, completed) }
+    }
+
     private fun render(
         state: ScheduleUiState,
         onGroupSelected: (String) -> Unit = {},
@@ -565,6 +730,7 @@ class LecturialAppTest {
         onAppThemeSelected: (AppTheme) -> Unit = {},
         onDarkThemeChanged: (Boolean) -> Unit = {},
         onAppDisplayOptionsReset: () -> Unit = {},
+        onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
     ) {
         compose.setContent {
             LecturialTheme(appTheme = state.appTheme) {
@@ -581,6 +747,7 @@ class LecturialAppTest {
                     onAppThemeSelected = onAppThemeSelected,
                     onDarkThemeChanged = onDarkThemeChanged,
                     onAppDisplayOptionsReset = onAppDisplayOptionsReset,
+                    onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
                 )
             }
         }

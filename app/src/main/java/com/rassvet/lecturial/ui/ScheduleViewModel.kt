@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rassvet.lecturial.data.ScheduleRepository
+import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.UserPreferences
+import com.rassvet.lecturial.data.network.GitHubUpdateChecker
+import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
 import com.rassvet.lecturial.model.WidgetStripePalette
@@ -14,12 +17,16 @@ import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
+import com.rassvet.lecturial.model.StudyPlan
+import com.rassvet.lecturial.model.DeadlineReminder
+import com.rassvet.lecturial.model.AppUpdateState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,12 +76,17 @@ data class ScheduleUiState(
     val widgetLetterSpacingPercent: Int = 0,
     val widgetTitleMaxLines: Int = 2,
     val lessonAliases: Map<String, String> = emptyMap(),
+    val studyPlans: List<StudyPlan> = emptyList(),
+    val deadlineReminderDays: Set<Int> = DeadlineReminder.default,
+    val appUpdateState: AppUpdateState = AppUpdateState.Idle,
     val now: LocalDateTime = LocalDateTime.now(),
 )
 
 class ScheduleViewModel(
     private val repository: ScheduleRepository,
     private val preferences: UserPreferences,
+    private val studyPlanRepository: StudyPlanRepository,
+    private val updateChecker: GitHubUpdateChecker,
     private val today: () -> LocalDate = LocalDate::now,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -83,8 +95,14 @@ class ScheduleViewModel(
     private var loadJob: Job? = null
     private var selectionJob: Job? = null
     private var groupsJob: Job? = null
+    private var updateJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            studyPlanRepository.plans.collectLatest { plans ->
+                _state.update { it.copy(studyPlans = plans) }
+            }
+        }
         viewModelScope.launch {
             val group = preferences.selectedGroup.first()
             val savedTeacher = if (group == null) null else preferences.languageTeacher(group).first()
@@ -97,6 +115,7 @@ class ScheduleViewModel(
             val builtInThemeOverrides = preferences.builtInThemeOverrides.first()
             val selectedCustomThemeId = preferences.selectedCustomThemeId.first()
             val appDisplayOptions = preferences.appDisplayOptions.first()
+            val deadlineReminderDays = preferences.deadlineReminderDays.first()
             val validCustomThemeId = selectedCustomThemeId?.takeIf { id -> customThemes.any { it.id == id } }
             val date = today()
             _state.update {
@@ -107,6 +126,7 @@ class ScheduleViewModel(
                     builtInThemeOverrides = builtInThemeOverrides,
                     selectedCustomThemeId = validCustomThemeId,
                     appDisplayOptions = appDisplayOptions,
+                    deadlineReminderDays = deadlineReminderDays,
                     selectedGroup = group,
                     languageTeacher = savedTeacher,
                     choosingLanguageTeacher = group != null && savedTeacher == null,
@@ -169,6 +189,28 @@ class ScheduleViewModel(
             )
         }
         loadCurrentWeek()
+    }
+
+    fun checkForUpdates() {
+        if (_state.value.appUpdateState == AppUpdateState.Checking) return
+        updateJob?.cancel()
+        _state.update { it.copy(appUpdateState = AppUpdateState.Checking) }
+        updateJob = viewModelScope.launch {
+            try {
+                val result = updateChecker.check(BuildConfig.VERSION_NAME)
+                _state.update { it.copy(appUpdateState = result) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                _state.update {
+                    it.copy(
+                        appUpdateState = AppUpdateState.Error(
+                            failure.message ?: "Не удалось проверить обновления",
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     fun setGroupSearchQuery(query: String) {
@@ -266,6 +308,25 @@ class ScheduleViewModel(
     fun refresh() = loadCurrentWeek(isManualRefresh = true)
 
     fun retry() = loadCurrentWeek()
+
+    fun saveStudyPlan(plan: StudyPlan) {
+        if (plan.title.isBlank()) return
+        viewModelScope.launch { studyPlanRepository.save(plan) }
+    }
+
+    fun setStudyPlanCompleted(id: String, completed: Boolean) {
+        viewModelScope.launch { studyPlanRepository.setCompleted(id, completed) }
+    }
+
+    fun deleteStudyPlan(id: String) {
+        viewModelScope.launch { studyPlanRepository.delete(id) }
+    }
+
+    fun setDeadlineReminderDays(days: Set<Int>) {
+        if (_state.value.deadlineReminderDays == days) return
+        _state.update { it.copy(deadlineReminderDays = days) }
+        viewModelScope.launch { preferences.setDeadlineReminderDays(days) }
+    }
 
     fun setAppTheme(theme: AppTheme) {
         if (theme == AppTheme.Custom) return
@@ -558,9 +619,11 @@ class ScheduleViewModel(
     class Factory(
         private val repository: ScheduleRepository,
         private val preferences: UserPreferences,
+        private val studyPlanRepository: StudyPlanRepository,
+        private val updateChecker: GitHubUpdateChecker,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ScheduleViewModel(repository, preferences) as T
+            ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker) as T
     }
 }

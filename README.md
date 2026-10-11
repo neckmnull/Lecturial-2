@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.4.5/Lecturial-2-v1.4.5.apk"><img src="https://img.shields.io/badge/Download_APK-v1.4.5-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.4.5 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.5.0/Lecturial-2-v1.5.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.5.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.5.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -63,7 +63,7 @@ keep common actions one tap away.
 | **At a glance** | Resizable Today widget with configurable fields, colors, text sizes, and spacing |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.4.5` (`versionCode 24`) · minimum Android version:
+> **Current release:** `1.5.0` (`versionCode 25`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,18 +94,24 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.4.5.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.4.5/Lecturial-2-v1.4.5.apk).
+1. Download [`Lecturial-2-v1.5.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.5.0/Lecturial-2-v1.5.0.apk).
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  840d099bd16f7ec4ece1f2c49b5a50e1412848bf9329d993b2094a249865f9b6
-Package  com.rassvet.lecturial
+SHA-256  540350261fc93da0486dc9486c87a4440f98315d4255766c2d5299211ddc86cf
+Package  com.rassvet.lecturial2
 ```
 
 The release APK is signed for in-place updates. Android will reject an update if the
 installed app was signed with a different key. See all builds and release notes on the
 [Releases page](https://github.com/neckmnull/Lecturial-2/releases).
+
+> [!NOTE]
+> The previous v1.4.5 APK uses the legacy package `com.rassvet.lecturial`.
+> Starting with v1.5.0, Lecturial 2 uses `com.rassvet.lecturial2` and installs alongside
+> Lecturial 1. This first release with the new package is a separate installation;
+> subsequent Lecturial 2 releases will update it in place when signed with the same key.
 
 > [!IMPORTANT]
 > Lecturial 2 is an independent project and is **not** an official Sirius University

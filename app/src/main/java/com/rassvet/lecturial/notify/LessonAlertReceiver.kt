@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import java.util.concurrent.atomic.AtomicInteger
 
 class LessonAlertReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -17,7 +18,10 @@ class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val pendingResult = goAsync()
-        LessonAlerts.sync(context) { pendingResult.finish() }
+        val remaining = AtomicInteger(2)
+        val complete = { if (remaining.decrementAndGet() == 0) pendingResult.finish() }
+        LessonAlerts.sync(context, complete)
+        DeadlineAlerts.sync(context, complete)
     }
 }
 
@@ -30,6 +34,9 @@ class ScheduleChangedReceiver : BroadcastReceiver() {
         )
         if (intent.action !in supported) return
         val pendingResult = goAsync()
-        LessonAlerts.sync(context) { pendingResult.finish() }
+        val remaining = AtomicInteger(2)
+        val complete = { if (remaining.decrementAndGet() == 0) pendingResult.finish() }
+        LessonAlerts.sync(context, complete)
+        DeadlineAlerts.sync(context, complete)
     }
 }

@@ -25,7 +25,7 @@ The palette does not depend on device dynamic color. Red is reserved for errors 
 - Instructor names are shortened for compact display.
 - The default campus service label is hidden because it is not an address.
 - A rest hint appears between lessons when the gap is meaningful.
-- Bottom navigation contains Schedule and Settings, with the selected tab using `primaryContainer`.
+- Bottom navigation contains Schedule, Plans, and Settings, with the selected tab using `primaryContainer`.
 - The schedule feed is prepared in advance and avoids stretch overscroll to keep rapid scrolling responsive.
 - All states must remain understandable with large system fonts and TalkBack.
 - App motion follows `MotionScheme.standard()` without interfering with scrolling.
@@ -37,7 +37,7 @@ The palette does not depend on device dynamic color. Red is reserved for errors 
 - Material 3 Expressive styling uses a 24 dp outer radius and 16 dp lesson-container radii.
 - Android 12+ uses system Material You accent colors; older versions use a Material 3 purple fallback palette.
 - Lesson rows do not use colored backgrounds. A thin left stripe distinguishes lecture and practice colors.
-- The widget displays a standard vertically scrollable lesson list without a separate date/group header.
+- The widget displays a compact date header, lesson and plan counters, the nearest active plan, and a vertically scrollable lesson list.
 - The fixed background is `#303030` and primary text is `#C6C6C6`; accent colors are limited to side stripes.
 - A row contains the complete time range, subject, and classroom; the campus label is omitted.
 - Rows are not individually clickable and have no pressed highlight because vertical gestures are reserved for scrolling.
@@ -45,3 +45,9 @@ The palette does not depend on device dynamic color. Red is reserved for errors 
 - Subject names may occupy up to two lines while preserving comfortable scrolling.
 - When data is unavailable, the widget asks the user to open the app and refresh the schedule.
 - Tapping outside the collection opens Lecturial 2.
+
+## Plans
+
+- Goals, tasks, and deadlines are stored only in the local Room database.
+- The Plans tab shows active, due-today, and completed filters plus active/today/overdue counters.
+- Every plan can have an optional note and due date, and can be edited, completed, restored, or deleted offline.

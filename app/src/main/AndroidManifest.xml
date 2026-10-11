@@ -60,6 +60,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".notify.DeadlineAlertReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notify.BootCompletedReceiver"
             android:directBootAware="false"
             android:exported="true">

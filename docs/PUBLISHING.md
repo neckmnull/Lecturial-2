@@ -41,11 +41,19 @@ For an existing Git repository, retain its current configuration and branches. O
 
 ## Publishing an app release
 
+The distributable Lecturial 2 package ID is `com.rassvet.lecturial2`. It is intentionally
+different from the Lecturial 1 ID `com.rassvet.lecturial`, so Android and Google Play can
+install both applications on the same device even when they use different signing keys.
+Do not change the Lecturial 2 package ID again after its first store publication.
+
 1. Update `versionCode` and `versionName` in `app/build.gradle.kts` and the version shown in README.
 2. Run the relevant checks and build APK/AAB artifacts with the long-term release key. Verify an in-place upgrade over the previous release without deleting app data.
 3. Create a version tag such as `v1.4.4` only after confirming the corresponding build.
 4. Create a GitHub Release with English notes and attach the signed APK for direct installation. AAB files are intended for stores, not direct installation.
 5. Never attach the keystore, passwords, or local configuration. Review transitive dependency licenses before binary distribution.
 6. Back up the release key securely. Future updates with the same application ID must use the same key.
+7. Publish a stable, non-draft GitHub Release. The in-app checker reads the repository's
+   `releases/latest` endpoint and sends users to the HTTPS release page; it never installs
+   an APK itself and must not request `REQUEST_INSTALL_PACKAGES`.
 
 Build commands are listed in the [README](../README.md). Preparing the repository does not by itself verify UI behavior, notifications, widgets, or installation on a physical device.

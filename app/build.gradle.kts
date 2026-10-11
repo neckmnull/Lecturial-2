@@ -18,11 +18,13 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.rassvet.lecturial"
+        // Lecturial 1 used com.rassvet.lecturial. A distinct ID lets both apps coexist
+        // and avoids Android signature conflicts when the old app is still installed.
+        applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 24
-        versionName = "1.4.5"
+        versionCode = 25
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

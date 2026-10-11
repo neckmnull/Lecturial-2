@@ -27,6 +27,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +55,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Place
@@ -63,6 +65,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.Image
@@ -93,6 +96,7 @@ import android.provider.Settings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -113,6 +117,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.rassvet.lecturial.model.LessonLiveState
@@ -136,9 +141,12 @@ import com.rassvet.lecturial.model.WidgetStripePalette
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
+import com.rassvet.lecturial.model.StudyPlan
+import com.rassvet.lecturial.model.DeadlineReminder
 import com.rassvet.lecturial.model.toPalette
 import com.rassvet.lecturial.ui.theme.defaultThemePalette
 import com.rassvet.lecturial.model.parseThemeColor
@@ -192,6 +200,7 @@ private val TextThemeColors = listOf(
 )
 
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
+private enum class MainSection { Schedule, Plans, Settings }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -232,6 +241,11 @@ fun LecturialApp(
     onCustomThemeDeleted: (String) -> Unit = {},
     onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit = {},
     onAppDisplayOptionsReset: () -> Unit = {},
+    onStudyPlanSaved: (StudyPlan) -> Unit = {},
+    onStudyPlanCompletedChanged: (String, Boolean) -> Unit = { _, _ -> },
+    onStudyPlanDeleted: (String) -> Unit = {},
+    onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
     val stage = when {
@@ -307,6 +321,11 @@ fun LecturialApp(
                     onCustomThemeDeleted,
                     onAppDisplayOptionsChanged,
                     onAppDisplayOptionsReset,
+                    onStudyPlanSaved,
+                    onStudyPlanCompletedChanged,
+                    onStudyPlanDeleted,
+                    onDeadlineReminderDaysChanged,
+                    onCheckForUpdates,
                 )
             }
         }
@@ -563,24 +582,32 @@ private fun ScheduleScreen(
     onCustomThemeDeleted: (String) -> Unit,
     onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit,
     onAppDisplayOptionsReset: () -> Unit,
+    onStudyPlanSaved: (StudyPlan) -> Unit,
+    onStudyPlanCompletedChanged: (String, Boolean) -> Unit,
+    onStudyPlanDeleted: (String) -> Unit,
+    onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
+    onCheckForUpdates: () -> Unit,
 ) {
-    var showSettings by remember { mutableStateOf(false) }
+    var mainSection by remember { mutableStateOf(MainSection.Schedule) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val screenEffectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val predictiveBackProgress = remember { Animatable(0f) }
-    LaunchedEffect(showSettings) {
-        if (!showSettings) settingsSection = null
+    LaunchedEffect(mainSection) {
+        if (mainSection != MainSection.Settings) settingsSection = null
     }
-    LaunchedEffect(showSettings, settingsSection) {
+    LaunchedEffect(mainSection, settingsSection) {
         predictiveBackProgress.snapTo(0f)
     }
-    PredictiveBackHandler(enabled = showSettings) { backEvents ->
+    BackHandler(enabled = mainSection == MainSection.Plans) {
+        mainSection = MainSection.Schedule
+    }
+    PredictiveBackHandler(enabled = mainSection == MainSection.Settings) { backEvents ->
         try {
             backEvents.collect { event -> predictiveBackProgress.snapTo(event.progress) }
             when (settingsSection) {
                 SettingsSection.Privacy -> settingsSection = SettingsSection.About
                 SettingsSection.Widget -> settingsSection = SettingsSection.Appearance
-                null -> showSettings = false
+                null -> mainSection = MainSection.Schedule
                 else -> settingsSection = null
             }
         } catch (cancelled: CancellationException) {
@@ -590,10 +617,10 @@ private fun ScheduleScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().statusBarsPadding().clipToBounds()) {
             AnimatedContent(
-                targetState = showSettings to settingsSection,
+                targetState = mainSection to settingsSection,
                 transitionSpec = {
                     if (initialState.first != targetState.first) {
-                        val direction = if (targetState.first) 1 else -1
+                        val direction = if (targetState.first.ordinal >= initialState.first.ordinal) 1 else -1
                         (slideInHorizontally(screenSlideSpec()) { direction * it / 5 } + fadeIn(screenFadeSpec())) togetherWith
                             (slideOutHorizontally(screenSlideSpec()) { -direction * it / 5 } + fadeOut(screenFadeSpec()))
                     } else {
@@ -602,8 +629,8 @@ private fun ScheduleScreen(
                             SettingsSection.Widget, SettingsSection.Privacy -> 3
                             else -> 2
                         }
-                        val initialDepth = if (!initialState.first) 0 else settingsDepth(initialState.second)
-                        val targetDepth = if (!targetState.first) 0 else settingsDepth(targetState.second)
+                        val initialDepth = if (initialState.first != MainSection.Settings) 0 else settingsDepth(initialState.second)
+                        val targetDepth = if (targetState.first != MainSection.Settings) 0 else settingsDepth(targetState.second)
                         if (targetDepth > initialDepth) {
                             (slideInHorizontally(screenSlideSpec()) { it / 5 } + fadeIn(screenFadeSpec())) togetherWith
                                 (slideOutHorizontally(screenSlideSpec()) { -it / 10 } + fadeOut(screenFadeSpec()))
@@ -614,8 +641,8 @@ private fun ScheduleScreen(
                     }
                 },
                 label = "screen-navigation",
-            ) { (settingsOpen, section) ->
-            if (settingsOpen) {
+            ) { (selectedSection, section) ->
+            if (selectedSection == MainSection.Settings) {
                 val nestedModifier = Modifier.graphicsLayer {
                     val progress = predictiveBackProgress.value
                     translationX = size.width * 0.18f * progress
@@ -688,8 +715,10 @@ private fun ScheduleScreen(
                     )
                     SettingsSection.About -> AboutScreen(
                         modifier = nestedModifier,
+                        updateState = state.appUpdateState,
                         onBack = { settingsSection = null },
                         onOpenPrivacy = { settingsSection = SettingsSection.Privacy },
+                        onCheckForUpdates = onCheckForUpdates,
                     )
                     SettingsSection.Privacy -> PrivacyScreen(
                         modifier = nestedModifier,
@@ -705,34 +734,50 @@ private fun ScheduleScreen(
                         onOpenLessonNames = { settingsSection = SettingsSection.Names },
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
+                        onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
                     )
                 }
+            } else if (selectedSection == MainSection.Plans) {
+                StudyPlansScreen(
+                    plans = state.studyPlans,
+                    onSave = onStudyPlanSaved,
+                    onCompletedChanged = onStudyPlanCompletedChanged,
+                    onDelete = onStudyPlanDeleted,
+                )
             } else {
                 PullToRefreshBox(
                     isRefreshing = state.isRefreshing,
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    ScheduleContent(state, onRetry)
+                    ScheduleContent(
+                        state = state,
+                        onRetry = onRetry,
+                        onStudyPlanSaved = onStudyPlanSaved,
+                        onStudyPlanCompletedChanged = onStudyPlanCompletedChanged,
+                        onStudyPlanDeleted = onStudyPlanDeleted,
+                    )
                 }
             }
             }
         }
         LecturialBottomBar(
-            settingsSelected = showSettings,
+            selectedSection = mainSection,
             onHome = {
                 settingsSection = null
-                showSettings = false
+                mainSection = MainSection.Schedule
             },
-            onSettings = { showSettings = true },
+            onPlans = { mainSection = MainSection.Plans },
+            onSettings = { mainSection = MainSection.Settings },
         )
     }
 }
 
 @Composable
 private fun LecturialBottomBar(
-    settingsSelected: Boolean,
+    selectedSection: MainSection,
     onHome: () -> Unit,
+    onPlans: () -> Unit,
     onSettings: () -> Unit,
 ) {
     Row(
@@ -746,13 +791,19 @@ private fun LecturialBottomBar(
         LecturialBottomBarItem(
             icon = Icons.Outlined.DateRange,
             label = "Расписание",
-            selected = !settingsSelected,
+            selected = selectedSection == MainSection.Schedule,
             onClick = onHome,
+        )
+        LecturialBottomBarItem(
+            icon = Icons.Outlined.CheckCircle,
+            label = "Планы",
+            selected = selectedSection == MainSection.Plans,
+            onClick = onPlans,
         )
         LecturialBottomBarItem(
             icon = Icons.Outlined.Settings,
             label = "Настройки",
-            selected = settingsSelected,
+            selected = selectedSection == MainSection.Settings,
             onClick = onSettings,
         )
     }
@@ -816,6 +867,7 @@ private fun AppSettingsScreen(
     onOpenLessonNames: () -> Unit,
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
+    onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -867,7 +919,10 @@ private fun AppSettingsScreen(
             onOpenAppearance,
         )
         SettingsNavigationRow("Названия пар", "Сокращения предметов", onOpenLessonNames)
-        NotificationSettings()
+        NotificationSettings(
+            selectedDays = state.deadlineReminderDays,
+            onSelectedDaysChanged = onDeadlineReminderDaysChanged,
+        )
         if (BuildConfig.DEBUG) {
             SettingsNavigationRow("Тестирование", "LiveChip, прогресс и уведомления", onOpenTesting)
         }
@@ -1453,8 +1508,12 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
     AppTheme.Custom -> Color(0xFF8AABFF)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun NotificationSettings() {
+private fun NotificationSettings(
+    selectedDays: Set<Int>,
+    onSelectedDaysChanged: (Set<Int>) -> Unit,
+) {
     val context = LocalContext.current
     val alarmManager = context.getSystemService(AlarmManager::class.java)
     val needsExactAlarm = Build.VERSION.SDK_INT >= 31 && alarmManager?.canScheduleExactAlarms() == false
@@ -1497,6 +1556,45 @@ private fun NotificationSettings() {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Разрешить точные напоминания")
+        }
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Напоминания о сроках", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Для всех активных задач, целей и дедлайнов с датой. Уведомления приходят в 09:00.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DeadlineReminder.entries.forEach { reminder ->
+                    val selected = reminder.daysBefore in selectedDays
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            onSelectedDaysChanged(
+                                if (selected) selectedDays - reminder.daysBefore
+                                else selectedDays + reminder.daysBefore,
+                            )
+                        },
+                        label = { Text(reminder.title) },
+                    )
+                }
+            }
+            Text(
+                if (selectedDays.isEmpty()) "Напоминания о сроках выключены"
+                else "Выбрано: ${DeadlineReminder.entries.filter { it.daysBefore in selectedDays }.joinToString { it.title.lowercase() }}",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selectedDays.isEmpty()) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -1566,8 +1664,17 @@ private fun NotificationTestingScreen(modifier: Modifier = Modifier, onBack: () 
 }
 
 @Composable
-private fun AboutScreen(modifier: Modifier = Modifier, onBack: () -> Unit, onOpenPrivacy: () -> Unit) {
+private fun AboutScreen(
+    updateState: AppUpdateState,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onCheckForUpdates: () -> Unit,
+) {
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        if (updateState == AppUpdateState.Idle) onCheckForUpdates()
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1589,6 +1696,27 @@ private fun AboutScreen(modifier: Modifier = Modifier, onBack: () -> Unit, onOpe
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.primary,
         )
+        Text(
+            "Версия ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        UpdateStatus(
+            state = updateState,
+            onCheck = onCheckForUpdates,
+            onOpenRelease = { url ->
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            },
+        )
+        SettingsNavigationRow("GitHub", "Исходный код и все релизы") {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/neckmnull/Lecturial-2")),
+                )
+            }
+        }
         SettingsNavigationRow("Источник расписания", "Университет «Сириус»") {
             runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://schedule.siriusuniversity.ru/")))
@@ -1596,6 +1724,67 @@ private fun AboutScreen(modifier: Modifier = Modifier, onBack: () -> Unit, onOpe
         }
         SettingsNavigationRow("Политика конфиденциальности", "Данные и их хранение", onOpenPrivacy)
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun UpdateStatus(
+    state: AppUpdateState,
+    onCheck: () -> Unit,
+    onOpenRelease: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Обновления", style = MaterialTheme.typography.titleMedium)
+            when (state) {
+                AppUpdateState.Idle -> {
+                    Text(
+                        "Проверка стабильных релизов на GitHub.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onCheck) { Text("Проверить") }
+                }
+                AppUpdateState.Checking -> Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LoadingIndicator(modifier = Modifier.size(24.dp))
+                    Text("Проверяем GitHub…", style = MaterialTheme.typography.bodyMedium)
+                }
+                is AppUpdateState.UpToDate -> Text(
+                    "Установлена актуальная версия ${state.latestVersion}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                is AppUpdateState.Available -> {
+                    Text(
+                        "Доступна версия ${state.version}.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Button(onClick = { onOpenRelease(state.releaseUrl) }) {
+                        Text("Открыть релиз на GitHub")
+                    }
+                }
+                is AppUpdateState.Error -> {
+                    Text(
+                        state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onCheck) { Text("Повторить") }
+                }
+            }
+        }
     }
 }
 
@@ -2246,7 +2435,14 @@ private fun GroupDropdown(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ScheduleContent(state: ScheduleUiState, onRetry: () -> Unit) {
+private fun ScheduleContent(
+    state: ScheduleUiState,
+    onRetry: () -> Unit,
+    onStudyPlanSaved: (StudyPlan) -> Unit,
+    onStudyPlanCompletedChanged: (String, Boolean) -> Unit,
+    onStudyPlanDeleted: (String) -> Unit,
+) {
+    var editingPlan by remember { mutableStateOf<StudyPlan?>(null) }
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
         state.week == null && state.nextWeek == null && state.errorMessage != null -> FullError(state.errorMessage, onRetry)
@@ -2260,6 +2456,7 @@ private fun ScheduleContent(state: ScheduleUiState, onRetry: () -> Unit) {
                 state.selectedGroup,
                 state.now,
                 state.lessonAliases,
+                state.studyPlans,
             ) {
                 buildScheduleRows(
                     week = state.week,
@@ -2270,6 +2467,7 @@ private fun ScheduleContent(state: ScheduleUiState, onRetry: () -> Unit) {
                     group = state.selectedGroup.orEmpty(),
                     now = state.now,
                     aliases = state.lessonAliases,
+                    plans = state.studyPlans,
                 )
             }
             CompositionLocalProvider(LocalOverscrollFactory provides null) {
@@ -2311,12 +2509,34 @@ private fun ScheduleContent(state: ScheduleUiState, onRetry: () -> Unit) {
                             is ScheduleRow.WeekBreak -> NextWeekDivider(row.range)
                             is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
                             is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions)
+                            is ScheduleRow.Plan -> StudyPlanTimelineItem(
+                                plan = row.plan,
+                                options = state.appDisplayOptions,
+                                onToggle = {
+                                    onStudyPlanCompletedChanged(row.plan.id, !row.plan.isCompleted)
+                                },
+                                onEdit = { editingPlan = row.plan },
+                            )
                             is ScheduleRow.Rest -> BreakHint(row.text)
                         }
                     }
                 }
             }
         }
+    }
+    editingPlan?.let { plan ->
+        StudyPlanEditor(
+            plan = plan,
+            onDismiss = { editingPlan = null },
+            onSave = {
+                onStudyPlanSaved(it)
+                editingPlan = null
+            },
+            onDelete = {
+                onStudyPlanDeleted(plan.id)
+                editingPlan = null
+            },
+        )
     }
 }
 
@@ -2533,6 +2753,89 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
 }
 
 @Composable
+private fun StudyPlanTimelineItem(
+    plan: StudyPlan,
+    options: AppDisplayOptions,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+) {
+    val accent = when (plan.type) {
+        com.rassvet.lecturial.model.StudyPlanType.Task -> MaterialTheme.colorScheme.primary
+        com.rassvet.lecturial.model.StudyPlanType.Deadline -> MaterialTheme.colorScheme.error
+        com.rassvet.lecturial.model.StudyPlanType.Goal -> MaterialTheme.colorScheme.tertiary
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = options.itemSpacingDp.dp)
+            .alpha(if (plan.isCompleted) 0.58f else 1f)
+            .clickable(onClick = onEdit)
+            .drawBehind {
+                if (!options.showStripe) return@drawBehind
+                drawRoundRect(
+                    color = accent,
+                    size = Size(3.dp.toPx(), size.height),
+                    cornerRadius = CornerRadius(2.dp.toPx()),
+                )
+            }
+            .padding(
+                start = options.horizontalPaddingDp.dp,
+                top = options.verticalPaddingDp.dp,
+                bottom = options.verticalPaddingDp.dp,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (options.showTime) {
+            Text(
+                plan.dueTime?.format(planTimeFormatter) ?: "—",
+                modifier = Modifier.width(LessonTimeColumnWidth),
+                style = appTextStyle(MaterialTheme.typography.titleLarge, options.secondaryTextSizeSp, 14, options),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+        Surface(
+            onClick = onToggle,
+            modifier = Modifier
+                .size(30.dp)
+                .semantics {
+                    contentDescription = if (plan.isCompleted) "Вернуть в активные" else "Отметить выполненным"
+                },
+            shape = CircleShape,
+            color = if (plan.isCompleted) accent else Color.Transparent,
+            border = BorderStroke(2.dp, accent),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (plan.isCompleted) Text("✓", color = MaterialTheme.colorScheme.surface, fontWeight = FontWeight.Bold)
+            }
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                "${plan.type.symbol} ${plan.type.title.uppercase()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+            )
+            Text(
+                plan.title,
+                style = appTextStyle(MaterialTheme.typography.titleMedium, options.titleTextSizeSp, 16, options),
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = if (plan.isCompleted) TextDecoration.LineThrough else null,
+                maxLines = if (options.wrapTitle) options.titleMaxLines else 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (plan.note.isNotBlank()) {
+                Text(
+                    plan.note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LessonChip(text: String, container: Color, content: Color) {
     Text(
         text,
@@ -2659,6 +2962,11 @@ private sealed class ScheduleRow {
         override val contentType = "lesson"
     }
 
+    data class Plan(val plan: StudyPlan) : ScheduleRow() {
+        override val key = "plan-${plan.id}"
+        override val contentType = "plan"
+    }
+
     data class Rest(val eventId: String, val text: String) : ScheduleRow() {
         override val key = "rest-$eventId"
         override val contentType = "rest"
@@ -2674,6 +2982,7 @@ private fun buildScheduleRows(
     group: String,
     now: LocalDateTime,
     aliases: Map<String, String>,
+    plans: List<StudyPlan>,
 ): List<ScheduleRow> {
     val rows = ArrayList<ScheduleRow>(48)
     if (errorMessage != null) rows += ScheduleRow.Banner(errorMessage, lastUpdatedMillis)
@@ -2681,12 +2990,18 @@ private fun buildScheduleRows(
     val todayCount = week?.eventsFor(today)?.size ?: nextWeek?.eventsFor(today)?.size ?: 0
     val todaySubtitle = if (todayCount == 0) "сегодня • нет пар" else "сегодня • ${pairCountText(todayCount)}"
     rows += ScheduleRow.Header(group, todaySubtitle)
-    val currentDays = week?.days.orEmpty()
-        .filter { !it.date.isBefore(selectedDate) && it.events.isNotEmpty() }
-        .sortedBy { it.date }
-    val upcomingDays = nextWeek?.days.orEmpty()
-        .filter { it.events.isNotEmpty() }
-        .sortedBy { it.date }
+    val currentPlans = plans.filter { plan ->
+        val date = plan.dueDate ?: return@filter false
+        val start = week?.weekStart ?: selectedDate.with(java.time.DayOfWeek.MONDAY)
+        !date.isBefore(selectedDate) && !date.isBefore(start) && !date.isAfter(start.plusDays(6))
+    }
+    val currentDays = scheduleDays(week, currentPlans, selectedDate)
+    val upcomingPlans = plans.filter { plan ->
+        val date = plan.dueDate ?: return@filter false
+        val start = nextWeek?.weekStart ?: return@filter false
+        !date.isBefore(start) && !date.isAfter(start.plusDays(6))
+    }
+    val upcomingDays = scheduleDays(nextWeek, upcomingPlans)
     if (currentDays.isEmpty() && upcomingDays.isEmpty()) {
         rows += ScheduleRow.Empty
         return rows
@@ -2696,17 +3011,45 @@ private fun buildScheduleRows(
         today,
         now.toLocalTime(),
     )
-    rows.addDays(currentDays, today, live, startSeparated = false, aliases = aliases)
+    rows.addDays(currentDays, currentPlans, today, live, startSeparated = false, aliases = aliases)
     if (upcomingDays.isNotEmpty()) {
         val start = nextWeek?.weekStart ?: upcomingDays.first().date
         rows += ScheduleRow.WeekBreak(weekRangeLabel(start, start.plusDays(6)))
-        rows.addDays(upcomingDays, today, live, startSeparated = false, aliases = aliases)
+        rows.addDays(upcomingDays, upcomingPlans, today, live, startSeparated = false, aliases = aliases)
     }
     return rows
 }
 
+private fun scheduleDays(
+    week: ScheduleWeek?,
+    plans: List<StudyPlan>,
+    notBefore: LocalDate? = null,
+): List<ScheduleDay> {
+    val eventsByDate = week?.days.orEmpty().associateBy(ScheduleDay::date)
+    return (eventsByDate.keys + plans.mapNotNull(StudyPlan::dueDate))
+        .asSequence()
+        .filter { notBefore == null || !it.isBefore(notBefore) }
+        .map { date -> eventsByDate[date] ?: ScheduleDay(date, emptyList()) }
+        .filter { day -> day.events.isNotEmpty() || plans.any { it.dueDate == day.date } }
+        .sortedBy(ScheduleDay::date)
+        .toList()
+}
+
+private sealed class DayScheduleItem {
+    abstract val minuteOfDay: Int
+
+    data class Lesson(val event: ScheduleEvent) : DayScheduleItem() {
+        override val minuteOfDay = parseMinutes(event.startTime) ?: (24 * 60 - 1)
+    }
+
+    data class Plan(val plan: StudyPlan) : DayScheduleItem() {
+        override val minuteOfDay = plan.dueTime?.let { it.hour * 60 + it.minute } ?: (24 * 60)
+    }
+}
+
 private fun ArrayList<ScheduleRow>.addDays(
     days: List<ScheduleDay>,
+    plans: List<StudyPlan>,
     today: LocalDate,
     live: LessonLiveState?,
     startSeparated: Boolean,
@@ -2721,12 +3064,26 @@ private fun ArrayList<ScheduleRow>.addDays(
                 } else {
                     day.date.format(fullWeekdayFormatter).replaceFirstChar { it.uppercase(ru) }
                 },
-                subtitle = "${day.date.format(dayMonthFormatter)} • ${pairCountText(day.events.size)}",
+                subtitle = buildString {
+                    append(day.date.format(dayMonthFormatter))
+                    if (day.events.isNotEmpty()) append(" • ${pairCountText(day.events.size)}")
+                    val planCount = plans.count { it.dueDate == day.date }
+                    if (planCount > 0) append(" • ${planCountText(planCount)}")
+                },
                 separated = startSeparated || dayIndex > 0,
                 dateKey = day.date.toString(),
             ),
         )
-        day.events.forEachIndexed { index, event ->
+        val timeline = buildList {
+            day.events.forEach { add(DayScheduleItem.Lesson(it)) }
+            plans.filter { it.dueDate == day.date }.forEach { add(DayScheduleItem.Plan(it)) }
+        }.sortedWith(compareBy<DayScheduleItem> { it.minuteOfDay }.thenBy { it is DayScheduleItem.Plan })
+        timeline.forEachIndexed { index, item ->
+            if (item is DayScheduleItem.Plan) {
+                add(ScheduleRow.Plan(item.plan))
+                return@forEachIndexed
+            }
+            val event = (item as DayScheduleItem.Lesson).event
             val typeLabel = displayEventType(event.type)
             val location = listOfNotNull(event.classroom, displayAddress(event.address))
                 .joinToString(" · ")
@@ -2746,7 +3103,7 @@ private fun ArrayList<ScheduleRow>.addDays(
                     liveLabel = live?.takeIf { it.eventKey == eventKey }?.label,
                 ),
             )
-            val next = day.events.getOrNull(index + 1)
+            val next = (timeline.getOrNull(index + 1) as? DayScheduleItem.Lesson)?.event
             if (next != null && shouldShowRestHint(event, next)) {
                 add(
                     ScheduleRow.Rest(
@@ -2757,6 +3114,15 @@ private fun ArrayList<ScheduleRow>.addDays(
             }
         }
     }
+}
+
+private fun planCountText(count: Int): String {
+    val ending = when {
+        count % 10 == 1 && count % 100 != 11 -> "план"
+        count % 10 in 2..4 && count % 100 !in 12..14 -> "плана"
+        else -> "планов"
+    }
+    return "$count $ending"
 }
 
 internal fun shouldShowRestHint(event: ScheduleEvent, next: ScheduleEvent): Boolean {
