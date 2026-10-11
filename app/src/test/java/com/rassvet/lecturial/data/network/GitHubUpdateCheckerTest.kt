@@ -12,6 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
+import java.nio.file.Files
 
 class GitHubUpdateCheckerTest {
     private lateinit var server: MockWebServer
@@ -31,7 +32,12 @@ class GitHubUpdateCheckerTest {
         val checker = checker()
 
         assertEquals(
-            AppUpdateState.Available("1.5.0", "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0"),
+            AppUpdateState.Available(
+                "1.5.0",
+                "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
+                server.url("downloads/v1.5.0/Lecturial-2-v1.5.0.apk").toString(),
+                "Lecturial-2-v1.5.0.apk",
+            ),
             checker.check("1.4.5-debug"),
         )
         val request = server.takeRequest()
@@ -86,18 +92,75 @@ class GitHubUpdateCheckerTest {
         assertEquals("GitHub вернул некорректный ответ", failure.message)
     }
 
-    @Test(expected = IOException::class)
-    fun `rejects untrusted release URL`() = runBlocking {
+    @Test
+    fun `rejects untrusted release URL`() {
         server.enqueue(
             MockResponse().setBody(
                 """{"tag_name":"v1.5.0","html_url":"https://example.com/app.apk"}""",
             ),
         )
 
-        checker().check("1.4.5")
+        assertThrows(IOException::class.java) {
+            runBlocking { checker().check("1.4.5") }
+        }
     }
 
-    private fun checker() = GitHubUpdateChecker(server.url("latest").toString(), OkHttpClient())
+    @Test
+    fun `rejects newer release without trusted apk asset`() {
+        server.enqueue(
+            MockResponse().setBody(
+                """{
+                  "tag_name":"v1.5.0",
+                  "html_url":"https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
+                  "assets":[{
+                    "name":"Lecturial-2-v1.5.0.apk",
+                    "browser_download_url":"https://example.com/Lecturial-2-v1.5.0.apk"
+                  }]
+                }""",
+            ),
+        )
+
+        val failure = assertThrows(IOException::class.java) {
+            runBlocking { checker().check("1.4.5") }
+        }
+
+        assertEquals("В релизе v1.5.0 не найден APK-файл", failure.message)
+    }
+
+    @Test
+    fun `downloads apk atomically and reports progress`() = runBlocking {
+        val apkBytes = byteArrayOf('P'.code.toByte(), 'K'.code.toByte(), 3, 4, 1, 2, 3, 4)
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/vnd.android.package-archive")
+                .setBody(okio.Buffer().write(apkBytes)),
+        )
+        val directory = Files.createTempDirectory("lecturial-update-test").toFile()
+        val destination = directory.resolve("update.apk")
+        val update = AppUpdateState.Available(
+            "1.5.0",
+            "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
+            server.url("downloads/v1.5.0/update.apk").toString(),
+            "update.apk",
+        )
+        val progress = mutableListOf<Int?>()
+
+        try {
+            assertEquals(destination, checker().downloadApk(update, destination, progress::add))
+            assertTrue(destination.readBytes().contentEquals(apkBytes))
+            assertTrue(progress.contains(100))
+            assertEquals(false, directory.resolve("update.apk.part").exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+        Unit
+    }
+
+    private fun checker() = GitHubUpdateChecker(
+        server.url("latest").toString(),
+        OkHttpClient(),
+        server.url("downloads/").toString(),
+    )
 
     private fun release(version: String) = MockResponse().setBody(
         """
@@ -105,7 +168,11 @@ class GitHubUpdateCheckerTest {
           "tag_name": "$version",
           "html_url": "https://github.com/neckmnull/Lecturial-2/releases/tag/$version",
           "draft": false,
-          "prerelease": false
+          "prerelease": false,
+          "assets": [{
+            "name": "Lecturial-2-$version.apk",
+            "browser_download_url": "${server.url("downloads/$version/Lecturial-2-$version.apk")}"
+          }]
         }
         """.trimIndent(),
     )

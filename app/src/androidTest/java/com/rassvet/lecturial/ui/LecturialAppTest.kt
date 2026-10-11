@@ -388,7 +388,7 @@ class LecturialAppTest {
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("О приложении").performScrollTo().performClick()
         compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText("Версия 1.5.0-debug")
+            compose.onAllNodesWithText("Версия 1.6.1-debug")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
@@ -397,17 +397,20 @@ class LecturialAppTest {
             assertEquals(1, checks.get())
             state = state.copy(
                 appUpdateState = AppUpdateState.Available(
-                    "1.5.0",
-                    "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
+                    "1.7.0",
+                    "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.7.0",
+                    "https://github.com/neckmnull/Lecturial-2/releases/download/v1.7.0/Lecturial-2-v1.7.0.apk",
+                    "Lecturial-2-v1.7.0.apk",
                 ),
             )
         }
         compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText("Доступна версия 1.5.0.")
+            compose.onAllNodesWithText("Доступна версия 1.7.0.")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
-        compose.onNodeWithText("Доступна версия 1.5.0.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Доступна версия 1.7.0.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Скачать и установить").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Открыть релиз на GitHub").performScrollTo().assertIsDisplayed()
     }
 
@@ -764,6 +767,49 @@ class LecturialAppTest {
         compose.waitForIdle()
         compose.onNodeWithTag("current-week").assertIsSelected().assertIsDisplayed()
         compose.onNodeWithText("Текущая неделя").assertIsDisplayed()
+    }
+
+    @Test
+    fun scheduleOpensAtTodayWhenTodayHasNoLessons() {
+        val currentStart = LocalDate.of(2026, 8, 31)
+        val sunday = currentStart.plusDays(6)
+        val nextStart = currentStart.plusWeeks(1)
+        val nextLesson = ScheduleEvent(
+            id = "next-week",
+            date = nextStart,
+            startTime = "08:45",
+            endTime = "10:05",
+            pairNumber = 1,
+            discipline = "Алгоритмы",
+            type = "Лекция",
+            classroom = null,
+            address = null,
+            teachers = emptyList(),
+            comment = null,
+            onlineUrl = null,
+        )
+        render(
+            ScheduleUiState(
+                selectedGroup = "ИОП-ИТ-26/1",
+                selectedDate = sunday,
+                weekStart = currentStart,
+                scheduleWeeks = listOf(
+                    ScheduleWeek("ИОП-ИТ-26/1", currentStart.minusWeeks(1), emptyList()),
+                    ScheduleWeek("ИОП-ИТ-26/1", currentStart, emptyList()),
+                    ScheduleWeek(
+                        "ИОП-ИТ-26/1",
+                        nextStart,
+                        listOf(ScheduleDay(nextStart, listOf(nextLesson))),
+                    ),
+                ),
+                isStarting = false,
+                now = LocalDateTime.of(sunday, LocalTime.NOON),
+            ),
+        )
+
+        compose.waitForIdle()
+        compose.onNodeWithText("Сегодня").assertIsDisplayed()
+        compose.onNodeWithText("6 сентября").assertIsDisplayed()
     }
 
     @Test

@@ -2,7 +2,9 @@ package com.rassvet.lecturial
 
 import android.Manifest
 import android.animation.ValueAnimator
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -13,18 +15,33 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rassvet.lecturial.notify.LessonAlerts
+import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.ui.LecturialApp
 import com.rassvet.lecturial.ui.ScheduleViewModel
 import com.rassvet.lecturial.ui.theme.LecturialTheme
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private val splashStartedAt = SystemClock.elapsedRealtime()
+    private var pendingUpdate: AppUpdateState.ReadyToInstall? = null
+    private var installationErrorHandler: ((AppUpdateState.ReadyToInstall, String) -> Unit)? = null
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { LessonAlerts.sync(this) }
+    private val unknownSourcesSettings = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val update = pendingUpdate ?: return@registerForActivityResult
+        if (packageManager.canRequestPackageInstalls()) {
+            openPackageInstaller(update)
+        } else {
+            reportInstallationError(update, "Разрешите Lecturial 2 устанавливать неизвестные приложения")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     app.preferences,
                     app.studyPlanRepository,
                     app.updateChecker,
+                    app.updatesDirectory,
                 ),
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
@@ -101,6 +119,10 @@ class MainActivity : ComponentActivity() {
                     onScheduleWeeksBackChanged = viewModel::setScheduleWeeksBack,
                     onScheduleWeeksForwardChanged = viewModel::setScheduleWeeksForward,
                     onCheckForUpdates = viewModel::checkForUpdates,
+                    onDownloadUpdate = viewModel::downloadUpdate,
+                    onInstallUpdate = { update ->
+                        requestUpdateInstallation(update, viewModel::reportInstallationError)
+                    },
                 )
             }
         }
@@ -123,5 +145,51 @@ class MainActivity : ComponentActivity() {
         if (prefs.getBoolean("asked_notifications", false)) return
         prefs.edit().putBoolean("asked_notifications", true).apply()
         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun requestUpdateInstallation(
+        update: AppUpdateState.ReadyToInstall,
+        onError: (AppUpdateState.ReadyToInstall, String) -> Unit,
+    ) {
+        pendingUpdate = update
+        installationErrorHandler = onError
+        if (packageManager.canRequestPackageInstalls()) {
+            openPackageInstaller(update)
+            return
+        }
+        runCatching {
+            unknownSourcesSettings.launch(
+                Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+        }.onFailure {
+            reportInstallationError(update, "Не удалось открыть разрешение на установку приложений")
+        }
+    }
+
+    private fun openPackageInstaller(update: AppUpdateState.ReadyToInstall) {
+        runCatching {
+            val updatesDirectory = (application as LecturialApplication).updatesDirectory.canonicalFile
+            val apk = File(update.apkPath).canonicalFile
+            require(apk.isFile && apk.parentFile == updatesDirectory) { "APK-файл обновления недоступен" }
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
+            startActivity(
+                Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            )
+        }.onFailure { failure ->
+            reportInstallationError(
+                update,
+                failure.message ?: "Не удалось открыть системный установщик",
+            )
+        }
+    }
+
+    private fun reportInstallationError(update: AppUpdateState.ReadyToInstall, message: String) {
+        pendingUpdate = null
+        installationErrorHandler?.invoke(update, message)
     }
 }

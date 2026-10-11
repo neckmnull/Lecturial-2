@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -90,6 +91,7 @@ class ScheduleViewModel(
     private val preferences: UserPreferences,
     private val studyPlanRepository: StudyPlanRepository,
     private val updateChecker: GitHubUpdateChecker,
+    private val updatesDirectory: File,
     private val today: () -> LocalDate = LocalDate::now,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -200,7 +202,9 @@ class ScheduleViewModel(
     }
 
     fun checkForUpdates() {
-        if (_state.value.appUpdateState == AppUpdateState.Checking) return
+        if (_state.value.appUpdateState is AppUpdateState.Checking ||
+            _state.value.appUpdateState is AppUpdateState.Downloading
+        ) return
         updateJob?.cancel()
         _state.update { it.copy(appUpdateState = AppUpdateState.Checking) }
         updateJob = viewModelScope.launch {
@@ -218,6 +222,56 @@ class ScheduleViewModel(
                     )
                 }
             }
+        }
+    }
+
+    fun downloadUpdate() {
+        val update = when (val current = _state.value.appUpdateState) {
+            is AppUpdateState.Available -> current
+            is AppUpdateState.DownloadError -> current.update
+            else -> return
+        }
+        updateJob?.cancel()
+        _state.update { it.copy(appUpdateState = AppUpdateState.Downloading(update, 0)) }
+        updateJob = viewModelScope.launch {
+            try {
+                val safeVersion = update.version.replace(Regex("[^0-9A-Za-z._-]"), "_")
+                val destination = File(updatesDirectory, "Lecturial-2-$safeVersion.apk")
+                val apk = updateChecker.downloadApk(update, destination) { progress ->
+                    _state.update { current ->
+                        val downloading = current.appUpdateState as? AppUpdateState.Downloading
+                        if (downloading?.update != update) current else current.copy(
+                            appUpdateState = downloading.copy(progressPercent = progress),
+                        )
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        appUpdateState = AppUpdateState.ReadyToInstall(
+                            version = update.version,
+                            releaseUrl = update.releaseUrl,
+                            apkPath = apk.absolutePath,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                _state.update {
+                    it.copy(
+                        appUpdateState = AppUpdateState.DownloadError(
+                            update = update,
+                            message = failure.message ?: "Не удалось скачать обновление",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun reportInstallationError(update: AppUpdateState.ReadyToInstall, message: String) {
+        _state.update {
+            it.copy(appUpdateState = AppUpdateState.InstallationError(update, message))
         }
     }
 
@@ -664,10 +718,11 @@ class ScheduleViewModel(
         private val preferences: UserPreferences,
         private val studyPlanRepository: StudyPlanRepository,
         private val updateChecker: GitHubUpdateChecker,
+        private val updatesDirectory: File,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker) as T
+            ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker, updatesDirectory) as T
     }
 }
 

@@ -256,6 +256,8 @@ fun LecturialApp(
     onScheduleWeeksBackChanged: (Int) -> Unit = {},
     onScheduleWeeksForwardChanged: (Int) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
+    onDownloadUpdate: () -> Unit = {},
+    onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
     val stage = when {
@@ -339,6 +341,8 @@ fun LecturialApp(
                     onScheduleWeeksBackChanged,
                     onScheduleWeeksForwardChanged,
                     onCheckForUpdates,
+                    onDownloadUpdate,
+                    onInstallUpdate,
                 )
             }
         }
@@ -602,6 +606,8 @@ private fun ScheduleScreen(
     onScheduleWeeksBackChanged: (Int) -> Unit,
     onScheduleWeeksForwardChanged: (Int) -> Unit,
     onCheckForUpdates: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit,
 ) {
     var mainSection by remember { mutableStateOf(MainSection.Schedule) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -734,6 +740,8 @@ private fun ScheduleScreen(
                         onBack = { settingsSection = null },
                         onOpenPrivacy = { settingsSection = SettingsSection.Privacy },
                         onCheckForUpdates = onCheckForUpdates,
+                        onDownloadUpdate = onDownloadUpdate,
+                        onInstallUpdate = onInstallUpdate,
                     )
                     SettingsSection.Privacy -> PrivacyScreen(
                         modifier = nestedModifier,
@@ -1774,6 +1782,8 @@ private fun AboutScreen(
     onBack: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onCheckForUpdates: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit,
 ) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
@@ -1808,6 +1818,8 @@ private fun AboutScreen(
         UpdateStatus(
             state = updateState,
             onCheck = onCheckForUpdates,
+            onDownload = onDownloadUpdate,
+            onInstall = onInstallUpdate,
             onOpenRelease = { url ->
                 runCatching {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -1836,6 +1848,8 @@ private fun AboutScreen(
 private fun UpdateStatus(
     state: AppUpdateState,
     onCheck: () -> Unit,
+    onDownload: () -> Unit,
+    onInstall: (AppUpdateState.ReadyToInstall) -> Unit,
     onOpenRelease: (String) -> Unit,
 ) {
     Surface(
@@ -1875,9 +1889,41 @@ private fun UpdateStatus(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    Button(onClick = { onOpenRelease(state.releaseUrl) }) {
-                        Text("Открыть релиз на GitHub")
+                    Button(onClick = onDownload) {
+                        Text("Скачать и установить")
                     }
+                    TextButton(onClick = { onOpenRelease(state.releaseUrl) }) { Text("Открыть релиз на GitHub") }
+                }
+                is AppUpdateState.Downloading -> {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LoadingIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            state.progressPercent?.let { "Скачиваем обновление… $it%" }
+                                ?: "Скачиваем обновление…",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                is AppUpdateState.ReadyToInstall -> {
+                    Text(
+                        "Версия ${state.version} скачана. Android попросит подтвердить установку.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Button(onClick = { onInstall(state) }) { Text("Установить") }
+                }
+                is AppUpdateState.DownloadError -> {
+                    Text(state.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = onDownload) { Text("Повторить скачивание") }
+                    TextButton(onClick = { onOpenRelease(state.update.releaseUrl) }) { Text("Открыть релиз на GitHub") }
+                }
+                is AppUpdateState.InstallationError -> {
+                    Text(state.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = { onInstall(state.update) }) { Text("Повторить установку") }
+                    TextButton(onClick = { onOpenRelease(state.update.releaseUrl) }) { Text("Открыть релиз на GitHub") }
                 }
                 is AppUpdateState.Error -> {
                     Text(
@@ -2560,6 +2606,7 @@ private fun ScheduleContent(
                 state.lastUpdatedMillis,
                 state.selectedGroup,
                 state.weekStart,
+                state.selectedDate,
                 state.now,
                 state.lessonAliases,
                 state.studyPlans,
@@ -2572,6 +2619,7 @@ private fun ScheduleContent(
                     errorMessage = state.errorMessage,
                     lastUpdatedMillis = state.lastUpdatedMillis,
                     group = state.selectedGroup.orEmpty(),
+                    selectedDate = state.selectedDate,
                     now = state.now,
                     aliases = state.lessonAliases,
                     plans = state.studyPlans,
@@ -2579,14 +2627,16 @@ private fun ScheduleContent(
             }
             CompositionLocalProvider(LocalOverscrollFactory provides null) {
                 val listState = rememberLazyListState()
-                val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.isLoading}"
+                val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.selectedDate}|${state.isLoading}"
                 var scrolledFor by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(rows, scrollSession) {
                     if (state.isLoading) return@LaunchedEffect
                     if (scrolledFor == scrollSession) return@LaunchedEffect
-                    val index = rows.indexOfFirst {
-                        it is ScheduleRow.WeekBreak && it.isCurrent
-                    }
+                    val index = scheduleInitialRowIndex(
+                        rowKeys = rows.map(ScheduleRow::key),
+                        selectedDate = state.selectedDate,
+                        currentWeekStart = state.weekStart,
+                    )
                     if (index < 0) return@LaunchedEffect
                     listState.scrollToItem(index)
                     scrolledFor = scrollSession
@@ -3146,6 +3196,7 @@ private fun buildScheduleRows(
     errorMessage: String?,
     lastUpdatedMillis: Long?,
     group: String,
+    selectedDate: LocalDate,
     now: LocalDateTime,
     aliases: Map<String, String>,
     plans: List<StudyPlan>,
@@ -3166,7 +3217,11 @@ private fun buildScheduleRows(
             val date = plan.dueDate ?: return@filter false
             !date.isBefore(start) && !date.isAfter(start.plusDays(6))
         }
-        Triple(scheduleWeek, weekPlans, scheduleDays(scheduleWeek, weekPlans))
+        Triple(
+            scheduleWeek,
+            weekPlans,
+            scheduleDays(scheduleWeek, weekPlans, includedDate = selectedDate),
+        )
     }
     if (sections.isEmpty()) {
         rows += ScheduleRow.Empty
@@ -3189,6 +3244,9 @@ private fun buildScheduleRows(
             rows += ScheduleRow.EmptyWeek(start)
         } else {
             rows.addDays(days, weekPlans, today, live, startSeparated = false, aliases = aliases)
+            if (scheduleWeek.days.all { it.events.isEmpty() } && weekPlans.isEmpty()) {
+                rows += ScheduleRow.EmptyWeek(start)
+            }
         }
     }
     return rows
@@ -3201,17 +3259,45 @@ private fun weekSectionTitle(weekStart: LocalDate, currentWeekStart: LocalDate):
     else -> "Неделя"
 }
 
+internal fun scheduleInitialRowIndex(
+    rowKeys: List<String>,
+    selectedDate: LocalDate,
+    currentWeekStart: LocalDate,
+): Int {
+    val exactDay = rowKeys.indexOf("day-$selectedDate")
+    if (exactDay >= 0) return exactDay
+    val datedRow = rowKeys.indexOfFirst { key ->
+        val date = when {
+            key.startsWith("day-") -> key.removePrefix("day-").toLocalDateOrNull()
+            key.startsWith("week-break-") -> key.removePrefix("week-break-").toLocalDateOrNull()
+            else -> null
+        }
+        date != null && !date.isBefore(selectedDate)
+    }
+    if (datedRow >= 0) return datedRow
+    return rowKeys.indexOf("week-break-$currentWeekStart")
+}
+
+private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
+
 private fun scheduleDays(
     week: ScheduleWeek?,
     plans: List<StudyPlan>,
     notBefore: LocalDate? = null,
+    includedDate: LocalDate? = null,
 ): List<ScheduleDay> {
     val eventsByDate = week?.days.orEmpty().associateBy(ScheduleDay::date)
-    return (eventsByDate.keys + plans.mapNotNull(StudyPlan::dueDate))
+    val weekStart = week?.weekStart
+    val dateToInclude = includedDate?.takeIf { date ->
+        weekStart != null && date in weekStart..weekStart.plusDays(6)
+    }
+    return (eventsByDate.keys + plans.mapNotNull(StudyPlan::dueDate) + listOfNotNull(dateToInclude))
         .asSequence()
         .filter { notBefore == null || !it.isBefore(notBefore) }
         .map { date -> eventsByDate[date] ?: ScheduleDay(date, emptyList()) }
-        .filter { day -> day.events.isNotEmpty() || plans.any { it.dueDate == day.date } }
+        .filter { day ->
+            day.date == dateToInclude || day.events.isNotEmpty() || plans.any { it.dueDate == day.date }
+        }
         .sortedBy(ScheduleDay::date)
         .toList()
 }

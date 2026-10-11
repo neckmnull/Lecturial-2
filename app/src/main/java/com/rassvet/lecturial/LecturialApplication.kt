@@ -10,11 +10,13 @@ import com.rassvet.lecturial.data.network.GitHubUpdateChecker
 import com.rassvet.lecturial.notify.LessonAlerts
 import com.rassvet.lecturial.notify.DeadlineAlerts
 import com.rassvet.lecturial.widget.TodayScheduleWidget
+import java.io.File
 
 class LecturialApplication : Application() {
     val preferences by lazy { UserPreferences(this) }
     val database by lazy { LecturialDatabase.create(this) }
     val updateChecker by lazy { GitHubUpdateChecker() }
+    val updatesDirectory by lazy { File(cacheDir, "updates") }
     val studyPlanRepository by lazy {
         StudyPlanRepository(database) {
             TodayScheduleWidget.updateAll(this)

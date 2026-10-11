@@ -291,8 +291,8 @@ class UserPreferences(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_SCHEDULE_WEEKS_BACK = 2
-        const val DEFAULT_SCHEDULE_WEEKS_FORWARD = 2
+        const val DEFAULT_SCHEDULE_WEEKS_BACK = 1
+        const val DEFAULT_SCHEDULE_WEEKS_FORWARD = 1
         val SCHEDULE_WEEKS_RANGE = 0..2
     }
 }
