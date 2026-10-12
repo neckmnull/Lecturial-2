@@ -8,8 +8,10 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.1/Lecturial-2-v1.6.1.apk"><img src="https://img.shields.io/badge/Download_APK-v1.6.1-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.6.1 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.2/Lecturial-2-v1.6.2.apk"><img src="https://img.shields.io/badge/Download_APK-v1.6.2-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.6.2 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
+
+`SHA-256: 9163390a7123256e461ae9c93b5a6e666d1fc848ab26e0be1cc005c4442dbcd3`
 
 </div>
 
@@ -63,7 +65,7 @@ keep common actions one tap away.
 | **At a glance** | Resizable Today widget with configurable fields, colors, text sizes, and spacing |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.6.1` (`versionCode 27`) · minimum Android version:
+> **Current release:** `1.6.2` (`versionCode 28`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,12 +96,11 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.6.1.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.1/Lecturial-2-v1.6.1.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.6.2.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.6.2/Lecturial-2-v1.6.2.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  6c83f8e4e6e48079f970c0cb8cf8b74c5500744cfaa4ae43b9e4bbf76243ad12
 Package  com.rassvet.lecturial2
 ```
 

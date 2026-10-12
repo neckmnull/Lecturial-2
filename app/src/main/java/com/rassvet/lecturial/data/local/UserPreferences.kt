@@ -14,6 +14,7 @@ import com.rassvet.lecturial.model.WidgetDisplayOptions
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
@@ -426,6 +427,9 @@ internal fun encodeAppDisplayOptions(options: AppDisplayOptions): String = org.j
     .put("fontStyleId", options.fontStyleId)
     .put("letterSpacingPercent", options.letterSpacingPercent)
     .put("titleMaxLines", options.titleMaxLines)
+    .put("backgroundStyle", options.backgroundStyle.storageId)
+    .put("backgroundIntensityPercent", options.backgroundIntensityPercent)
+    .put("backgroundSpeedPercent", options.backgroundSpeedPercent)
     .toString()
 
 internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
@@ -455,6 +459,9 @@ internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
                 ?: WidgetFontStyles.defaultId,
             letterSpacingPercent = item.optInt("letterSpacingPercent", 0).coerceIn(-5, 10),
             titleMaxLines = item.optInt("titleMaxLines", 3).coerceIn(1, 5),
+            backgroundStyle = AppBackgroundStyle.fromStorageId(item.optString("backgroundStyle")),
+            backgroundIntensityPercent = item.optInt("backgroundIntensityPercent", 100).coerceIn(25, 150),
+            backgroundSpeedPercent = item.optInt("backgroundSpeedPercent", 50).coerceIn(0, 100),
         )
     }.getOrDefault(AppDisplayOptions())
 }

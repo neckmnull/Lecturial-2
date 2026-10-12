@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.semantics.SemanticsActions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppUpdateState
@@ -38,6 +39,33 @@ import java.util.concurrent.atomic.AtomicInteger
 class LecturialAppTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComposeTestActivity>()
+
+    @Test
+    fun appUsesSharedMaterialYouBackground() {
+        render(ScheduleUiState(isStarting = false))
+
+        compose.onNodeWithTag("material-you-background").assertIsDisplayed()
+    }
+
+    @Test
+    fun classicBackgroundOmitsDynamicTonalFields() {
+        var options by mutableStateOf(
+            AppDisplayOptions(backgroundStyle = AppBackgroundStyle.Dynamic),
+        )
+        compose.setContent {
+            LecturialTheme {
+                MaterialYouBackground(options = options) {}
+            }
+        }
+
+        compose.onNodeWithTag("dynamic-tonal-fields").assertIsDisplayed()
+
+        compose.runOnIdle {
+            options = options.copy(backgroundStyle = AppBackgroundStyle.Classic)
+        }
+
+        compose.onNodeWithTag("dynamic-tonal-fields").assertDoesNotExist()
+    }
 
     @Test
     fun firstLaunchOffersDynamicGroups() {
@@ -468,6 +496,13 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Фон приложения").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Фон: классический").assertIsSelected()
+        compose.onNodeWithText("Однотонный фон темы без градиентов и анимации, как до появления динамического фона.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Интенсивность фона").assertDoesNotExist()
+        compose.onNodeWithText("Скорость фона").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Фон: динамический").assertIsDisplayed()
         compose.onNodeWithText("Оформление расписания").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Живой предпросмотр расписания")
             .performScrollTo()

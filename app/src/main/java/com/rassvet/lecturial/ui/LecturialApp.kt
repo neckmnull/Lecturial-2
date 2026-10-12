@@ -123,6 +123,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.rassvet.lecturial.model.LessonLiveState
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
@@ -266,7 +267,10 @@ fun LecturialApp(
         state.choosingLanguageTeacher -> 2
         else -> 3
     }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    MaterialYouBackground(
+        modifier = Modifier.fillMaxSize(),
+        options = state.appDisplayOptions,
+    ) {
         AnimatedContent(
             modifier = Modifier.fillMaxSize().clipToBounds(),
             targetState = stage,
@@ -1178,6 +1182,12 @@ private fun AppearanceSettingsScreen(
             checked = darkTheme,
             onCheckedChange = onDarkThemeChanged,
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AppBackgroundSettings(
+            options = appDisplayOptions,
+            onOptionsChanged = onAppDisplayOptionsChanged,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         AppTheme.entries.filterNot { it == AppTheme.Custom }.forEach { theme ->
             val selected = theme == selectedTheme
@@ -1252,9 +1262,14 @@ private fun AppearanceSettingsScreen(
             options = appDisplayOptions,
             onOptionsChanged = onAppDisplayOptionsChanged,
         )
+        val defaultScheduleOptions = AppDisplayOptions(
+            backgroundStyle = appDisplayOptions.backgroundStyle,
+            backgroundIntensityPercent = appDisplayOptions.backgroundIntensityPercent,
+            backgroundSpeedPercent = appDisplayOptions.backgroundSpeedPercent,
+        )
         OutlinedButton(
             onClick = onAppDisplayOptionsReset,
-            enabled = appDisplayOptions != AppDisplayOptions(),
+            enabled = appDisplayOptions != defaultScheduleOptions,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Сбросить настройки расписания") }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1266,6 +1281,60 @@ private fun AppearanceSettingsScreen(
         )
         Spacer(Modifier.height(12.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun AppBackgroundSettings(
+    options: AppDisplayOptions,
+    onOptionsChanged: (AppDisplayOptions) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Фон приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Выберите однотонный классический фон или плавные цветовые поля активной темы.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = options.backgroundStyle == AppBackgroundStyle.Dynamic,
+                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Dynamic)) },
+                label = { Text("Динамический") },
+                modifier = Modifier.semantics { contentDescription = "Фон: динамический" },
+            )
+            FilterChip(
+                selected = options.backgroundStyle == AppBackgroundStyle.Classic,
+                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Classic)) },
+                label = { Text("Классический") },
+                modifier = Modifier.semantics { contentDescription = "Фон: классический" },
+            )
+        }
+        if (options.backgroundStyle == AppBackgroundStyle.Dynamic) {
+            WidgetDimensionSlider(
+                title = "Интенсивность фона",
+                description = "Насыщенность цветовых полей",
+                value = options.backgroundIntensityPercent,
+                range = 25..150,
+                unit = "%",
+            ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
+            WidgetDimensionSlider(
+                title = "Скорость фона",
+                description = "0 % полностью останавливает движение",
+                value = options.backgroundSpeedPercent,
+                range = 0..100,
+                unit = "%",
+            ) { onOptionsChanged(options.copy(backgroundSpeedPercent = it)) }
+        } else {
+            Text(
+                "Однотонный фон темы без градиентов и анимации, как до появления динамического фона.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -67,6 +67,18 @@ fun CustomAppTheme.toPalette() = ThemePalette(
     onSurface = onSurface,
 )
 
+enum class AppBackgroundStyle(val storageId: String) {
+    Dynamic("dynamic"),
+    Classic("classic");
+
+    companion object {
+        val default = Classic
+
+        fun fromStorageId(value: String?): AppBackgroundStyle =
+            entries.firstOrNull { it.storageId == value } ?: default
+    }
+}
+
 data class AppDisplayOptions(
     val lectureStripeColor: Int = WidgetStripePalette.defaultLecture,
     val practiceStripeColor: Int = WidgetStripePalette.defaultPractice,
@@ -84,6 +96,9 @@ data class AppDisplayOptions(
     val fontStyleId: String = WidgetFontStyles.defaultId,
     val letterSpacingPercent: Int = 0,
     val titleMaxLines: Int = 3,
+    val backgroundStyle: AppBackgroundStyle = AppBackgroundStyle.default,
+    val backgroundIntensityPercent: Int = 100,
+    val backgroundSpeedPercent: Int = 50,
 )
 
 fun parseThemeColor(value: String): Int? {

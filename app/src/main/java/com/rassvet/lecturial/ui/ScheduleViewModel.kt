@@ -503,7 +503,16 @@ class ScheduleViewModel(
         viewModelScope.launch { preferences.setAppDisplayOptions(options) }
     }
 
-    fun resetAppDisplayOptions() = setAppDisplayOptions(AppDisplayOptions())
+    fun resetAppDisplayOptions() {
+        val current = _state.value.appDisplayOptions
+        setAppDisplayOptions(
+            AppDisplayOptions(
+                backgroundStyle = current.backgroundStyle,
+                backgroundIntensityPercent = current.backgroundIntensityPercent,
+                backgroundSpeedPercent = current.backgroundSpeedPercent,
+            ),
+        )
+    }
 
     fun setLectureStripeColor(color: Int) {
         if (!WidgetStripePalette.isSupported(color)) return

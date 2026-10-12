@@ -1,6 +1,7 @@
 package com.rassvet.lecturial.data.local
 
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
@@ -58,6 +59,9 @@ class AppAppearanceSerializationTest {
             fontStyleId = "serif_bold",
             letterSpacingPercent = 7,
             titleMaxLines = 5,
+            backgroundStyle = AppBackgroundStyle.Classic,
+            backgroundIntensityPercent = 125,
+            backgroundSpeedPercent = 80,
         )
 
         assertEquals(options, parseAppDisplayOptions(encodeAppDisplayOptions(options)))
@@ -66,12 +70,15 @@ class AppAppearanceSerializationTest {
     @Test
     fun appDisplayOptionsClampUnsafeValues() {
         val parsed = parseAppDisplayOptions(
-            """{"outerPaddingDp":100,"titleTextSizeSp":2,"fontStyleId":"missing","titleMaxLines":99}""",
+            """{"outerPaddingDp":100,"titleTextSizeSp":2,"fontStyleId":"missing","titleMaxLines":99,"backgroundStyle":"missing","backgroundIntensityPercent":999,"backgroundSpeedPercent":-20}""",
         )
 
         assertEquals(32, parsed.outerPaddingDp)
         assertEquals(12, parsed.titleTextSizeSp)
         assertEquals("system_medium", parsed.fontStyleId)
         assertEquals(5, parsed.titleMaxLines)
+        assertEquals(AppBackgroundStyle.Classic, parsed.backgroundStyle)
+        assertEquals(150, parsed.backgroundIntensityPercent)
+        assertEquals(0, parsed.backgroundSpeedPercent)
     }
 }
