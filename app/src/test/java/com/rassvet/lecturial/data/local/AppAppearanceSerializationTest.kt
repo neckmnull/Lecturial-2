@@ -74,6 +74,21 @@ class AppAppearanceSerializationTest {
     }
 
     @Test
+    fun lineWallpaperSettingsRoundTripAndClamp() {
+        val options = AppDisplayOptions(
+            backgroundStyle = AppBackgroundStyle.Maze,
+            backgroundLineDensityPercent = 130,
+            backgroundLineWeight = 4,
+        )
+        assertEquals(options, parseAppDisplayOptions(encodeAppDisplayOptions(options)))
+
+        val clamped = parseAppDisplayOptions("""{"backgroundStyle":"waves","backgroundLineDensityPercent":999,"backgroundLineWeight":0}""")
+        assertEquals(AppBackgroundStyle.Waves, clamped.backgroundStyle)
+        assertEquals(150, clamped.backgroundLineDensityPercent)
+        assertEquals(1, clamped.backgroundLineWeight)
+    }
+
+    @Test
     fun appDisplayOptionsClampUnsafeValues() {
         val parsed = parseAppDisplayOptions(
             """{"outerPaddingDp":100,"titleTextSizeSp":2,"fontStyleId":"missing","titleMaxLines":99,"tileCornerRadiusDp":99,"tileOpacityPercent":-1,"backgroundStyle":"missing","backgroundIntensityPercent":999,"backgroundSpeedPercent":-20,"backgroundGradientAngleDegrees":999}""",

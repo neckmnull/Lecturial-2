@@ -366,7 +366,7 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Оформление").performClick()
-        compose.onAllNodesWithText("Изменить")[0].performClick()
+        compose.onNodeWithText("Изменить цвета").performScrollTo().performClick()
 
         compose.onNodeWithText("Тема «Сириус»").assertIsDisplayed()
         compose.onNodeWithText("Сохранить и применить").performScrollTo().assertIsDisplayed()
@@ -551,7 +551,8 @@ class LecturialAppTest {
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
-        compose.onNodeWithContentDescription("Название предмета: 16 sp")
+        compose.onNodeWithText("Тонкая настройка").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Название предмета: 16")
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(24f) }
         compose.onNodeWithContentDescription("Живой предпросмотр расписания").assertIsDisplayed()

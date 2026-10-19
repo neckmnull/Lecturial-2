@@ -1,5 +1,6 @@
 package com.rassvet.lecturial.widget
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -7,11 +8,14 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -26,12 +30,18 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
+import androidx.core.graphics.ColorUtils
 import com.rassvet.lecturial.LecturialApplication
 import com.rassvet.lecturial.MainActivity
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.data.local.ScheduleEventEntity
 import com.rassvet.lecturial.data.local.StudyPlanEntity
+import com.rassvet.lecturial.data.local.WallpaperFieldCache
 import com.rassvet.lecturial.model.AppBackgroundStyle
+import com.rassvet.lecturial.model.WallpaperPatterns
+import com.rassvet.lecturial.model.WidgetLook
+import com.rassvet.lecturial.model.parseEventMinutes
+import com.rassvet.lecturial.ui.analogousArgb
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.ThemePalette
@@ -45,6 +55,7 @@ import com.rassvet.lecturial.model.occursOn
 import com.rassvet.lecturial.model.renamedDiscipline
 import com.rassvet.lecturial.model.toPalette
 import com.rassvet.lecturial.ui.theme.defaultThemePalette
+import com.rassvet.lecturial.ui.theme.dynamicThemePalette
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +64,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.nio.ByteBuffer
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
@@ -65,6 +80,22 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 class TodayScheduleWidget : AppWidgetProvider() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_REFRESH) {
+            // A lesson started or ended (or the day changed): refresh the current-lesson mark.
+            val pendingResult = goAsync()
+            widgetScope.launch {
+                try {
+                    updateAllNow(context)
+                } finally {
+                    pendingResult.finish()
+                }
+            }
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
         // The provider's initial layout is already a stable empty state. Preserve the
         // current content while refreshing so an interrupted process cannot replace it
@@ -150,22 +181,9 @@ class TodayScheduleWidget : AppWidgetProvider() {
             val appearance = runCatching { loadWidgetAppearance(app) }
                 .onFailure { error -> Log.e(TAG, "Unable to load widget appearance; using defaults", error) }
                 .getOrElse(::defaultWidgetAppearance)
-            val outerPaddingDp = runCatching {
-                app.preferences.widgetDisplayOptions.first().outerPaddingDp
-            }.getOrDefault(9)
-            val group = app.preferences.selectedGroup.first()
-            val lessons = if (group == null) {
-                emptyList()
-            } else {
-                val teacher = app.preferences.languageTeacher(group).first()
-                app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
-                    com.rassvet.lecturial.model.matchesLanguageTeacher(
-                        it.discipline,
-                        it.teachers.split("\u001F"),
-                        teacher,
-                    )
-                }
-            }
+            val outerPaddingDp = appearance.look.outerPaddingDp
+            val lessons = todayLessons(app)
+            scheduleNextRefresh(context, lessons)
             val activePlans = app.database.studyPlanDao().all()
                 .filterNot(StudyPlanEntity::isCompleted)
             val today = LocalDate.now()
@@ -197,10 +215,14 @@ class TodayScheduleWidget : AppWidgetProvider() {
                         setImageViewBitmap(
                             R.id.widget_wallpaper,
                             renderWidgetWallpaper(
+                                context = context,
                                 appearance = appearance,
                                 size = widgetBitmapSize(context, manager, id),
                             ),
                         )
+                        // The rendered wallpaper replaces the XML background, which would
+                        // otherwise show through a translucent widget.
+                        setInt(R.id.widget_root, "setBackgroundColor", Color.TRANSPARENT)
                     }
                     manager.updateAppWidget(id, views)
                 }.onFailure { error ->
@@ -255,19 +277,23 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.widget_header, openPendingIntent)
                 setTextViewText(
                     R.id.widget_date,
-                    LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM, EEE", Locale.forLanguageTag("ru"))),
+                    LocalDate.now().format(HeaderDateFormatter),
                 )
                 setTextViewText(R.id.widget_lesson_count, pluralCount(lessonCount, "пара", "пары", "пар"))
                 setTextViewText(R.id.widget_plan_count, pluralCount(activePlanCount, "план", "плана", "планов"))
                 setTextViewText(R.id.widget_nearest_plan_text, nearestPlan.orEmpty())
                 setTextViewText(R.id.widget_empty, context.getString(emptyMessageRes))
                 appearance?.let { colors ->
-                    setTextColor(R.id.widget_title, colors.palette.primary)
-                    setTextColor(R.id.widget_date, colors.palette.onSurface)
-                    setTextColor(R.id.widget_nearest_plan_text, colors.secondaryTextColor)
-                    setTextColor(R.id.widget_empty, colors.secondaryTextColor)
+                    setTextColor(R.id.widget_title, colors.headerTitleColor)
+                    setTextColor(R.id.widget_date, colors.headerTextColor)
+                    setTextColor(R.id.widget_nearest_plan_text, colors.headerSecondaryColor)
+                    setTextColor(R.id.widget_empty, colors.headerSecondaryColor)
                     setInt(R.id.widget_plan_dot, "setColorFilter", colors.palette.secondary)
                     setInt(R.id.widget_divider, "setBackgroundColor", colors.outlineColor)
+                    setInt(R.id.widget_lesson_count_background, "setColorFilter", colors.primaryChipColor)
+                    setTextColor(R.id.widget_lesson_count, colors.primaryChipTextColor)
+                    setInt(R.id.widget_plan_count_background, "setColorFilter", colors.secondaryChipColor)
+                    setTextColor(R.id.widget_plan_count, colors.secondaryChipTextColor)
                 }
                 setViewVisibility(
                     R.id.widget_nearest_plan,
@@ -317,28 +343,108 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 .onFailure { error -> Log.e(TAG, "Unable to refresh widget error rows", error) }
         }
 
+        /**
+         * Wakes the widget at the next lesson start or end today, or just after midnight,
+         * so the current lesson is marked and finished ones fade without opening the app.
+         * Not exact and not waking the phone: a widget nobody looks at can wait.
+         */
+        private fun scheduleNextRefresh(context: Context, lessons: List<ScheduleEventEntity>) {
+            val now = LocalDateTime.now()
+            val nowMinutes = now.hour * 60 + now.minute
+            val nextMinutes = lessons
+                .flatMap { listOfNotNull(parseEventMinutes(it.startTime), parseEventMinutes(it.endTime)) }
+                .filter { it > nowMinutes }
+                .minOrNull()
+            val at = if (nextMinutes != null) {
+                now.toLocalDate().atStartOfDay().plusMinutes(nextMinutes.toLong())
+            } else {
+                now.toLocalDate().plusDays(1).atStartOfDay().plusMinutes(1)
+            }
+            val refresh = PendingIntent.getBroadcast(
+                context,
+                REFRESH_REQUEST_CODE,
+                Intent(context, TodayScheduleWidget::class.java).setAction(ACTION_REFRESH),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            runCatching {
+                context.getSystemService(AlarmManager::class.java).setWindow(
+                    AlarmManager.RTC,
+                    at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    REFRESH_WINDOW_MILLIS,
+                    refresh,
+                )
+            }.onFailure { error -> Log.e(TAG, "Unable to schedule the next widget refresh", error) }
+        }
+
         private const val TAG = "TodayScheduleWidget"
         private const val UPDATE_ALL_DEBOUNCE_MILLIS = 300L
+        private const val ACTION_REFRESH = "com.rassvet.lecturial.widget.REFRESH"
+        private const val REFRESH_REQUEST_CODE = 7301
+        private const val REFRESH_WINDOW_MILLIS = 60_000L
     }
 }
 
 private data class WidgetAppearance(
     val palette: ThemePalette,
+    /** The app's appearance: background, card corners and transparency. */
     val options: AppDisplayOptions,
     val isDark: Boolean,
+    /** Row settings, either the widget's own or the app's scaled down. */
+    val look: WidgetLook,
+    val backgroundOpacity: Float,
 ) {
     val surfaceVariantColor: Int = compositeColors(
         foreground = withAlpha(palette.onSurface, if (isDark) 0.12f else 0.08f),
         background = palette.surface,
     )
-    val secondaryTextColor: Int = withAlpha(palette.onSurface, 0.72f)
     val outlineColor: Int = withAlpha(palette.onSurface, 0.22f)
+    val primaryChipColor: Int = compositeColors(withAlpha(palette.primary, if (isDark) 0.32f else 0.22f), palette.surface)
+    val secondaryChipColor: Int = compositeColors(withAlpha(palette.secondary, if (isDark) 0.28f else 0.18f), palette.surface)
+
+    /** What the lesson rows sit on: the tile colour over the widget background. */
+    private val tileColor: Int = compositeColors(
+        withAlpha(surfaceVariantColor, options.tileOpacityPercent.coerceIn(0, 100) / 100f),
+        palette.background,
+    )
+
+    // Every text colour is checked against what it sits on (WCAG 4.5:1 for text), so
+    // accents and secondary text never melt into the background or the tiles.
+    val headerTitleColor: Int = readable(palette.primary, palette.background, palette.onSurface)
+    val headerTextColor: Int = readable(palette.onSurface, palette.background, palette.onSurface)
+    val headerSecondaryColor: Int = readable(withAlpha(palette.onSurface, 0.78f), palette.background, palette.onSurface)
+    val primaryChipTextColor: Int = readable(palette.onSurface, primaryChipColor, palette.onSurface)
+    val secondaryChipTextColor: Int = readable(palette.onSurface, secondaryChipColor, palette.onSurface)
+    val rowTitleColor: Int = readable(palette.onSurface, tileColor, palette.onSurface)
+    val secondaryTextColor: Int = readable(withAlpha(palette.onSurface, 0.78f), tileColor, palette.onSurface)
+    val currentTimeColor: Int = readable(palette.primary, tileColor, palette.onSurface)
+    /** Finished lessons step back but stay legible (3:1, the large-text minimum). */
+    val finishedTextColor: Int = readable(withAlpha(palette.onSurface, 0.55f), tileColor, palette.onSurface, minRatio = 3.0)
+}
+
+/**
+ * [color] if it reads well enough on [background], otherwise moved towards [fallback]
+ * (the theme's text colour) and, if even that isn't enough, towards black or white.
+ */
+private fun readable(color: Int, background: Int, fallback: Int, minRatio: Double = 4.5): Int {
+    val opaqueBackground = if (Color.alpha(background) == 255) background else compositeColors(background, Color.WHITE)
+    fun contrast(candidate: Int) = ColorUtils.calculateContrast(compositeColors(candidate, opaqueBackground), opaqueBackground)
+    if (contrast(color) >= minRatio) return color
+    val extreme = if (ColorUtils.calculateLuminance(opaqueBackground) > 0.5) Color.BLACK else Color.WHITE
+    for (target in listOf(fallback, extreme)) {
+        for (step in 1..10) {
+            val candidate = ColorUtils.blendARGB(color, target, step / 10f)
+            if (contrast(candidate) >= minRatio) return candidate
+        }
+    }
+    return extreme
 }
 
 private data class WidgetBitmapSize(
     val width: Int,
     val height: Int,
     val cornerRadius: Float,
+    /** Bitmap pixels per dp: the bitmap is downscaled to stay within launcher limits. */
+    val pxPerDp: Float,
 )
 
 private fun defaultWidgetAppearance(@Suppress("UNUSED_PARAMETER") error: Throwable): WidgetAppearance =
@@ -346,6 +452,8 @@ private fun defaultWidgetAppearance(@Suppress("UNUSED_PARAMETER") error: Throwab
         palette = defaultThemePalette(AppTheme.default, false),
         options = AppDisplayOptions(),
         isDark = false,
+        look = WidgetLook.fromApp(AppDisplayOptions()),
+        backgroundOpacity = 1f,
     )
 
 private suspend fun loadWidgetAppearance(app: LecturialApplication): WidgetAppearance {
@@ -353,7 +461,9 @@ private suspend fun loadWidgetAppearance(app: LecturialApplication): WidgetAppea
     val theme = preferences.appTheme.first()
     val isDark = preferences.darkTheme.first()
     val selectedCustomThemeId = preferences.selectedCustomThemeId.first()
-    val palette = if (theme == AppTheme.Custom) {
+    val palette = if (theme == AppTheme.Dynamic) {
+        dynamicThemePalette(app, isDark) ?: defaultThemePalette(AppTheme.default, isDark)
+    } else if (theme == AppTheme.Custom) {
         preferences.customThemes.first()
             .firstOrNull { it.id == selectedCustomThemeId }
             ?.toPalette()
@@ -364,10 +474,14 @@ private suspend fun loadWidgetAppearance(app: LecturialApplication): WidgetAppea
             ?.palette
             ?: defaultThemePalette(theme, isDark)
     }
+    val appOptions = preferences.appDisplayOptions.first()
+    val widgetOptions = preferences.widgetDisplayOptions.first()
     return WidgetAppearance(
         palette = palette,
-        options = preferences.appDisplayOptions.first(),
+        options = appOptions,
         isDark = isDark,
+        look = WidgetLook.resolve(widgetOptions, preferences.widgetStripeColors.first(), appOptions),
+        backgroundOpacity = widgetOptions.backgroundOpacityPercent / 100f,
     )
 }
 
@@ -394,53 +508,139 @@ private fun widgetBitmapSize(
         width = max(1, (requestedWidth * downscale).roundToInt()),
         height = max(1, (requestedHeight * downscale).roundToInt()),
         cornerRadius = 24f * density * downscale,
+        pxPerDp = density * downscale,
     )
 }
 
+/** The app's background — plain, tonal fields or a line wallpaper — at widget size. */
 private fun renderWidgetWallpaper(
+    context: Context,
     appearance: WidgetAppearance,
     size: WidgetBitmapSize,
 ): Bitmap {
     val bitmap = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.clipRoundedRect(size.width, size.height, size.cornerRadius)
+    // The whole background fades together, so a translucent widget keeps its colours.
+    val layer = canvas.saveLayerAlpha(
+        0f,
+        0f,
+        size.width.toFloat(),
+        size.height.toFloat(),
+        (appearance.backgroundOpacity.coerceIn(0f, 1f) * 255).roundToInt(),
+    )
     canvas.drawColor(appearance.palette.background)
     val options = appearance.options
-    if (options.backgroundStyle != AppBackgroundStyle.Dynamic) return bitmap
+    when {
+        options.backgroundStyle == AppBackgroundStyle.Dynamic -> drawTonalFields(canvas, appearance, size)
+        options.backgroundStyle.linePattern != null -> runCatching { drawLineWallpaper(canvas, context, appearance, size) }
+            .onFailure { error -> Log.e("TodayScheduleWidget", "Unable to draw the line wallpaper", error) }
+    }
+    canvas.restoreToCount(layer)
+    drawHeaderScrim(canvas, appearance, size)
+    return bitmap
+}
 
+/**
+ * Softly covers the wallpaper behind the header so the date and counters don't melt into
+ * the lines or tonal fields. A translucent widget keeps part of the veil, enough for the
+ * header to read over any home screen wallpaper.
+ */
+private fun drawHeaderScrim(canvas: Canvas, appearance: WidgetAppearance, size: WidgetBitmapSize) {
+    if (appearance.options.backgroundStyle == AppBackgroundStyle.Classic && appearance.backgroundOpacity >= 1f) return
+    val height = (HEADER_SCRIM_DP * size.pxPerDp).coerceAtMost(size.height.toFloat())
+    val alpha = 0.85f * max(appearance.backgroundOpacity, 0.5f)
+    val color = appearance.palette.background
+    canvas.drawRect(0f, 0f, size.width.toFloat(), height, Paint().apply {
+        shader = LinearGradient(
+            0f,
+            0f,
+            0f,
+            height,
+            intArrayOf(withAlpha(color, alpha), withAlpha(color, alpha), withAlpha(color, 0f)),
+            floatArrayOf(0f, 0.7f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+    })
+}
+
+/** Gradient colours of colourful backgrounds: the user's own or the theme's, start to end. */
+private fun WidgetAppearance.gradientColors(): IntArray {
+    val start = options.backgroundGradientStartColor
+    val end = options.backgroundGradientEndColor
+    return if (start != null && end != null) {
+        intArrayOf(start, options.backgroundGradientAccentColor ?: analogousArgb(palette.primary), end)
+    } else {
+        intArrayOf(palette.primary, analogousArgb(palette.primary), palette.secondary)
+    }
+}
+
+private fun linearGradient(size: WidgetBitmapSize, angleDegrees: Int, colors: IntArray): LinearGradient {
+    val angle = Math.toRadians(angleDegrees.toDouble())
+    val directionX = cos(angle).toFloat()
+    val directionY = sin(angle).toFloat()
+    val distance = abs(directionX) * size.width + abs(directionY) * size.height
+    val centerX = size.width / 2f
+    val centerY = size.height / 2f
+    return LinearGradient(
+        centerX - directionX * distance / 2f,
+        centerY - directionY * distance / 2f,
+        centerX + directionX * distance / 2f,
+        centerY + directionY * distance / 2f,
+        colors,
+        floatArrayOf(0f, 0.5f, 1f),
+        Shader.TileMode.CLAMP,
+    )
+}
+
+/**
+ * The finished line wallpaper, at the same scale as in the app: the pattern's mask is
+ * tiled with mirroring and coloured with the gradient through it.
+ */
+private fun drawLineWallpaper(canvas: Canvas, context: Context, appearance: WidgetAppearance, size: WidgetBitmapSize) {
+    val options = appearance.options
+    val pattern = options.backgroundStyle.linePattern ?: return
+    val field = WallpaperFieldCache.field(context, pattern, options.backgroundLineDensityPercent / 100f)
+    // A multiple of 4 keeps the ALPHA_8 rows unpadded.
+    val tilePx = ((WALLPAPER_TILE_DP * size.pxPerDp) / 4).roundToInt().coerceAtLeast(16) * 4
+    val lineWidthPx = (options.backgroundLineWeight.coerceIn(1, 5) * 0.75f * size.pxPerDp).coerceAtLeast(1f)
+    val mask = Bitmap.createBitmap(tilePx, tilePx, Bitmap.Config.ALPHA_8).apply {
+        copyPixelsFromBuffer(ByteBuffer.wrap(WallpaperPatterns.render(field, tilePx, lineWidthPx)))
+    }
+    val intensity = options.backgroundIntensityPercent.coerceIn(25, 150) / 100f
+    val lineAlpha = ((if (appearance.isDark) 0.5f else 0.38f) * intensity).coerceAtMost(0.9f)
+    val width = size.width.toFloat()
+    val height = size.height.toFloat()
+    val lines = canvas.saveLayer(0f, 0f, width, height, null)
+    canvas.drawRect(0f, 0f, width, height, Paint().apply {
+        shader = BitmapShader(mask, Shader.TileMode.MIRROR, Shader.TileMode.MIRROR)
+    })
+    canvas.drawRect(0f, 0f, width, height, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader = linearGradient(size, options.backgroundGradientAngleDegrees, appearance.gradientColors())
+        alpha = (lineAlpha * 255).roundToInt()
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+    })
+    canvas.restoreToCount(lines)
+    mask.recycle()
+}
+
+private fun drawTonalFields(canvas: Canvas, appearance: WidgetAppearance, size: WidgetBitmapSize) {
+    val options = appearance.options
     val intensity = options.backgroundIntensityPercent.coerceIn(25, 150) / 100f
     val customStart = options.backgroundGradientStartColor
     val customEnd = options.backgroundGradientEndColor
-    val customAccent = options.backgroundGradientAccentColor ?: appearance.palette.tertiary
+    val customAccent = options.backgroundGradientAccentColor ?: analogousArgb(appearance.palette.primary)
     if (customStart != null && customEnd != null) {
-        val angle = Math.toRadians(options.backgroundGradientAngleDegrees.toDouble())
-        val directionX = cos(angle).toFloat()
-        val directionY = sin(angle).toFloat()
-        val distance = abs(directionX) * size.width + abs(directionY) * size.height
-        val centerX = size.width / 2f
-        val centerY = size.height / 2f
         val alpha = ((if (appearance.isDark) 0.30f else 0.22f) * intensity).coerceAtMost(0.55f)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(
-                centerX - directionX * distance / 2f,
-                centerY - directionY * distance / 2f,
-                centerX + directionX * distance / 2f,
-                centerY + directionY * distance / 2f,
-                intArrayOf(
-                    withAlpha(customStart, alpha),
-                    withAlpha(customAccent, alpha),
-                    withAlpha(customEnd, alpha),
-                ),
-                floatArrayOf(0f, 0.5f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-        }
-        canvas.drawRect(0f, 0f, size.width.toFloat(), size.height.toFloat(), paint)
+        val colors = intArrayOf(withAlpha(customStart, alpha), withAlpha(customAccent, alpha), withAlpha(customEnd, alpha))
+        canvas.drawRect(0f, 0f, size.width.toFloat(), size.height.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = linearGradient(size, options.backgroundGradientAngleDegrees, colors)
+        })
     }
 
     val primary = customStart ?: appearance.palette.primary
     val secondary = customEnd ?: appearance.palette.secondary
-    val tertiary = if (customStart != null && customEnd != null) customAccent else appearance.palette.tertiary
+    val tertiary = customAccent
     val primaryAlpha = ((if (appearance.isDark) 0.22f else 0.16f) * intensity).coerceAtMost(1f)
     val secondaryAlpha = ((if (appearance.isDark) 0.16f else 0.12f) * intensity).coerceAtMost(1f)
     val tertiaryAlpha = ((if (appearance.isDark) 0.13f else 0.10f) * intensity).coerceAtMost(1f)
@@ -469,7 +669,6 @@ private fun renderWidgetWallpaper(
         size.height * (0.96f + 0.08f * cos(3.8f) + 0.025f * sin(0.9f)),
         maxDimension * (0.62f + 0.035f * sin(4.7f)),
     )
-    return bitmap
 }
 
 private fun renderWidgetTile(
@@ -477,8 +676,8 @@ private fun renderWidgetTile(
     appearance: WidgetAppearance,
 ): Bitmap {
     val density = context.resources.displayMetrics.density
-    val estimatedHeightDp = 54 + appearance.options.verticalPaddingDp * 2 +
-        (appearance.options.titleMaxLines - 2).coerceAtLeast(0) * appearance.options.titleTextSizeSp
+    val estimatedHeightDp = 54 + appearance.look.verticalPaddingDp * 2 +
+        (appearance.look.titleMaxLines - 2).coerceAtLeast(0) * appearance.look.titleTextSizeSp
     val requestedWidth = max(1, (320 * density).roundToInt())
     val requestedHeight = max(1, (estimatedHeightDp * density).roundToInt())
     // Collection rows are transferred through Binder one by one. A compact bitmap
@@ -578,24 +777,12 @@ private class ScheduleWidgetFactory(
     }
 
     private var items: List<Item> = emptyList()
-    private var lectureStripeColor: Int = WidgetStripePalette.defaultLecture
-    private var practiceStripeColor: Int = WidgetStripePalette.defaultPractice
-    private var showClassroom: Boolean = true
-    private var showTime: Boolean = true
-    private var showStripe: Boolean = true
-    private var showEndTime: Boolean = true
-    private var wrapTitle: Boolean = true
-    private var horizontalPaddingDp: Int = 12
-    private var verticalPaddingDp: Int = 6
-    private var itemSpacingDp: Int = 3
-    private var titleTextSizeSp: Int = 12
-    private var secondaryTextSizeSp: Int = 9
-    private var fontStyleId: String = WidgetFontStyles.defaultId
-    private var letterSpacingPercent: Int = 0
-    private var titleMaxLines: Int = 2
+    private var look: WidgetLook = WidgetLook.fromApp(AppDisplayOptions())
     private var lessonAliases: Map<String, String> = emptyMap()
     private var widgetAppearance: WidgetAppearance? = null
     private var widgetTile: Bitmap? = null
+    /** Minutes since midnight when the rows were built, for the current-lesson mark. */
+    private var nowMinutes: Int = 0
 
     override fun onCreate() = Unit
 
@@ -603,39 +790,15 @@ private class ScheduleWidgetFactory(
         items = runCatching {
             runBlocking {
                 val app = context.applicationContext as LecturialApplication
-                widgetAppearance = runCatching { loadWidgetAppearance(app) }
+                val appearance = runCatching { loadWidgetAppearance(app) }
                     .onFailure { error -> Log.e(SERVICE_TAG, "Unable to load widget appearance; using defaults", error) }
                     .getOrElse(::defaultWidgetAppearance)
-                widgetTile = widgetAppearance?.let { renderWidgetTile(context, it) }
-                val stripeColors = runCatching { app.preferences.widgetStripeColors.first() }.getOrNull()
-                lectureStripeColor = stripeColors?.lecture ?: WidgetStripePalette.defaultLecture
-                practiceStripeColor = stripeColors?.practice ?: WidgetStripePalette.defaultPractice
-                val displayOptions = runCatching { app.preferences.widgetDisplayOptions.first() }.getOrNull()
-                showTime = displayOptions?.showTime ?: true
-                showStripe = displayOptions?.showStripe ?: true
-                showClassroom = displayOptions?.showClassroom ?: true
-                showEndTime = displayOptions?.showEndTime ?: true
-                wrapTitle = displayOptions?.wrapTitle ?: true
-                horizontalPaddingDp = displayOptions?.horizontalPaddingDp ?: 12
-                verticalPaddingDp = displayOptions?.verticalPaddingDp ?: 6
-                itemSpacingDp = displayOptions?.itemSpacingDp ?: 3
-                titleTextSizeSp = displayOptions?.titleTextSizeSp ?: 12
-                secondaryTextSizeSp = displayOptions?.secondaryTextSizeSp ?: 9
-                fontStyleId = displayOptions?.fontStyleId ?: WidgetFontStyles.defaultId
-                letterSpacingPercent = displayOptions?.letterSpacingPercent ?: 0
-                titleMaxLines = displayOptions?.titleMaxLines ?: 2
+                widgetAppearance = appearance
+                widgetTile = renderWidgetTile(context, appearance)
+                look = appearance.look
+                nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
                 lessonAliases = runCatching { app.preferences.lessonAliases.first() }.getOrDefault(emptyMap())
-                val group = app.preferences.selectedGroup.first()
-                val lessons = if (group == null) emptyList() else {
-                    val teacher = app.preferences.languageTeacher(group).first()
-                    app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
-                        com.rassvet.lecturial.model.matchesLanguageTeacher(
-                            it.discipline,
-                            it.teachers.split("\u001F"),
-                            teacher,
-                        )
-                    }
-                }
+                val lessons = todayLessons(app)
                 val plans = app.database.studyPlanDao().all()
                     .filterNot(StudyPlanEntity::isCompleted)
                 val today = LocalDate.now()
@@ -678,23 +841,44 @@ private class ScheduleWidgetFactory(
 
     private fun scheduleItemView(item: Item): RemoteViews =
         RemoteViews(context.packageName, R.layout.widget_schedule_item).apply {
+            val look = look
             listOf(
                 R.id.widget_item_time,
                 R.id.widget_item_title,
                 R.id.widget_item_room,
             ).forEach { viewId ->
-                setFloat(viewId, "setLetterSpacing", letterSpacingPercent / 100f)
+                setFloat(viewId, "setLetterSpacing", look.letterSpacingPercent / 100f)
             }
+            val event = (item as? Item.Lesson)?.event
+            val plan = (item as? Item.Plan)?.plan
+            val planOccurrenceDate = (item as? Item.Plan)?.occurrenceDate
+            val start = event?.let { parseEventMinutes(it.startTime) }
+            val end = event?.let { parseEventMinutes(it.endTime) }
+            val isCurrent = start != null && end != null && nowMinutes in start until end
+            val isFinished = end != null && end <= nowMinutes
             val appearance = widgetAppearance
-            val secondaryTextColor = appearance?.secondaryTextColor
-                ?: context.getColor(R.color.widget_on_surface_variant)
-            setTextColor(R.id.widget_item_time, secondaryTextColor)
-            setTextColor(R.id.widget_item_title, secondaryTextColor)
-            setTextColor(R.id.widget_item_room, secondaryTextColor)
+            val fallbackColor = context.getColor(R.color.widget_on_surface_variant)
+            val titleColor = appearance?.rowTitleColor ?: fallbackColor
+            val secondaryTextColor = appearance?.secondaryTextColor ?: fallbackColor
+            val finishedColor = appearance?.finishedTextColor ?: fallbackColor
+            // Finished lessons step back; the current one is marked in the accent colour.
+            setTextColor(
+                R.id.widget_item_time,
+                when {
+                    isCurrent && appearance != null -> appearance.currentTimeColor
+                    isFinished -> finishedColor
+                    else -> secondaryTextColor
+                },
+            )
+            setTextColor(R.id.widget_item_title, if (isFinished) finishedColor else titleColor)
+            setTextColor(R.id.widget_item_room, if (isFinished) finishedColor else secondaryTextColor)
+            val imageAlpha = if (isFinished) (FINISHED_ALPHA * 255).roundToInt() else 255
+            setInt(R.id.widget_item_stripe, "setImageAlpha", imageAlpha)
+            setInt(R.id.widget_item_background, "setImageAlpha", imageAlpha)
             widgetTile?.let { setImageViewBitmap(R.id.widget_item_background, it) }
-            val horizontalPaddingPx = context.dpToPx(horizontalPaddingDp)
-            val verticalPaddingPx = context.dpToPx(verticalPaddingDp)
-            val spacingPx = context.dpToPx(itemSpacingDp)
+            val horizontalPaddingPx = context.dpToPx(look.horizontalPaddingDp)
+            val verticalPaddingPx = context.dpToPx(look.verticalPaddingDp)
+            val spacingPx = context.dpToPx(look.itemSpacingDp)
             setViewPadding(
                 R.id.widget_item_root,
                 0,
@@ -709,19 +893,16 @@ private class ScheduleWidgetFactory(
                 horizontalPaddingPx,
                 verticalPaddingPx,
             )
-            val event = (item as? Item.Lesson)?.event
-            val plan = (item as? Item.Plan)?.plan
-            val planOccurrenceDate = (item as? Item.Plan)?.occurrenceDate
             val normalizedType = event?.type.orEmpty().lowercase()
             val isPractice = normalizedType.contains("практ")
             setInt(
                 R.id.widget_item_stripe,
                 "setColorFilter",
-                plan?.color ?: if (isPractice) practiceStripeColor else lectureStripeColor,
+                plan?.color ?: if (isPractice) look.practiceStripeColor else look.lectureStripeColor,
             )
             setViewVisibility(
                 R.id.widget_item_stripe,
-                if (showStripe) View.VISIBLE else View.GONE,
+                if (look.showStripe) View.VISIBLE else View.GONE,
             )
             setTextViewText(
                 R.id.widget_item_time,
@@ -732,41 +913,43 @@ private class ScheduleWidgetFactory(
                             planOccurrenceDate?.let(::dueDateLabel),
                             plan.dueTime,
                         ).joinToString(" · ")
-                        showEndTime -> "${event!!.startTime}–${event.endTime}"
+                        isCurrent && look.showEndTime -> "${NOW_LABEL} · до ${event!!.endTime}"
+                        isCurrent -> NOW_LABEL
+                        look.showEndTime -> "${event!!.startTime}–${event.endTime}"
                         else -> event!!.startTime
                     },
-                    fontStyleId,
+                    look.fontStyleId,
                 ),
             )
-            setViewVisibility(R.id.widget_item_time, if (showTime) View.VISIBLE else View.GONE)
+            setViewVisibility(R.id.widget_item_time, if (look.showTime || isCurrent) View.VISIBLE else View.GONE)
             setTextViewTextSize(
                 R.id.widget_item_time,
                 TypedValue.COMPLEX_UNIT_SP,
-                secondaryTextSizeSp.toFloat(),
+                look.secondaryTextSizeSp.toFloat(),
             )
             setTextViewText(
                 R.id.widget_item_title,
-                styleWidgetText(plan?.title ?: renamedDiscipline(event!!.discipline, lessonAliases), fontStyleId),
+                styleWidgetText(plan?.title ?: renamedDiscipline(event!!.discipline, lessonAliases), look.fontStyleId),
             )
-            setInt(R.id.widget_item_title, "setMaxLines", if (wrapTitle) titleMaxLines else 1)
+            setInt(R.id.widget_item_title, "setMaxLines", if (look.wrapTitle) look.titleMaxLines else 1)
             setTextViewTextSize(
                 R.id.widget_item_title,
                 TypedValue.COMPLEX_UNIT_SP,
-                titleTextSizeSp.toFloat(),
+                look.titleTextSizeSp.toFloat(),
             )
             val details = plan?.let {
                 "${StudyPlanType.fromStorageId(it.type).title} · ${it.note}".trimEnd(' ', '·')
             }
                 ?: event!!.classroom.orEmpty().trim()
-            setTextViewText(R.id.widget_item_room, styleWidgetText(details, fontStyleId))
+            setTextViewText(R.id.widget_item_room, styleWidgetText(details, look.fontStyleId))
             setTextViewTextSize(
                 R.id.widget_item_room,
                 TypedValue.COMPLEX_UNIT_SP,
-                secondaryTextSizeSp.toFloat(),
+                look.secondaryTextSizeSp.toFloat(),
             )
             setViewVisibility(
                 R.id.widget_item_room,
-                if ((plan != null || showClassroom) && details.isNotEmpty()) View.VISIBLE else View.GONE,
+                if ((plan != null || look.showClassroom) && details.isNotEmpty()) View.VISIBLE else View.GONE,
             )
             setOnClickFillInIntent(
                 R.id.widget_item_root,
@@ -796,6 +979,9 @@ private class ScheduleWidgetFactory(
 
     private companion object {
         const val SERVICE_TAG = "ScheduleWidgetService"
+        const val NOW_LABEL = "Сейчас"
+        /** How visible a finished lesson's tile and stripe stay. */
+        const val FINISHED_ALPHA = 0.5f
     }
 }
 
@@ -825,11 +1011,29 @@ private fun StudyPlanEntity.widgetOccursOn(date: LocalDate): Boolean {
 
 private fun Context.dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).roundToInt()
 
+/** Height of the header area that gets a veil over the wallpaper. */
+private const val HEADER_SCRIM_DP = 96f
+
+/** Side of one line wallpaper tile, the same as in the app so the pattern keeps its scale. */
+private const val WALLPAPER_TILE_DP = 360f
+
+/** Today's cached lessons of the chosen schedule, with the language-teacher filter applied. */
+private suspend fun todayLessons(app: LecturialApplication): List<ScheduleEventEntity> {
+    val group = app.preferences.selectedGroup.first() ?: return emptyList()
+    val teacher = app.preferences.languageTeacher(group).first()
+    return app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
+        com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers.split("\u001F"), teacher)
+    }
+}
+
+private val ShortDateFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("ru"))
+private val HeaderDateFormatter = DateTimeFormatter.ofPattern("d MMMM, EEE", Locale.forLanguageTag("ru"))
+
 private fun dueDateLabel(date: LocalDate, today: LocalDate = LocalDate.now()): String = when {
     date.isBefore(today) -> "Просрочено"
     date == today -> "Сегодня"
     date == today.plusDays(1) -> "Завтра"
-    else -> date.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("ru")))
+    else -> date.format(ShortDateFormatter)
 }
 
 private fun pluralCount(value: Int, one: String, few: String, many: String): String {

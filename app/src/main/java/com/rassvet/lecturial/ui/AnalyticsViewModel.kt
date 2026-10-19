@@ -113,12 +113,16 @@ data class AnalyticsUiState(
     val specialistOnly: Boolean = true,
     val searchError: String? = null,
     val participants: List<AnalyticsParticipant> = emptyList(),
+    /** Participants switched off by a tap: they stay in the list but aren't compared. */
+    val excludedParticipants: Set<String> = emptySet(),
     val freeRange: FreeTimeRange = FreeTimeRange.ThisWeek,
     val freeResult: FreeTimeResult? = null,
     val expandedSlot: SlotKey? = null,
     val roomSuggestions: Map<SlotKey, RoomSuggestion> = emptyMap(),
     val courseGroups: List<String> = emptyList(),
     val extraTeachers: List<AnalyticsParticipant> = emptyList(),
+    /** Course groups and teachers switched off by a tap: listed, but left out of the load. */
+    val excludedCourse: Set<String> = emptySet(),
     val editingCourse: Boolean = false,
     val loadPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
     val loadSort: LoadSort = LoadSort.ByLoad,
@@ -130,6 +134,14 @@ data class AnalyticsUiState(
     val error: String? = null,
 ) {
     val isBusy: Boolean get() = progress != null
+
+    val activeParticipants: List<AnalyticsParticipant>
+        get() = participants.filterNot { it.key in excludedParticipants }
+
+    val activeCourseGroups: List<String> get() = courseGroups.filterNot { it in excludedCourse }
+
+    val activeExtraTeachers: List<AnalyticsParticipant>
+        get() = extraTeachers.filterNot { it.key in excludedCourse }
 
     fun sorted(rows: List<LoadRow>): List<LoadRow> = when (loadSort) {
         LoadSort.ByLoad -> rows.sortedWith(compareByDescending<LoadRow> { it.stats.pairs }.thenBy { it.shortName })
@@ -158,19 +170,21 @@ class AnalyticsViewModel(
             val key = preferences.selectedGroup.first() ?: return@launch
             val me = AnalyticsParticipant(key, ScheduleTarget.label(key, preferences.selectedTargetName.first()))
             val savedCourse = repository.courseGroups()
-            // Common free time starts with the curator and the course's specialist groups.
+            val excludedCourse = repository.excludedCourseMembers()
+            // Common free time starts with the teacher and the course's specialist groups.
             fun defaultParticipants(course: List<String>) =
                 listOf(me) + course.filter(::isSpecialistGroup).map { AnalyticsParticipant(it, it) }
             _state.update {
                 it.copy(
                     participants = defaultParticipants(savedCourse),
                     courseGroups = savedCourse.ifEmpty { if (ScheduleTarget.isTeacher(key)) emptyList() else listOf(key) },
+                    excludedCourse = excludedCourse,
                     searchMode = if (ScheduleTarget.isTeacher(key)) ScheduleSearchMode.Teacher else ScheduleSearchMode.Group,
                     specialistOnly = ScheduleTarget.isTeacher(key),
                 )
             }
             if (savedCourse.isEmpty() && ScheduleTarget.isTeacher(key)) {
-                // A curator's course defaults to the groups they teach themselves.
+                // A teacher's course defaults to the groups they teach themselves.
                 runCatching {
                     val monday = today().with(DayOfWeek.MONDAY)
                     repository.lessons(key, monday, monday.plusDays(13), today())
@@ -233,7 +247,26 @@ class AnalyticsViewModel(
     }
 
     fun removeParticipant(key: String) = _state.update { state ->
-        state.copy(participants = state.participants.filterNot { it.key == key }, freeResult = null)
+        state.copy(
+            participants = state.participants.filterNot { it.key == key },
+            excludedParticipants = state.excludedParticipants - key,
+            freeResult = null,
+        )
+    }
+
+    /** Switches a participant off or back on without taking it out of the list. */
+    fun toggleParticipant(key: String) = _state.update { state ->
+        val excluded = if (key in state.excludedParticipants) state.excludedParticipants - key else state.excludedParticipants + key
+        state.copy(excludedParticipants = excluded, freeResult = null)
+    }
+
+    /** Switches a course group or teacher off or back on; it stays in the course list. */
+    fun toggleCourseMember(key: String) {
+        _state.update { state ->
+            val excluded = if (key in state.excludedCourse) state.excludedCourse - key else state.excludedCourse + key
+            state.copy(excludedCourse = excluded, courseResult = null)
+        }
+        repository.setExcludedCourseMembers(_state.value.excludedCourse)
     }
 
     /** Adds a group to the course, or an extra teacher when [participant] is a teacher. */
@@ -256,10 +289,12 @@ class AnalyticsViewModel(
             state.copy(
                 courseGroups = state.courseGroups - key,
                 extraTeachers = state.extraTeachers.filterNot { it.key == key },
+                excludedCourse = state.excludedCourse - key,
                 courseResult = null,
             )
         }
         repository.setCourseGroups(_state.value.courseGroups)
+        repository.setExcludedCourseMembers(_state.value.excludedCourse)
     }
 
     fun setEditingCourse(value: Boolean) = _state.update { it.copy(editingCourse = value) }
@@ -322,8 +357,8 @@ class AnalyticsViewModel(
 
     /** Requirements 2 and 5: pairs when every chosen teacher or group is free. */
     fun findFreeTime() {
-        val participants = _state.value.participants
-        if (participants.size < 1) return
+        val participants = _state.value.activeParticipants
+        if (participants.isEmpty()) return
         val range = freeTimeRange(_state.value.freeRange)
         runWork { report ->
             val schedules = linkedMapOf<String, List<ScheduleEvent>>()
@@ -344,12 +379,12 @@ class AnalyticsViewModel(
     }
 
     /**
-     * Requirement 3 for a curator: load of every teacher of the course groups (found in the
+     * Requirement 3 for a teacher: load of every teacher of the course groups (found in the
      * groups' schedules) plus extra teachers, and of the groups themselves.
      */
     fun computeCourse() {
-        val groups = _state.value.courseGroups
-        val extra = _state.value.extraTeachers
+        val groups = _state.value.activeCourseGroups
+        val extra = _state.value.activeExtraTeachers
         if (groups.isEmpty() && extra.isEmpty()) return
         val range = _state.value.loadPeriod.range(today())
         val weeks = weekStartsOf(range).size

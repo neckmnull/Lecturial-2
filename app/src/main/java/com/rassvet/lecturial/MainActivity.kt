@@ -123,6 +123,8 @@ class MainActivity : ComponentActivity() {
                     onWidgetFontStyleChanged = viewModel::setWidgetFontStyle,
                     onWidgetLetterSpacingChanged = viewModel::setWidgetLetterSpacing,
                     onWidgetTitleMaxLinesChanged = viewModel::setWidgetTitleMaxLines,
+                    onWidgetMatchAppChanged = viewModel::setWidgetMatchApp,
+                    onWidgetBackgroundOpacityChanged = viewModel::setWidgetBackgroundOpacity,
                     onLessonAliasChanged = viewModel::setLessonAlias,
                     onAppThemeSelected = viewModel::setAppTheme,
                     onDarkThemeChanged = viewModel::setDarkTheme,

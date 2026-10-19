@@ -74,4 +74,43 @@ class ScheduleRepositoryTest {
 
         assertEquals(1, calls.get())
     }
+
+    @Test
+    fun severalWeeksLoadInOneSessionAndMissedWeeksAreRetried() = runBlocking {
+        val start = LocalDate.of(2026, 8, 31)
+        val sessions = AtomicInteger()
+        val single = AtomicInteger()
+        fun week(group: String, weekStart: LocalDate) =
+            ScheduleWeek(group, weekStart, (0L..6L).map { ScheduleDay(weekStart.plusDays(it), emptyList()) })
+        val remote = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek {
+                single.incrementAndGet()
+                return week(group, weekStart)
+            }
+
+            override suspend fun fetchWeeks(
+                group: String,
+                firstWeekStart: LocalDate,
+                count: Int,
+                onWeek: suspend (ScheduleWeek) -> Unit,
+            ) {
+                sessions.incrementAndGet()
+                // The session breaks off after two of the three weeks.
+                onWeek(week(group, firstWeekStart))
+                onWeek(week(group, firstWeekStart.plusWeeks(1)))
+                throw java.io.IOException("connection reset")
+            }
+        }
+        val repository = ScheduleRepository(database, remote)
+        val delivered = mutableListOf<LocalDate>()
+
+        repository.refreshWeeks("ИОП-ИТ-26/1", listOf(start, start.plusWeeks(1), start.plusWeeks(2))) {
+            delivered += it.week.weekStart
+        }
+
+        assertEquals(1, sessions.get())
+        assertEquals(1, single.get())
+        assertEquals(listOf(start, start.plusWeeks(1), start.plusWeeks(2)), delivered)
+        assertNotNull(repository.cachedWeek("ИОП-ИТ-26/1", start.plusWeeks(2)))
+    }
 }

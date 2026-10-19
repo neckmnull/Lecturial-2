@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
@@ -63,6 +64,17 @@ internal fun MaterialYouBackground(
         contentColor = colors.onBackground,
     ) {
         Box(Modifier.fillMaxSize()) {
+            options.backgroundStyle.linePattern?.let { pattern ->
+                LinePatternLayer(
+                    pattern = pattern,
+                    colors = customGradientColors ?: listOf(colors.primary, colors.primary.analogous(), colors.secondary),
+                    angleDegrees = options.backgroundGradientAngleDegrees,
+                    lineAlpha = ((if (isDark) 0.5f else 0.38f) * intensity).coerceAtMost(0.9f),
+                    densityPercent = options.backgroundLineDensityPercent,
+                    weight = options.backgroundLineWeight,
+                    speedPercent = options.backgroundSpeedPercent,
+                )
+            }
             if (options.backgroundStyle == AppBackgroundStyle.Dynamic) {
                 if (customGradientColors != null) {
                     CustomLinearGradient(
@@ -92,12 +104,16 @@ internal fun MaterialYouBackground(
  * blends into a muddy brown over a dark background; an analogous hue keeps the fields
  * in one family. Yellows turn towards orange rather than towards lime green.
  */
-internal fun Color.analogous(degrees: Float = 28f): Color {
+internal fun Color.analogous(degrees: Float = 28f): Color =
+    Color(analogousArgb(toArgb(), degrees)).copy(alpha = alpha)
+
+/** [analogous] for a packed ARGB colour; the widget draws with these. */
+internal fun analogousArgb(argb: Int, degrees: Float = 28f): Int {
     val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(toArgb(), hsl)
+    ColorUtils.colorToHSL(argb, hsl)
     val shift = if (hsl[0] in 30f..90f) -degrees else degrees
     hsl[0] = (hsl[0] + shift + 360f) % 360f
-    return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = alpha)
+    return ColorUtils.HSLToColor(hsl)
 }
 
 @Composable
@@ -167,7 +183,10 @@ private fun TonalFields(
     Canvas(
         Modifier
             .fillMaxSize()
-            .testTag("dynamic-tonal-fields"),
+            .testTag("dynamic-tonal-fields")
+            // Its own layer: each tick redraws only the fields. Without it the tick
+            // re-recorded the whole screen above the background twenty times a second.
+            .graphicsLayer(),
     ) {
         val (primaryPhase, secondaryPhase, tertiaryPhase, driftPhase) = phases()
         fun softField(color: Color, center: Offset, radius: Float) {

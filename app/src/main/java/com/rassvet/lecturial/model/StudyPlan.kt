@@ -6,6 +6,8 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+private val dueDateFormatter = DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru"))
+
 enum class StudyPlanType(
     val storageId: String,
     val title: String,
@@ -145,6 +147,6 @@ fun StudyPlan.dueLabel(today: LocalDate = LocalDate.now()): String {
         today.minusDays(1) -> "Вчера"
         today -> "Сегодня"
         today.plusDays(1) -> "Завтра"
-        else -> date.format(DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru")))
+        else -> date.format(dueDateFormatter)
     }
 }

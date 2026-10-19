@@ -9,18 +9,19 @@ private val ru = Locale.forLanguageTag("ru")
 private val genericCampusLabels = setOf("основной", "основное", "основная", "основн")
 private val genericCampusInText = Regex("(?iu)[\\s,;:/\\-]*[(\\[]?основн[а-я]*[)\\]]?")
 
-fun weekRangeLabel(start: LocalDate, end: LocalDate): String {
-    val month = DateTimeFormatter.ofPattern("MMMM", ru)
-    val dayMonth = DateTimeFormatter.ofPattern("d MMMM", ru)
-    return if (start.month == end.month && start.year == end.year) {
-        "${start.dayOfMonth}–${end.dayOfMonth} ${start.format(month)}"
+private val whitespace = Regex("""\s+""")
+private val monthFormatter = DateTimeFormatter.ofPattern("MMMM", ru)
+private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", ru)
+
+fun weekRangeLabel(start: LocalDate, end: LocalDate): String =
+    if (start.month == end.month && start.year == end.year) {
+        "${start.dayOfMonth}–${end.dayOfMonth} ${start.format(monthFormatter)}"
     } else {
-        "${start.format(dayMonth)} — ${end.format(dayMonth)}"
+        "${start.format(dayMonthFormatter)} — ${end.format(dayMonthFormatter)}"
     }
-}
 
 fun displayEventType(type: String): String {
-    val stripped = type.replace(genericCampusInText, " ").replace(Regex("\\s+"), " ").trim()
+    val stripped = type.replace(genericCampusInText, " ").replace(whitespace, " ").trim()
     if (stripped.isEmpty()) return ""
     val lower = stripped.lowercase(ru)
     return when {
@@ -49,7 +50,7 @@ fun isGenericCampusLabel(value: String): Boolean {
 }
 
 fun shortenTeacherName(full: String): String {
-    val parts = full.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    val parts = full.trim().split(whitespace).filter { it.isNotEmpty() }
     if (parts.size < 2) return full.trim()
     val initial = parts[0].firstOrNull { it.isLetter() }?.uppercaseChar() ?: return full.trim()
     return "$initial. ${parts.drop(1).joinToString(" ")}"

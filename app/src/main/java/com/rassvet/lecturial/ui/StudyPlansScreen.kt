@@ -140,7 +140,7 @@ internal fun StudyPlansScreen(
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 92.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item(key = "heading") {
@@ -260,7 +260,7 @@ private fun PlansSummary(active: Int, today: Int, overdue: Int) {
 
 @Composable
 private fun SummaryCell(value: String, label: String, accent: Color, modifier: Modifier = Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(modifier, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = accent)
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -272,7 +272,7 @@ private fun SummaryCell(value: String, label: String, accent: Color, modifier: M
 private fun EmptyPlans(filter: PlansFilter, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -673,7 +673,8 @@ internal fun StudyPlanEditor(
     }
 }
 
-private fun planDateLabel(date: LocalDate): String =
-    date.format(java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.forLanguageTag("ru")))
+private val planDateFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.forLanguageTag("ru"))
+
+private fun planDateLabel(date: LocalDate): String = date.format(planDateFormatter)
 
 internal val planTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
