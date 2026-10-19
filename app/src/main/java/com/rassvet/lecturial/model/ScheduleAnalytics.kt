@@ -205,5 +205,70 @@ fun intradayRoomLoad(loads: List<RoomLoad>, slots: List<PairSlot> = SiriusPairSl
     }
 }
 
-/** Specialist ("специалитет") groups on the Sirius site are named "С<digits>…", e.g. "С06ББ-26/1". */
-fun isSpecialistGroup(name: String): Boolean = Regex("^С\\d").containsMatchIn(name.trim())
+/** Specialist-degree ("специалитет") groups are the ИОП-ИТ ones, e.g. "ИОП-ИТ-26/1". */
+fun isSpecialistGroup(name: String): Boolean = name.trim().uppercase().startsWith("ИОП-ИТ")
+
+// ---------------------------------------------------------------------------------------
+// Course overview for a curator
+
+/** "Семенов Михаил Евгеньевич" → "Семенов М. Е."; anything else is returned trimmed. */
+fun surnameWithInitials(fullName: String): String {
+    val parts = fullName.trim().split(Whitespace).filter { it.isNotEmpty() }
+    if (parts.size < 2) return fullName.trim()
+    val initials = parts.drop(1).take(2).mapNotNull { part -> part.firstOrNull { it.isLetter() }?.uppercaseChar() }
+    return (listOf(parts.first()) + initials.map { "$it." }).joinToString(" ")
+}
+
+/** Groups a lesson is for; a teacher's merged lecture lists several, comma-separated. */
+fun ScheduleEvent.studentGroups(): List<String> =
+    studentGroup?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+
+/** Distinct pairs per week (parallel subgroups count once), for every week in [range]. */
+fun weeklyPairs(events: List<ScheduleEvent>, range: ClosedRange<LocalDate>): List<Pair<LocalDate, Int>> {
+    val lessons = events.filter { it.date in range }.distinctBy { Triple(it.date, it.startTime, it.endTime) }
+    val byWeek = lessons.groupingBy { it.date.with(DayOfWeek.MONDAY) }.eachCount()
+    return weekStartsOf(range).map { it to (byWeek[it] ?: 0) }
+}
+
+/** Distinct pairs of [events] held for at least one of [courseGroups]. */
+fun coursePairs(events: List<ScheduleEvent>, courseGroups: Collection<String>, range: ClosedRange<LocalDate>): Int {
+    val course = courseGroups.map { it.trim().lowercase() }.toSet()
+    return events.filter { it.date in range && it.studentGroups().any { group -> group.lowercase() in course } }
+        .distinctBy { Triple(it.date, it.startTime, it.endTime) }
+        .size
+}
+
+/** Everyone teaching the course: teacher names found in the course groups' lessons. */
+fun courseTeacherNames(groupLessons: List<ScheduleEvent>): List<String> =
+    groupLessons.flatMap { it.teachers }
+        .map { it.trim().replace(Whitespace, " ") }
+        .filter { it.isNotEmpty() }
+        .distinctBy { normalizePersonName(it) }
+        .sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+/** Lowercase, "ё" → "е", single spaces: how names are compared between the site's lists. */
+fun normalizePersonName(name: String): String =
+    name.trim().lowercase().replace('ё', 'е').replace(Whitespace, " ")
+
+private val Whitespace = Regex("""\s+""")
+
+enum class LoadLevel(val title: String) { Low("низкая"), Medium("средняя"), High("высокая") }
+
+/** Rough load level by pairs per week: a full-time rate is about ten pairs a week. */
+fun loadLevel(pairsPerWeek: Double): LoadLevel = when {
+    pairsPerWeek >= 10.0 -> LoadLevel.High
+    pairsPerWeek >= 4.0 -> LoadLevel.Medium
+    else -> LoadLevel.Low
+}
+
+/** "1 пара", "3 пары", "5 пар". */
+fun pairsWord(count: Int): String {
+    val n100 = count % 100
+    val n10 = count % 10
+    return when {
+        n100 in 11..14 -> "пар"
+        n10 == 1 -> "пара"
+        n10 in 2..4 -> "пары"
+        else -> "пар"
+    }
+}

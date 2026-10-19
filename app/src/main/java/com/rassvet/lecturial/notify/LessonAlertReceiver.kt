@@ -20,6 +20,7 @@ class LessonAlertReceiver : BroadcastReceiver() {
 class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        UpdateNotifier.schedule(context)
         val pendingResult = goAsync()
         val remaining = AtomicInteger(2)
         val complete = { if (remaining.decrementAndGet() == 0) pendingResult.finish() }

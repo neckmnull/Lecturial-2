@@ -13,7 +13,15 @@ import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.SlotAvailability
 import com.rassvet.lecturial.model.TeacherInfo
+import com.rassvet.lecturial.model.LoadLevel
+import com.rassvet.lecturial.model.coursePairs
+import com.rassvet.lecturial.model.courseTeacherNames
 import com.rassvet.lecturial.model.intradayRoomLoad
+import com.rassvet.lecturial.model.loadLevel
+import com.rassvet.lecturial.model.studentGroups
+import com.rassvet.lecturial.model.surnameWithInitials
+import com.rassvet.lecturial.model.weekStartsOf
+import com.rassvet.lecturial.model.weeklyPairs
 import com.rassvet.lecturial.model.isSpecialistGroup
 import com.rassvet.lecturial.model.occupancyStats
 import com.rassvet.lecturial.model.recommendMeetingSlots
@@ -38,7 +46,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-enum class AnalyticsTab(val title: String) { FreeTime("Общее время"), Load("Нагрузка"), Rooms("Аудитории") }
+enum class AnalyticsTab(val title: String) { Load("Нагрузка"), FreeTime("Общее время"), Rooms("Аудитории") }
+
+enum class LoadSort(val title: String) { ByLoad("По нагрузке"), ByName("По алфавиту") }
 
 enum class FreeTimeRange(val title: String) { ThisWeek("Эта неделя"), NextWeek("Следующая"), TwoWeeks("2 недели") }
 
@@ -48,9 +58,40 @@ data class AnalyticsParticipant(val key: String, val label: String)
 data class FreeTimeResult(
     val recommended: List<SlotAvailability>,
     val freeByDay: Map<LocalDate, List<PairSlot>>,
+    /** Lessons of each participant, by label, to show a day's schedule under a slot. */
+    val schedules: Map<String, List<ScheduleEvent>>,
 )
 
-data class LoadResult(val target: AnalyticsParticipant, val range: ClosedRange<LocalDate>, val stats: OccupancyStats)
+/** Identifies a pair on a date in the free-time results. */
+data class SlotKey(val date: LocalDate, val pair: Int)
+
+val SlotAvailability.key: SlotKey get() = SlotKey(date, slot.number)
+
+/** A free room proposed for a meeting slot. */
+data class RoomSuggestion(val isLoading: Boolean, val room: String? = null, val note: String? = null)
+
+/** One teacher or group in the course overview. */
+data class LoadRow(
+    val participant: AnalyticsParticipant,
+    val stats: OccupancyStats,
+    /** Average over the weeks the course has lessons in. */
+    val pairsPerWeek: Double,
+    /** Pairs held for the course groups; null for group rows. */
+    val coursePairs: Int?,
+    val weekly: List<Pair<LocalDate, Int>>,
+) {
+    val level: LoadLevel get() = loadLevel(pairsPerWeek)
+    val isTeacher: Boolean get() = ScheduleTarget.isTeacher(participant.key)
+    val shortName: String get() = if (isTeacher) surnameWithInitials(participant.label) else participant.label
+}
+
+data class CourseLoadResult(
+    val range: ClosedRange<LocalDate>,
+    val teachers: List<LoadRow>,
+    val groups: List<LoadRow>,
+    /** Names from group schedules that the teacher search couldn't match. */
+    val unresolved: List<String>,
+)
 
 data class RoomsResult(
     val range: ClosedRange<LocalDate>,
@@ -63,7 +104,7 @@ data class AnalyticsProgress(val text: String, val done: Int, val total: Int) {
 }
 
 data class AnalyticsUiState(
-    val tab: AnalyticsTab = AnalyticsTab.FreeTime,
+    val tab: AnalyticsTab = AnalyticsTab.Load,
     val searchMode: ScheduleSearchMode = ScheduleSearchMode.Teacher,
     val query: String = "",
     val isSearching: Boolean = false,
@@ -74,15 +115,26 @@ data class AnalyticsUiState(
     val participants: List<AnalyticsParticipant> = emptyList(),
     val freeRange: FreeTimeRange = FreeTimeRange.ThisWeek,
     val freeResult: FreeTimeResult? = null,
-    val loadTarget: AnalyticsParticipant? = null,
-    val loadPeriod: AnalyticsPeriod = AnalyticsPeriod.Week,
-    val loadResult: LoadResult? = null,
+    val expandedSlot: SlotKey? = null,
+    val roomSuggestions: Map<SlotKey, RoomSuggestion> = emptyMap(),
+    val courseGroups: List<String> = emptyList(),
+    val extraTeachers: List<AnalyticsParticipant> = emptyList(),
+    val editingCourse: Boolean = false,
+    val loadPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
+    val loadSort: LoadSort = LoadSort.ByLoad,
+    val courseResult: CourseLoadResult? = null,
+    val detail: LoadRow? = null,
     val roomPeriod: AnalyticsPeriod = AnalyticsPeriod.Week,
     val roomsResult: RoomsResult? = null,
     val progress: AnalyticsProgress? = null,
     val error: String? = null,
 ) {
     val isBusy: Boolean get() = progress != null
+
+    fun sorted(rows: List<LoadRow>): List<LoadRow> = when (loadSort) {
+        LoadSort.ByLoad -> rows.sortedWith(compareByDescending<LoadRow> { it.stats.pairs }.thenBy { it.shortName })
+        LoadSort.ByName -> rows.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.shortName })
+    }
 
     /** Group results narrowed to specialist groups when that filter is on. */
     val visibleGroups: List<String>
@@ -105,13 +157,35 @@ class AnalyticsViewModel(
             // Start from the user's own schedule: a teacher analyses themselves first.
             val key = preferences.selectedGroup.first() ?: return@launch
             val me = AnalyticsParticipant(key, ScheduleTarget.label(key, preferences.selectedTargetName.first()))
+            val savedCourse = repository.courseGroups()
+            // Common free time starts with the curator and the course's specialist groups.
+            fun defaultParticipants(course: List<String>) =
+                listOf(me) + course.filter(::isSpecialistGroup).map { AnalyticsParticipant(it, it) }
             _state.update {
                 it.copy(
-                    participants = listOf(me),
-                    loadTarget = me,
+                    participants = defaultParticipants(savedCourse),
+                    courseGroups = savedCourse.ifEmpty { if (ScheduleTarget.isTeacher(key)) emptyList() else listOf(key) },
                     searchMode = if (ScheduleTarget.isTeacher(key)) ScheduleSearchMode.Teacher else ScheduleSearchMode.Group,
                     specialistOnly = ScheduleTarget.isTeacher(key),
                 )
+            }
+            if (savedCourse.isEmpty() && ScheduleTarget.isTeacher(key)) {
+                // A curator's course defaults to the groups they teach themselves.
+                runCatching {
+                    val monday = today().with(DayOfWeek.MONDAY)
+                    repository.lessons(key, monday, monday.plusDays(13), today())
+                        .flatMap { lesson -> lesson.studentGroups() }
+                        .distinct()
+                        .sortedWith(String.CASE_INSENSITIVE_ORDER)
+                }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { groups ->
+                    _state.update { current ->
+                        if (current.courseGroups.isNotEmpty()) current
+                        else current.copy(
+                            courseGroups = groups,
+                            participants = if (current.participants == listOf(me)) defaultParticipants(groups) else current.participants,
+                        )
+                    }
+                }
             }
         }
     }
@@ -162,15 +236,84 @@ class AnalyticsViewModel(
         state.copy(participants = state.participants.filterNot { it.key == key }, freeResult = null)
     }
 
-    fun setLoadTarget(participant: AnalyticsParticipant) = _state.update {
-        it.copy(loadTarget = participant, loadResult = null, query = "", teacherResults = emptyList(), groupResults = emptyList())
+    /** Adds a group to the course, or an extra teacher when [participant] is a teacher. */
+    fun addToCourse(participant: AnalyticsParticipant) {
+        _state.update { state ->
+            val cleared = state.copy(query = "", teacherResults = emptyList(), groupResults = emptyList(), courseResult = null)
+            if (ScheduleTarget.isTeacher(participant.key)) {
+                if (state.extraTeachers.any { it.key == participant.key }) cleared
+                else cleared.copy(extraTeachers = state.extraTeachers + participant)
+            } else {
+                if (participant.key in state.courseGroups) cleared
+                else cleared.copy(courseGroups = state.courseGroups + participant.key)
+            }
+        }
+        repository.setCourseGroups(_state.value.courseGroups)
     }
+
+    fun removeFromCourse(key: String) {
+        _state.update { state ->
+            state.copy(
+                courseGroups = state.courseGroups - key,
+                extraTeachers = state.extraTeachers.filterNot { it.key == key },
+                courseResult = null,
+            )
+        }
+        repository.setCourseGroups(_state.value.courseGroups)
+    }
+
+    fun setEditingCourse(value: Boolean) = _state.update { it.copy(editingCourse = value) }
+
+    fun setLoadSort(sort: LoadSort) = _state.update { it.copy(loadSort = sort) }
+
+    fun openDetail(row: LoadRow?) = _state.update { it.copy(detail = row) }
 
     fun setFreeRange(range: FreeTimeRange) = _state.update { it.copy(freeRange = range, freeResult = null) }
 
-    fun setLoadPeriod(period: AnalyticsPeriod) = _state.update { it.copy(loadPeriod = period, loadResult = null) }
+    fun setLoadPeriod(period: AnalyticsPeriod) = _state.update { it.copy(loadPeriod = period, courseResult = null) }
 
     fun setRoomPeriod(period: AnalyticsPeriod) = _state.update { it.copy(roomPeriod = period, roomsResult = null) }
+
+    /** Opens a recommended slot: the day's schedules and, once found, a free room. */
+    fun toggleSlot(slot: SlotAvailability) {
+        val key = slot.key
+        val opening = _state.value.expandedSlot != key
+        _state.update { it.copy(expandedSlot = if (opening) key else null) }
+        if (opening && key !in _state.value.roomSuggestions) suggestRoom(slot)
+    }
+
+    /**
+     * Looks for a free room among those the participants actually use, rooms used that day
+     * first, and checks each one's schedule for the slot.
+     */
+    private fun suggestRoom(slot: SlotAvailability) {
+        val result = _state.value.freeResult ?: return
+        val key = slot.key
+        _state.update { it.copy(roomSuggestions = it.roomSuggestions + (key to RoomSuggestion(isLoading = true))) }
+        viewModelScope.launch {
+            val lessons = result.schedules.values.flatten()
+            val candidates = lessons.mapNotNull { lesson -> lesson.classroom?.trim()?.takeIf { it.isNotEmpty() }?.let { it to lesson.date } }
+                .groupBy({ it.first }, { it.second })
+                .entries
+                .sortedWith(compareByDescending<Map.Entry<String, List<LocalDate>>> { slot.date in it.value }.thenByDescending { it.value.size })
+                .map { it.key }
+                .take(ROOM_CANDIDATES)
+            val weekStart = slot.date.with(DayOfWeek.MONDAY)
+            val suggestion = try {
+                candidates.firstNotNullOfOrNull { room ->
+                    val id = repository.resolveClassroom(room) ?: return@firstNotNullOfOrNull null
+                    val roomLessons = repository.lessons(ScheduleTarget.classroomKey(id), weekStart, weekStart.plusDays(6), today())
+                    room.takeUnless { com.rassvet.lecturial.model.isBusy(roomLessons, slot.date, slot.slot) }
+                }?.let { RoomSuggestion(isLoading = false, room = it, note = "свободна в это время, здесь уже проходят ваши занятия") }
+                    ?: RoomSuggestion(isLoading = false, note = if (candidates.isEmpty()) "Нет данных об аудиториях участников" else "Привычные аудитории в это время заняты")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                RoomSuggestion(isLoading = false, note = "Не удалось проверить аудитории")
+            }
+            _state.update { it.copy(roomSuggestions = it.roomSuggestions + (key to suggestion)) }
+        }
+    }
 
     fun cancel() {
         workJob?.cancel()
@@ -194,23 +337,81 @@ class AnalyticsViewModel(
             val result = FreeTimeResult(
                 recommended = recommendMeetingSlots(upcoming, moment),
                 freeByDay = upcoming.filter { it.isFreeForAll }.groupBy({ it.date }, { it.slot }),
+                schedules = schedules,
             )
-            _state.update { it.copy(freeResult = result) }
+            _state.update { it.copy(freeResult = result, expandedSlot = null, roomSuggestions = emptyMap()) }
         }
     }
 
-    /** Requirement 3: occupancy of a teacher or group over a week, month or semester. */
-    fun computeLoad() {
-        val target = _state.value.loadTarget ?: return
+    /**
+     * Requirement 3 for a curator: load of every teacher of the course groups (found in the
+     * groups' schedules) plus extra teachers, and of the groups themselves.
+     */
+    fun computeCourse() {
+        val groups = _state.value.courseGroups
+        val extra = _state.value.extraTeachers
+        if (groups.isEmpty() && extra.isEmpty()) return
         val range = _state.value.loadPeriod.range(today())
+        val weeks = weekStartsOf(range).size
         runWork { report ->
-            val weeks = com.rassvet.lecturial.model.weekStartsOf(range).size
-            val done = AtomicInteger(0)
-            report(AnalyticsProgress("Загружаем недели", 0, weeks))
-            val lessons = repository.lessons(target.key, range.start, range.endInclusive, today()) {
-                report(AnalyticsProgress("Загружаем недели", done.incrementAndGet(), weeks))
+            val groupLessons = linkedMapOf<String, List<ScheduleEvent>>()
+            groups.forEachIndexed { index, group ->
+                report(AnalyticsProgress("Расписание групп", index, groups.size))
+                groupLessons[group] = repository.lessons(group, range.start, range.endInclusive, today())
             }
-            _state.update { it.copy(loadResult = LoadResult(target, range, occupancyStats(lessons, range))) }
+            val names = courseTeacherNames(groupLessons.values.flatten())
+            val teachers = linkedMapOf<String, AnalyticsParticipant>()
+            val unresolved = mutableListOf<String>()
+            names.forEachIndexed { index, name ->
+                report(AnalyticsProgress("Ищем преподавателей", index, names.size))
+                val teacher = runCatching { repository.resolveTeacher(name) }.getOrElse { failure ->
+                    if (failure is CancellationException) throw failure
+                    null
+                }
+                if (teacher == null) unresolved += name
+                else teachers[ScheduleTarget.teacherKey(teacher.id)] = AnalyticsParticipant(ScheduleTarget.teacherKey(teacher.id), teacher.name)
+            }
+            extra.forEach { teachers.putIfAbsent(it.key, it) }
+
+            val total = teachers.size * weeks
+            val done = AtomicInteger(0)
+            val teacherLessons = java.util.concurrent.ConcurrentHashMap<String, List<ScheduleEvent>>()
+            val queues = teachers.values.withIndex().groupBy({ it.index % WORKERS }, { it.value })
+            coroutineScope {
+                queues.values.map { batch ->
+                    async {
+                        val remote = repository.newRemote()
+                        batch.forEach { teacher ->
+                            teacherLessons[teacher.key] = repository.lessons(
+                                teacher.key, range.start, range.endInclusive, today(), remote,
+                            ) { report(AnalyticsProgress("Нагрузка преподавателей", done.incrementAndGet(), total)) }
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // Average over the weeks that have lessons at all, so an unpublished end of the
+            // semester doesn't dilute everyone's load.
+            val allLessons = groupLessons.values.flatten() + teacherLessons.values.flatten()
+            val activeWeeks = allLessons.filter { it.date in range }.map { it.date.with(DayOfWeek.MONDAY) }.toSet().size
+                .coerceAtLeast(1)
+            fun row(participant: AnalyticsParticipant, lessons: List<ScheduleEvent>, course: Boolean) = run {
+                val stats = occupancyStats(lessons, range)
+                LoadRow(
+                    participant = participant,
+                    stats = stats,
+                    pairsPerWeek = stats.pairs.toDouble() / activeWeeks,
+                    coursePairs = if (course) coursePairs(lessons, groups, range) else null,
+                    weekly = weeklyPairs(lessons, range),
+                )
+            }
+            val result = CourseLoadResult(
+                range = range,
+                teachers = teachers.values.map { row(it, teacherLessons[it.key].orEmpty(), course = true) },
+                groups = groupLessons.map { (group, lessons) -> row(AnalyticsParticipant(group, group), lessons, course = false) },
+                unresolved = unresolved,
+            )
+            _state.update { it.copy(courseResult = result) }
         }
     }
 
@@ -293,5 +494,6 @@ class AnalyticsViewModel(
 
     private companion object {
         const val WORKERS = 2
+        const val ROOM_CANDIDATES = 6
     }
 }

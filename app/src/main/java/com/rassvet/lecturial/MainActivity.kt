@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     private var pendingUpdate: AppUpdateState.ReadyToInstall? = null
     private var installationErrorHandler: ((AppUpdateState.ReadyToInstall, String) -> Unit)? = null
     private var openPlanRequest by mutableStateOf<OpenPlanRequest?>(null)
+    private var openUpdatesKey by mutableStateOf(0L)
     private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -91,6 +92,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     openPlanId = openPlanRequest?.planId,
                     openPlanRequestKey = openPlanRequest?.key ?: 0L,
+                    openUpdatesKey = openUpdatesKey,
                     onOpenPlanConsumed = { key ->
                         if (openPlanRequest?.key == key) openPlanRequest = null
                     },
@@ -155,6 +157,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
+        if (intent?.action == ACTION_OPEN_UPDATES) {
+            openPlanSequence += 1
+            openUpdatesKey = openPlanSequence
+            intent.action = null
+            return
+        }
         val planId = intent?.getStringExtra(EXTRA_PLAN_ID)?.takeIf(String::isNotBlank) ?: return
         openPlanSequence += 1
         openPlanRequest = OpenPlanRequest(openPlanSequence, planId)
@@ -230,6 +238,13 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_PLAN_ID = "com.rassvet.lecturial.extra.PLAN_ID"
+        private const val ACTION_OPEN_UPDATES = "com.rassvet.lecturial.action.OPEN_UPDATES"
+
+        /** Opens Settings → About, where the update can be downloaded. */
+        fun openUpdatesIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(ACTION_OPEN_UPDATES)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         fun openPlanIntent(context: Context, planId: String): Intent =
             Intent(context, MainActivity::class.java)

@@ -164,3 +164,38 @@ internal fun SettingsListItem(
         )
     }
 }
+
+private fun androidx.compose.ui.graphics.vector.PathBuilder.roundedBar(left: Float, top: Float, right: Float, bottom: Float) {
+    val r = (right - left) / 2f
+    moveTo(left, bottom)
+    lineTo(left, top + r)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = right, y1 = top + r)
+    lineTo(right, bottom)
+    close()
+}
+
+private fun statisticsIcon(name: String, filled: Boolean): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+        val bars: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit = {
+            roundedBar(4.5f, 10f, 8.5f, 20f)
+            roundedBar(10f, 4f, 14f, 20f)
+            roundedBar(15.5f, 13f, 19.5f, 20f)
+        }
+        if (filled) {
+            addPath(
+                pathData = androidx.compose.ui.graphics.vector.PathBuilder().apply(bars).nodes,
+                fill = androidx.compose.ui.graphics.SolidColor(Color.Black),
+            )
+        } else {
+            addPath(
+                pathData = androidx.compose.ui.graphics.vector.PathBuilder().apply(bars).nodes,
+                stroke = androidx.compose.ui.graphics.SolidColor(Color.Black),
+                strokeLineWidth = 1.8f,
+                strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+            )
+        }
+    }.build()
+
+/** Bar-chart icon for the statistics destination; core icons have no chart. */
+internal val StatisticsIconFilled: ImageVector by lazy { statisticsIcon("StatisticsFilled", filled = true) }
+internal val StatisticsIconOutlined: ImageVector by lazy { statisticsIcon("StatisticsOutlined", filled = false) }

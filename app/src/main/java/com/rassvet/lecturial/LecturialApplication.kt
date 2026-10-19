@@ -10,6 +10,7 @@ import com.rassvet.lecturial.data.network.SiriusScheduleDataSource
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
 import com.rassvet.lecturial.notify.LessonAlerts
 import com.rassvet.lecturial.notify.DeadlineAlerts
+import com.rassvet.lecturial.notify.UpdateNotifier
 import com.rassvet.lecturial.widget.TodayScheduleWidget
 import java.io.File
 
@@ -43,5 +44,7 @@ class LecturialApplication : Application() {
         TodayScheduleWidget.updateAll(this)
         LessonAlerts.sync(this)
         DeadlineAlerts.sync(this)
+        UpdateNotifier.schedule(this)
+        UpdateNotifier.check(this)
     }
 }

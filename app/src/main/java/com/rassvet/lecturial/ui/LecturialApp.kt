@@ -253,8 +253,8 @@ private val WallpaperGradientColors = listOf(
     0xFF0F766E, 0xFF166534, 0xFF9F1239, 0xFF581C87,
 )
 
-private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Analytics, Testing, About, Privacy }
-private enum class MainSection { Schedule, Plans, Settings }
+private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
+private enum class MainSection { Schedule, Plans, Statistics, Settings }
 private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
 private enum class PreviewLessonType { Lecture, Practice }
 
@@ -269,6 +269,7 @@ fun LecturialApp(
     state: ScheduleUiState,
     openPlanId: String? = null,
     openPlanRequestKey: Long = 0L,
+    openUpdatesKey: Long = 0L,
     onOpenPlanConsumed: (Long) -> Unit = {},
     onGroupSelected: (String) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
@@ -416,6 +417,7 @@ fun LecturialApp(
                     onInstallUpdate,
                     onTeacherSelected = onTeacherSelected,
                     onSearchModeChanged = onSearchModeChanged,
+                    openUpdatesKey = openUpdatesKey,
                 )
             }
         }
@@ -741,6 +743,7 @@ private fun ScheduleScreen(
     onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit,
     onTeacherSelected: (TeacherInfo) -> Unit = {},
     onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
+    openUpdatesKey: Long = 0L,
 ) {
     var mainSection by remember { mutableStateOf(MainSection.Schedule) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -749,13 +752,24 @@ private fun ScheduleScreen(
     LaunchedEffect(openPlanId, openPlanRequestKey) {
         if (openPlanId != null) mainSection = MainSection.Plans
     }
+    // The update notification lands on Settings → About.
+    LaunchedEffect(openUpdatesKey) {
+        if (openUpdatesKey > 0L) {
+            mainSection = MainSection.Settings
+            settingsSection = SettingsSection.About
+        }
+    }
+    // Statistics is a teacher tool; students switching back from teacher mode leave it.
+    LaunchedEffect(state.isTeacherMode) {
+        if (!state.isTeacherMode && mainSection == MainSection.Statistics) mainSection = MainSection.Schedule
+    }
     LaunchedEffect(mainSection) {
         if (mainSection != MainSection.Settings) settingsSection = null
     }
     LaunchedEffect(mainSection, settingsSection) {
         predictiveBackProgress.snapTo(0f)
     }
-    BackHandler(enabled = mainSection == MainSection.Plans) {
+    BackHandler(enabled = mainSection == MainSection.Plans || mainSection == MainSection.Statistics) {
         mainSection = MainSection.Schedule
     }
     PredictiveBackHandler(enabled = mainSection == MainSection.Settings) { backEvents ->
@@ -866,10 +880,6 @@ private fun ScheduleScreen(
                         onAliasChanged = onLessonAliasChanged,
                         onBack = { settingsSection = null },
                     )
-                    SettingsSection.Analytics -> AnalyticsScreen(
-                        modifier = nestedModifier,
-                        onBack = { settingsSection = null },
-                    )
                     SettingsSection.Testing -> NotificationTestingScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
@@ -897,7 +907,6 @@ private fun ScheduleScreen(
                         onOpenLanguageTeacher = { settingsSection = SettingsSection.LanguageTeacher },
                         onOpenAppearance = { settingsSection = SettingsSection.Appearance },
                         onOpenLessonNames = { settingsSection = SettingsSection.Names },
-                        onOpenAnalytics = { settingsSection = SettingsSection.Analytics },
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
@@ -906,6 +915,8 @@ private fun ScheduleScreen(
                         onScheduleWeeksForwardChanged = onScheduleWeeksForwardChanged,
                     )
                 }
+            } else if (selectedSection == MainSection.Statistics) {
+                AnalyticsScreen(onBack = null)
             } else if (selectedSection == MainSection.Plans) {
                 StudyPlansScreen(
                     plans = state.studyPlans,
@@ -953,6 +964,8 @@ private fun ScheduleScreen(
                 mainSection = MainSection.Schedule
             },
             onPlans = { mainSection = MainSection.Plans },
+            onStatistics = { mainSection = MainSection.Statistics },
+            showStatistics = state.isTeacherMode,
             onSettings = { mainSection = MainSection.Settings },
         )
     }
@@ -963,7 +976,9 @@ private fun LecturialBottomBar(
     selectedSection: MainSection,
     onHome: () -> Unit,
     onPlans: () -> Unit,
+    onStatistics: () -> Unit,
     onSettings: () -> Unit,
+    showStatistics: Boolean,
 ) {
     NavigationBar(
         modifier = Modifier
@@ -986,6 +1001,15 @@ private fun LecturialBottomBar(
             icon = Icons.Outlined.CheckCircle,
             label = "Планы",
         )
+        if (showStatistics) {
+            BottomBarItem(
+                selected = selectedSection == MainSection.Statistics,
+                onClick = onStatistics,
+                selectedIcon = StatisticsIconFilled,
+                icon = StatisticsIconOutlined,
+                label = "Статистика",
+            )
+        }
         BottomBarItem(
             selected = selectedSection == MainSection.Settings,
             onClick = onSettings,
@@ -1024,7 +1048,6 @@ private fun AppSettingsScreen(
     onOpenLanguageTeacher: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenLessonNames: () -> Unit,
-    onOpenAnalytics: () -> Unit,
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
@@ -1083,16 +1106,6 @@ private fun AppSettingsScreen(
                     icon = Icons.AutoMirrored.Rounded.List,
                     onClick = onOpenLessonNames,
                     accessibilityLabel = "Открыть: Названия пар",
-                )
-            }
-            item { shape ->
-                SettingsListItem(
-                    title = "Аналитика",
-                    subtitle = "Общее свободное время, нагрузка, аудитории",
-                    shape = shape,
-                    icon = Icons.Rounded.Search,
-                    onClick = onOpenAnalytics,
-                    accessibilityLabel = "Открыть: Аналитика",
                 )
             }
             item { shape ->

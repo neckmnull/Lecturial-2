@@ -75,6 +75,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".notify.UpdateCheckReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notify.BootCompletedReceiver"
             android:directBootAware="false"
             android:exported="true">

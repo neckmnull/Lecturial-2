@@ -99,10 +99,44 @@ class ScheduleAnalyticsTest {
     }
 
     @Test
+    fun `course overview counts course pairs, weeks and teachers`() {
+        fun teaching(date: LocalDate, start: String, end: String, groups: String?, teachers: List<String> = emptyList()) =
+            lesson(date, start, end).copy(studentGroup = groups, teachers = teachers)
+        val events = listOf(
+            teaching(monday, "08:45", "10:05", "ИОП-ИТ-26/1, ИОП-ИТ-26/2"),
+            teaching(monday, "10:20", "11:40", "ИОП-ИТ-24/2"),
+            teaching(monday.plusWeeks(1), "08:45", "10:05", "иоп-ит-26/1"),
+        )
+        val range = monday..monday.plusDays(13)
+
+        assertEquals(2, coursePairs(events, listOf("ИОП-ИТ-26/1"), range))
+        assertEquals(listOf(monday to 2, monday.plusWeeks(1) to 1), weeklyPairs(events, range))
+
+        val groupLessons = listOf(
+            teaching(monday, "08:45", "10:05", null, listOf("Семенов  Михаил Евгеньевич", "Ваганов Михаил Геннадьевич")),
+            teaching(monday, "10:20", "11:40", null, listOf("семенов михаил евгеньевич", " ")),
+        )
+        assertEquals(listOf("Ваганов Михаил Геннадьевич", "Семенов Михаил Евгеньевич"), courseTeacherNames(groupLessons))
+    }
+
+    @Test
+    fun `readable names, levels and plurals`() {
+        assertEquals("Семенов М. Е.", surnameWithInitials("Семенов Михаил Евгеньевич"))
+        assertEquals("Семенов М.", surnameWithInitials("Семенов Михаил"))
+        assertEquals("ЛК", surnameWithInitials("ЛК"))
+        assertEquals(normalizePersonName("Семёнов  Михаил"), normalizePersonName("семенов михаил"))
+        assertEquals(LoadLevel.High, loadLevel(12.0))
+        assertEquals(LoadLevel.Medium, loadLevel(4.0))
+        assertEquals(LoadLevel.Low, loadLevel(1.5))
+        assertEquals(listOf("пара", "пары", "пар", "пар", "пара"), listOf(1, 3, 5, 12, 21).map(::pairsWord))
+    }
+
+    @Test
     fun `specialist groups and classroom names`() {
-        assertTrue(isSpecialistGroup("С06ББ-26/1"))
-        assertFalse(isSpecialistGroup("ИОП-ИТ-26/1"))
-        assertFalse(isSpecialistGroup("Сириус"))
+        assertTrue(isSpecialistGroup("ИОП-ИТ-26/1"))
+        assertTrue(isSpecialistGroup(" иоп-ит-24/2"))
+        assertFalse(isSpecialistGroup("С06ББ-26/1"))
+        assertFalse(isSpecialistGroup("К0409-26/1"))
         assertEquals("Альфа 5.8", ScheduleTarget.classroomLabel("Альфа 5.8Альфа 5.8 (Основной)"))
         assertEquals("1.35К_0 (стартап-лаборатория ИНТЦ)", ScheduleTarget.classroomLabel("1.35К_0 (стартап-лаборатория ИНТЦ) (Основной)"))
         assertEquals("Альфа 5.8", ScheduleTarget.label(ScheduleTarget.classroomKey("Альфа 5.8Альфа 5.8 (Основной)"), null))
