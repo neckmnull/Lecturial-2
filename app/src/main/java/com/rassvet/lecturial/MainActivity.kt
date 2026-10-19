@@ -95,6 +95,8 @@ class MainActivity : ComponentActivity() {
                         if (openPlanRequest?.key == key) openPlanRequest = null
                     },
                     onGroupSelected = viewModel::selectGroup,
+                    onTeacherSelected = viewModel::selectTeacher,
+                    onSearchModeChanged = viewModel::setSearchMode,
                     onGroupSearchQueryChanged = viewModel::setGroupSearchQuery,
                     onGroupsRetry = { viewModel.requestGroups() },
                     onLanguageTeacherSelected = viewModel::selectLanguageTeacher,

@@ -2,7 +2,9 @@ package com.rassvet.lecturial.data.network
 
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
+import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.ScheduleWeek
+import com.rassvet.lecturial.model.TeacherInfo
 import com.rassvet.lecturial.model.displayAddress
 import com.rassvet.lecturial.model.displayComment
 import com.rassvet.lecturial.model.displayEventType
@@ -39,8 +41,21 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 interface ScheduleRemoteDataSource {
+    /** [group] is a schedule key: a group name or [ScheduleTarget.teacherKey]. */
     suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek
     suspend fun fetchGroups(query: String): List<String> = emptyList()
+    suspend fun fetchTeachers(query: String): List<TeacherInfo> = emptyList()
+    suspend fun fetchClassrooms(query: String): List<String> = emptyList()
+
+    /** Consecutive weeks starting at [firstWeekStart], delivered one by one as they load. */
+    suspend fun fetchWeeks(
+        group: String,
+        firstWeekStart: LocalDate,
+        count: Int,
+        onWeek: suspend (ScheduleWeek) -> Unit,
+    ) {
+        repeat(count) { onWeek(fetchWeek(group, firstWeekStart.plusWeeks(it.toLong()))) }
+    }
 }
 
 class SiriusScheduleDataSource(
@@ -69,6 +84,8 @@ class SiriusScheduleDataSource(
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val json = Json { ignoreUnknownKeys = true }
     private val sessionMutex = Mutex()
+    private val teacherPageUrl = baseUrl.trimEnd('/') + "/teacher"
+    private val classroomPageUrl = baseUrl.trimEnd('/') + "/classroom"
 
     override suspend fun fetchGroups(query: String): List<String> = sessionMutex.withLock {
         withContext(Dispatchers.IO) {
@@ -86,14 +103,52 @@ class SiriusScheduleDataSource(
         }
     }
 
-    override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek = sessionMutex.withLock {
+    override suspend fun fetchTeachers(query: String): List<TeacherInfo> = sessionMutex.withLock {
         withContext(Dispatchers.IO) {
-            val normalizedTarget = weekStart.with(DayOfWeek.MONDAY)
             cookieJar.clear()
-            val initialHtml = execute(Request.Builder().url(baseUrl).get().build())
+            val state = livewireStateFromHtml(execute(Request.Builder().url(teacherPageUrl).get().build()))
+            val normalizedQuery = query.trim()
+            if (normalizedQuery.isNotEmpty()) state.syncInput("search", normalizedQuery)
+            LivewireTeacherParser.parse(state.serverMemo["data"]?.jsonObject?.get("teachersList"))
+        }
+    }
+
+    override suspend fun fetchClassrooms(query: String): List<String> = sessionMutex.withLock {
+        withContext(Dispatchers.IO) {
+            cookieJar.clear()
+            val state = livewireStateFromHtml(execute(Request.Builder().url(classroomPageUrl).get().build()))
+            val normalizedQuery = query.trim()
+            if (normalizedQuery.isNotEmpty()) state.syncInput("search", normalizedQuery)
+            LivewireClassroomParser.parse(state.serverMemo["data"]?.jsonObject?.get("classroomsList"))
+        }
+    }
+
+    override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek {
+        var result: ScheduleWeek? = null
+        fetchWeeks(group, weekStart, 1) { result = it }
+        return requireNotNull(result)
+    }
+
+    override suspend fun fetchWeeks(
+        group: String,
+        firstWeekStart: LocalDate,
+        count: Int,
+        onWeek: suspend (ScheduleWeek) -> Unit,
+    ) = sessionMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val normalizedTarget = firstWeekStart.with(DayOfWeek.MONDAY)
+            val teacherId = ScheduleTarget.teacherId(group)
+            val classroomId = ScheduleTarget.classroomId(group)
+            cookieJar.clear()
+            val pageUrl = when {
+                teacherId != null -> teacherPageUrl
+                classroomId != null -> classroomPageUrl
+                else -> baseUrl
+            }
+            val initialHtml = execute(Request.Builder().url(pageUrl).get().build())
             val state = livewireStateFromHtml(initialHtml)
 
-        var data = state.call("set", JSONArray().put(group))
+        var data = state.call("set", JSONArray().put(teacherId ?: classroomId ?: group))
         val baseData = state.serverMemo["data"]?.jsonObject
             ?: throw IOException("Livewire не вернул данные расписания")
         val baseDate = runCatching { parseSiteDate(baseData["date"]?.jsonPrimitive?.content.orEmpty()) }
@@ -108,7 +163,15 @@ class SiriusScheduleDataSource(
             data = state.call(method, JSONArray())
         }
 
-            LivewireEventParser.parse(data, group, normalizedTarget)
+            // One session walks forward week by week instead of reopening the site per week.
+            var week = normalizedTarget
+            repeat(count.coerceAtLeast(0)) { index ->
+                if (index > 0) {
+                    data = state.call("addWeek", JSONArray())
+                    week = week.plusWeeks(1)
+                }
+                onWeek(LivewireEventParser.parse(data, group, week))
+            }
         }
     }
 
@@ -132,6 +195,10 @@ class SiriusScheduleDataSource(
         private val csrfToken: String,
     ) {
         private var requestId = 0
+
+        // "main-grid" for groups, "teachers.teacher-main-grid" for teachers.
+        private val componentName: String =
+            fingerprint["name"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() } ?: "main-grid"
 
         fun call(method: String, params: JSONArray): JSONObject {
             val paramValues = json.parseToJsonElement(params.toString()) as JsonArray
@@ -166,7 +233,7 @@ class SiriusScheduleDataSource(
                 put("updates", buildJsonArray { add(update) })
             }
             val request = Request.Builder()
-                .url(baseUrl.trimEnd('/') + "/livewire/message/main-grid")
+                .url(baseUrl.trimEnd('/') + "/livewire/message/" + componentName)
                 .header("X-CSRF-TOKEN", csrfToken)
                 .header("X-Livewire", "true")
                 .header("Accept", "text/html, application/xhtml+xml")
@@ -228,6 +295,46 @@ class SiriusScheduleDataSource(
         LocalDate.parse(value, DateTimeFormatter.ofPattern("dd.MM.yyyy"))
 }
 
+internal object LivewireClassroomParser {
+    /**
+     * `classroomsList` is a JSON array for the unfiltered list, but a filtered Laravel
+     * collection keeps its original indexes and arrives as an object: {"3": "...", "7": "..."}.
+     */
+    fun parse(list: kotlinx.serialization.json.JsonElement?): List<String> {
+        val entries = when (list) {
+            is JsonArray -> list
+            is JsonObject -> list.values
+            else -> return emptyList()
+        }
+        return entries
+            .mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content?.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+}
+
+internal object LivewireTeacherParser {
+    /** Reads `teachersList`: an object keyed by UUID (or an empty array when nothing matches). */
+    fun parse(list: kotlinx.serialization.json.JsonElement?): List<TeacherInfo> {
+        val entries = when (list) {
+            is JsonObject -> list.values
+            is JsonArray -> list
+            else -> return emptyList()
+        }
+        return entries.mapNotNull { element ->
+            val teacher = element as? JsonObject ?: return@mapNotNull null
+            fun field(name: String) = (teacher[name] as? kotlinx.serialization.json.JsonPrimitive)
+                ?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+            val id = field("id") ?: return@mapNotNull null
+            val name = field("fio")
+                ?: listOfNotNull(field("last_name"), field("first_name"), field("middle_name")).joinToString(" ")
+                    .takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            TeacherInfo(id = id, name = name, department = field("department"))
+        }.distinctBy { it.id }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
+}
+
 internal object LivewireGroupParser {
     private val groupAttribute = Regex("""data-group\s*=\s*(["'])(.*?)\1""", RegexOption.IGNORE_CASE)
 
@@ -272,11 +379,13 @@ internal object LivewireEventParser {
             }
         }
 
+        val teacherSchedule = ScheduleTarget.isTeacher(group)
         val days = (0L..6L).map { offset ->
             val date = weekStart.plusDays(offset)
+            val dayEvents = byDate[date].orEmpty()
             ScheduleDay(
                 date = date,
-                events = byDate[date].orEmpty().sortedWith(
+                events = (if (teacherSchedule) mergeSharedLessons(dayEvents) else dayEvents).sortedWith(
                     compareBy<ScheduleEvent> { it.startTime }
                         .thenBy { it.pairNumber ?: Int.MAX_VALUE }
                         .thenBy { it.discipline },
@@ -285,6 +394,18 @@ internal object LivewireEventParser {
         }
         return ScheduleWeek(group, weekStart, days)
     }
+
+    /**
+     * A teacher's lecture for several groups arrives once per group; show it once with
+     * every group listed.
+     */
+    internal fun mergeSharedLessons(events: List<ScheduleEvent>): List<ScheduleEvent> =
+        events.groupBy { listOf(it.date, it.startTime, it.endTime, it.discipline, it.type, it.classroom) }
+            .values
+            .map { same ->
+                val groups = same.mapNotNull { it.studentGroup }.distinct()
+                same.first().copy(studentGroup = groups.joinToString(", ").ifEmpty { null })
+            }
 
     private fun JSONObject.toDomain(group: String, sourcePosition: String): ScheduleEvent? {
         val date = runCatching { LocalDate.parse(optString("date"), dateFormatter) }.getOrNull()
@@ -332,6 +453,7 @@ internal object LivewireEventParser {
             teachers = teachers,
             comment = displayComment(optNullableString("comment")),
             onlineUrl = optNullableString("urlOnline"),
+            studentGroup = optNullableString("group"),
         )
     }
 

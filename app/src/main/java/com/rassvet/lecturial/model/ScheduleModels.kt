@@ -15,6 +15,8 @@ data class ScheduleEvent(
     val teachers: List<String>,
     val comment: String?,
     val onlineUrl: String?,
+    /** The student group a lesson is for; shown in teacher mode instead of the teacher. */
+    val studentGroup: String? = null,
 )
 
 data class ScheduleDay(
