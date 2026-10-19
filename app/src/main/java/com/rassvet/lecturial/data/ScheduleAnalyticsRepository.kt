@@ -4,7 +4,10 @@ import android.content.Context
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.network.ScheduleRemoteDataSource
 import com.rassvet.lecturial.model.ScheduleEvent
+import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.TeacherInfo
+import com.rassvet.lecturial.model.normalizePersonName
+import org.json.JSONObject
 import com.rassvet.lecturial.model.weekStartsOf
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
@@ -95,6 +98,55 @@ class ScheduleAnalyticsRepository(
         return found.sorted()
     }
 
+    /**
+     * The site's teacher for a name seen in a group's schedule. Lessons only carry names,
+     * so the name is looked up once and the match is remembered.
+     */
+    suspend fun resolveTeacher(name: String): TeacherInfo? {
+        val wanted = normalizePersonName(name)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val known = runCatching { JSONObject(prefs.getString(KEY_TEACHER_IDS, null) ?: "{}") }.getOrDefault(JSONObject())
+        known.optJSONObject(wanted)?.let { cached ->
+            return TeacherInfo(cached.getString("id"), cached.getString("name"), cached.optString("department").ifBlank { null })
+        }
+        val surname = name.trim().substringBefore(' ')
+        val match = sequenceOf(name.trim(), surname).distinct().firstNotNullOfOrNull { query ->
+            searchRemote.fetchTeachers(query).firstOrNull { normalizePersonName(it.name) == wanted }
+        } ?: return null
+        known.put(wanted, JSONObject().put("id", match.id).put("name", match.name).put("department", match.department ?: ""))
+        withContext(Dispatchers.IO) { prefs.edit().putString(KEY_TEACHER_IDS, known.toString()).apply() }
+        return match
+    }
+
+    /**
+     * The site's id for a classroom name as lessons show it ("Альфа 5.8"); the site lists
+     * rooms as "Альфа 5.8Альфа 5.8 (Основной)". Matches are remembered.
+     */
+    suspend fun resolveClassroom(label: String): String? {
+        val wanted = label.trim().lowercase()
+        if (wanted.isEmpty()) return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val known = runCatching { JSONObject(prefs.getString(KEY_CLASSROOM_IDS, null) ?: "{}") }.getOrDefault(JSONObject())
+        known.optString(wanted).takeIf { it.isNotEmpty() }?.let { return it }
+        val id = searchRemote.fetchClassrooms(label.trim())
+            .firstOrNull { ScheduleTarget.classroomLabel(it).trim().lowercase() == wanted }
+            ?: return null
+        known.put(wanted, id)
+        withContext(Dispatchers.IO) { prefs.edit().putString(KEY_CLASSROOM_IDS, known.toString()).apply() }
+        return id
+    }
+
+    /** Groups the curator follows; empty until chosen. */
+    fun courseGroups(): List<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_COURSE_GROUPS, null)
+            ?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+
+    fun setCourseGroups(groups: List<String>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_COURSE_GROUPS, groups.joinToString("\n"))
+            .apply()
+    }
+
     private fun consecutiveRuns(weeks: List<LocalDate>): List<List<LocalDate>> {
         val runs = mutableListOf<MutableList<LocalDate>>()
         weeks.sorted().forEach { week ->
@@ -113,6 +165,9 @@ class ScheduleAnalyticsRepository(
         const val PREFS = "analytics"
         const val KEY_ROOMS = "classrooms"
         const val KEY_ROOMS_AT = "classrooms_at"
+        const val KEY_TEACHER_IDS = "teacher_ids"
+        const val KEY_CLASSROOM_IDS = "classroom_ids"
+        const val KEY_COURSE_GROUPS = "course_groups"
         val ROOM_SEEDS = listOf(
             "Альфа", "К_", "К", "Л", "Б", "А", "Г", "Д", "Н", "О", "П", "Р", "С", "Т", "Ф",
             "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", ",", "-",
