@@ -60,28 +60,55 @@
                     android:textSize="17sp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/widget_lesson_count"
+            <!-- Chip backgrounds are separate images so the widget can tint them with the theme. -->
+            <FrameLayout
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/widget_stat_background"
-                android:fontFamily="sans-serif-medium"
-                android:paddingHorizontal="9dp"
-                android:paddingVertical="5dp"
-                android:textColor="@color/widget_on_primary_container"
-                android:textSize="10sp" />
+                android:layout_height="wrap_content">
 
-            <TextView
-                android:id="@+id/widget_plan_count"
+                <ImageView
+                    android:id="@+id/widget_lesson_count_background"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_chip"
+                    android:tint="@color/widget_primary_container" />
+
+                <TextView
+                    android:id="@+id/widget_lesson_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:paddingHorizontal="9dp"
+                    android:paddingVertical="5dp"
+                    android:textColor="@color/widget_on_primary_container"
+                    android:textSize="10sp" />
+            </FrameLayout>
+
+            <FrameLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:background="@drawable/widget_plan_stat_background"
-                android:fontFamily="sans-serif-medium"
-                android:paddingHorizontal="9dp"
-                android:paddingVertical="5dp"
-                android:textColor="@color/widget_on_secondary_container"
-                android:textSize="10sp" />
+                android:layout_marginStart="6dp">
+
+                <ImageView
+                    android:id="@+id/widget_plan_count_background"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_chip"
+                    android:tint="@color/widget_secondary_container" />
+
+                <TextView
+                    android:id="@+id/widget_plan_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:paddingHorizontal="9dp"
+                    android:paddingVertical="5dp"
+                    android:textColor="@color/widget_on_secondary_container"
+                    android:textSize="10sp" />
+            </FrameLayout>
         </LinearLayout>
 
         <LinearLayout

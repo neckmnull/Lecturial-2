@@ -1,5 +1,18 @@
 package com.rassvet.lecturial.ui
 
+import com.rassvet.lecturial.model.GradientPreset
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import com.rassvet.lecturial.model.CardDensity
+import com.rassvet.lecturial.model.CardTextSize
+import com.rassvet.lecturial.model.CardCorners
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.rounded.Search
 import com.rassvet.lecturial.model.TeacherInfo
 import androidx.compose.material.icons.outlined.AccountBox
@@ -93,7 +106,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.MutableState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -200,6 +215,9 @@ import com.rassvet.lecturial.model.occursOn
 import com.rassvet.lecturial.model.occurrenceOn
 import com.rassvet.lecturial.model.toPalette
 import com.rassvet.lecturial.ui.theme.defaultThemePalette
+import com.rassvet.lecturial.ui.theme.dynamicThemePalette
+import com.rassvet.lecturial.ui.theme.supportsDynamicTheme
+import androidx.compose.material3.ButtonDefaults
 import com.rassvet.lecturial.model.parseThemeColor
 import com.rassvet.lecturial.model.themeColorHex
 import com.rassvet.lecturial.ui.theme.LecturialTheme
@@ -256,7 +274,6 @@ private val WallpaperGradientColors = listOf(
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
 private enum class MainSection { Schedule, Plans, Statistics, Settings }
 private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
-private enum class PreviewLessonType { Lecture, Practice }
 
 private fun ScheduleUiState.loadedScheduleWeeks(): List<ScheduleWeek> =
     scheduleWeeks.ifEmpty { listOfNotNull(week, nextWeek) }
@@ -293,6 +310,8 @@ fun LecturialApp(
     onWidgetFontStyleChanged: (String) -> Unit = {},
     onWidgetLetterSpacingChanged: (Int) -> Unit = {},
     onWidgetTitleMaxLinesChanged: (Int) -> Unit = {},
+    onWidgetMatchAppChanged: (Boolean) -> Unit = {},
+    onWidgetBackgroundOpacityChanged: (Int) -> Unit = {},
     onLessonAliasChanged: (String, String) -> Unit = { _, _ -> },
     onLanguageTeacherSelected: (String?) -> Unit = {},
     onGroupSearchQueryChanged: (String) -> Unit = {},
@@ -362,63 +381,75 @@ fun LecturialApp(
                     onRetry = onRetry,
                     onBack = { returnToGroups = true },
                 )
-                else -> ScheduleScreen(
-                    state.copy(week = state.week?.forLanguageTeacher(state.languageTeacher),
-                        nextWeek = state.nextWeek?.forLanguageTeacher(state.languageTeacher),
-                        scheduleWeeks = state.scheduleWeeks.map { it.forLanguageTeacher(state.languageTeacher) },
-                        events = state.events.filter { com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, state.languageTeacher) }),
-                    openPlanId,
-                    openPlanRequestKey,
-                    onOpenPlanConsumed,
-                    onGroupSelected,
-                    onGroupSearchQueryChanged,
-                    onGroupsRetry,
-                    onDateSelected,
-                    onMoveWeek,
-                    onToday,
-                    onRefresh,
-                    onRetry,
-                    onLectureStripeColorSelected,
-                    onPracticeStripeColorSelected,
-                    onWidgetShowTimeChanged,
-                    onWidgetShowStripeChanged,
-                    onWidgetShowClassroomChanged,
-                    onWidgetShowEndTimeChanged,
-                    onWidgetWrapTitleChanged,
-                    onWidgetOuterPaddingChanged,
-                    onWidgetHorizontalPaddingChanged,
-                    onWidgetVerticalPaddingChanged,
-                    onWidgetItemSpacingChanged,
-                    onWidgetTitleTextSizeChanged,
-                    onWidgetSecondaryTextSizeChanged,
-                    onWidgetFontStyleChanged,
-                    onWidgetLetterSpacingChanged,
-                    onWidgetTitleMaxLinesChanged,
-                    onLessonAliasChanged,
-                    onLanguageTeacherSelected,
-                    onAppThemeSelected,
-                    onDarkThemeChanged,
-                    onBuiltInThemeSaved,
-                    onBuiltInThemeReset,
-                    onCustomThemeSelected,
-                    onCustomThemeSaved,
-                    onCustomThemeDeleted,
-                    onAppDisplayOptionsChanged,
-                    onAppDisplayOptionsReset,
-                    onStudyPlanSaved,
-                    onStudyPlanCompletedChanged,
-                    onStudyPlanDeleted,
-                    onDeadlineReminderDaysChanged,
-                    onLessonAlertsPause,
-                    onScheduleWeeksBackChanged,
-                    onScheduleWeeksForwardChanged,
-                    onCheckForUpdates,
-                    onDownloadUpdate,
-                    onInstallUpdate,
-                    onTeacherSelected = onTeacherSelected,
-                    onSearchModeChanged = onSearchModeChanged,
-                    openUpdatesKey = openUpdatesKey,
-                )
+                else -> {
+                    // Filtered once per schedule change: settings sliders and the minute tick
+                    // copy the state without touching the weeks, so these keys stay the same.
+                    val teacher = state.languageTeacher
+                    val week = remember(state.week, teacher) { state.week?.forLanguageTeacher(teacher) }
+                    val nextWeek = remember(state.nextWeek, teacher) { state.nextWeek?.forLanguageTeacher(teacher) }
+                    val scheduleWeeks = remember(state.scheduleWeeks, teacher) {
+                        state.scheduleWeeks.map { it.forLanguageTeacher(teacher) }
+                    }
+                    val events = remember(state.events, teacher) {
+                        state.events.filter { com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, teacher) }
+                    }
+                    ScheduleScreen(
+                        state.copy(week = week, nextWeek = nextWeek, scheduleWeeks = scheduleWeeks, events = events),
+                        openPlanId,
+                        openPlanRequestKey,
+                        onOpenPlanConsumed,
+                        onGroupSelected,
+                        onGroupSearchQueryChanged,
+                        onGroupsRetry,
+                        onDateSelected,
+                        onMoveWeek,
+                        onToday,
+                        onRefresh,
+                        onRetry,
+                        onLectureStripeColorSelected,
+                        onPracticeStripeColorSelected,
+                        onWidgetShowTimeChanged,
+                        onWidgetShowStripeChanged,
+                        onWidgetShowClassroomChanged,
+                        onWidgetShowEndTimeChanged,
+                        onWidgetWrapTitleChanged,
+                        onWidgetOuterPaddingChanged,
+                        onWidgetHorizontalPaddingChanged,
+                        onWidgetVerticalPaddingChanged,
+                        onWidgetItemSpacingChanged,
+                        onWidgetTitleTextSizeChanged,
+                        onWidgetSecondaryTextSizeChanged,
+                        onWidgetFontStyleChanged,
+                        onWidgetLetterSpacingChanged,
+                        onWidgetTitleMaxLinesChanged,
+                        onWidgetMatchAppChanged,
+                        onWidgetBackgroundOpacityChanged,
+                        onLessonAliasChanged,
+                        onLanguageTeacherSelected,
+                        onAppThemeSelected,
+                        onDarkThemeChanged,
+                        onBuiltInThemeSaved,
+                        onBuiltInThemeReset,
+                        onCustomThemeSelected,
+                        onCustomThemeSaved,
+                        onCustomThemeDeleted,
+                        onAppDisplayOptionsChanged,
+                        onAppDisplayOptionsReset,
+                        onStudyPlanSaved,
+                        onStudyPlanCompletedChanged,
+                        onStudyPlanDeleted,
+                        onDeadlineReminderDaysChanged,
+                        onLessonAlertsPause,
+                        onScheduleWeeksBackChanged,
+                        onScheduleWeeksForwardChanged,
+                        onCheckForUpdates,
+                        onDownloadUpdate,
+                        onInstallUpdate,
+                        onTeacherSelected = onTeacherSelected,
+                        onSearchModeChanged = onSearchModeChanged,
+                        openUpdatesKey = openUpdatesKey,
+                    )
+                }
             }
         }
     }
@@ -440,19 +471,10 @@ private fun LanguageTeacherSelectionScreen(
     val loading = state.isLoading || state.isRefreshing || (state.loadedScheduleWeeks().isEmpty() && state.errorMessage == null)
     BackHandler(onBack = onBack)
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
-        androidx.compose.material3.FilledTonalButton(
-            onClick = onBack,
-            modifier = Modifier.height(48.dp).semantics { contentDescription = backContentDescription },
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Назад", style = MaterialTheme.typography.labelLarge)
-        }
-        Spacer(Modifier.height(16.dp))
+        BackIconButton(onBack, contentDescription = backContentDescription)
+        Spacer(Modifier.height(8.dp))
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -486,8 +508,9 @@ private fun LanguageTeacherSelectionScreen(
         Button(
             onClick = { onSelected(selectedTeacher?.takeIf { it.isNotBlank() }) },
             enabled = selectedTeacher != null,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text("Продолжить", style = MaterialTheme.typography.titleMedium) }
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+        ) { Text("Продолжить", style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight)) }
         Text("Выбор можно изменить в настройках.", Modifier.fillMaxWidth().padding(top = 10.dp),
             textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -507,7 +530,7 @@ private fun TeacherChoiceCard(title: String, selected: Boolean, onClick: () -> U
     Surface(onClick = onClick, interactionSource = interaction,
         modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
             .semantics { this.selected = selected },
-        shape = RoundedCornerShape(14.dp), color = color,
+        shape = MaterialTheme.shapes.medium, color = color,
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.primary)
@@ -619,7 +642,7 @@ private fun GroupSelectionScreen(
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .semantics { this.selected = selected },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MaterialTheme.shapes.medium,
                     color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
                     border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                 ) {
@@ -645,7 +668,7 @@ private fun GroupSelectionScreen(
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .semantics { this.selected = selected },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MaterialTheme.shapes.medium,
                     color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
                     border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                 ) {
@@ -653,14 +676,14 @@ private fun GroupSelectionScreen(
                 }
             }
         }
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
         Button(
             onClick = {
                 if (teacherSearch) selectedTeacher?.let(onTeacherSelected) else selectedGroup?.let(onGroupSelected)
             },
             enabled = hasSelection,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
         ) {
             AnimatedContent(
                 targetState = hasSelection,
@@ -673,7 +696,7 @@ private fun GroupSelectionScreen(
                         teacherSearch -> "Выберите себя в списке"
                         else -> "Выбери группу"
                     },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight),
                 )
             }
         }
@@ -720,6 +743,8 @@ private fun ScheduleScreen(
     onWidgetFontStyleChanged: (String) -> Unit,
     onWidgetLetterSpacingChanged: (Int) -> Unit,
     onWidgetTitleMaxLinesChanged: (Int) -> Unit,
+    onWidgetMatchAppChanged: (Boolean) -> Unit,
+    onWidgetBackgroundOpacityChanged: (Int) -> Unit,
     onLessonAliasChanged: (String, String) -> Unit,
     onLanguageTeacherSelected: (String?) -> Unit,
     onAppThemeSelected: (AppTheme) -> Unit,
@@ -772,6 +797,38 @@ private fun ScheduleScreen(
     BackHandler(enabled = mainSection == MainSection.Plans || mainSection == MainSection.Statistics) {
         mainSection = MainSection.Schedule
     }
+    // Kept outside the tab transition: coming back to the schedule reuses the rows and the
+    // scroll position instead of rebuilding the list and jumping to today a frame later.
+    val scheduleRows = remember(
+        state.scheduleWeeks,
+        state.week,
+        state.nextWeek,
+        state.errorMessage,
+        state.lastUpdatedMillis,
+        state.selectedGroup,
+        state.weekStart,
+        state.selectedDate,
+        state.now,
+        state.lessonAliases,
+        state.studyPlans,
+    ) {
+        buildScheduleRows(
+            scheduleWeeks = state.scheduleWeeks,
+            week = state.week,
+            nextWeek = state.nextWeek,
+            currentWeekStart = state.weekStart,
+            errorMessage = state.errorMessage,
+            lastUpdatedMillis = state.lastUpdatedMillis,
+            group = state.scheduleLabel,
+            teacherMode = state.isTeacherMode,
+            selectedDate = state.selectedDate,
+            now = state.now,
+            aliases = state.lessonAliases,
+            plans = state.studyPlans,
+        )
+    }
+    val scheduleListState = rememberLazyListState()
+    val scheduleScrolledFor = remember { mutableStateOf<String?>(null) }
     PredictiveBackHandler(enabled = mainSection == MainSection.Settings) { backEvents ->
         try {
             backEvents.collect { event -> predictiveBackProgress.snapTo(event.progress) }
@@ -872,6 +929,8 @@ private fun ScheduleScreen(
                         onFontStyleChanged = onWidgetFontStyleChanged,
                         onLetterSpacingChanged = onWidgetLetterSpacingChanged,
                         onTitleMaxLinesChanged = onWidgetTitleMaxLinesChanged,
+                        onMatchAppChanged = onWidgetMatchAppChanged,
+                        onBackgroundOpacityChanged = onWidgetBackgroundOpacityChanged,
                     )
                     SettingsSection.Names -> LessonNamesScreen(
                         modifier = nestedModifier,
@@ -947,6 +1006,9 @@ private fun ScheduleScreen(
                 ) {
                     ScheduleContent(
                         state = state,
+                        rows = scheduleRows,
+                        listState = scheduleListState,
+                        scrolledForState = scheduleScrolledFor,
                         onRetry = onRetry,
                         onToday = onToday,
                         onStudyPlanSaved = onStudyPlanSaved,
@@ -1060,7 +1122,7 @@ private fun AppSettingsScreen(
             .fillMaxSize()
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
+            .padding(horizontal = 16.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Настройки", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
@@ -1177,7 +1239,7 @@ private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -
             .fillMaxWidth()
             .semantics { contentDescription = "Открыть: $title" }
             .graphicsLayer { scaleX = scale; scaleY = scale },
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(
@@ -1203,7 +1265,7 @@ private fun ScheduleRangeSettings(
     weeksForward: Int,
     onWeeksBackChanged: (Int) -> Unit,
     onWeeksForwardChanged: (Int) -> Unit,
-    shape: Shape = RoundedCornerShape(24.dp),
+    shape: Shape = MaterialTheme.shapes.extraLarge,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1276,37 +1338,30 @@ private fun AppearanceSettingsScreen(
     var editedTheme by remember { mutableStateOf<CustomAppTheme?>(null) }
     var editedBuiltInTheme by remember { mutableStateOf<AppTheme?>(null) }
     var creatingTheme by remember { mutableStateOf(false) }
+    // Live schedule preview: floats in on any change to the lesson cards, stays while the
+    // user keeps adjusting, and leaves a few seconds after the last change unless pinned.
     var previewOptions by remember { mutableStateOf(appDisplayOptions) }
     var previewRequestKey by remember { mutableStateOf(0) }
     var previewVisible by remember { mutableStateOf(false) }
-    var previewLessonType by remember { mutableStateOf(PreviewLessonType.Lecture) }
+    var previewPinned by remember { mutableStateOf(false) }
     LaunchedEffect(appDisplayOptions) {
         previewOptions = appDisplayOptions
     }
-    LaunchedEffect(previewRequestKey) {
+    LaunchedEffect(previewRequestKey, previewPinned) {
         if (previewRequestKey == 0) return@LaunchedEffect
         previewVisible = true
-        delay(2_400)
+        if (previewPinned) return@LaunchedEffect
+        delay(PREVIEW_HIDE_DELAY_MILLIS)
         previewVisible = false
     }
     fun updateDisplayOptions(updated: AppDisplayOptions) {
-        val lectureChanged = updated.lectureStripeColor != appDisplayOptions.lectureStripeColor
-        val practiceChanged = updated.practiceStripeColor != appDisplayOptions.practiceStripeColor
-        if (lectureChanged || practiceChanged) {
-            previewOptions = updated
-            if (lectureChanged) {
-                previewLessonType = PreviewLessonType.Lecture
-            } else if (practiceChanged) {
-                previewLessonType = PreviewLessonType.Practice
-            }
-            previewRequestKey++
-        } else {
-            previewVisible = false
-        }
+        previewOptions = updated
+        previewRequestKey++
         onAppDisplayOptionsChanged(updated)
     }
     fun updateBackgroundOptions(updated: AppDisplayOptions) {
-        previewVisible = false
+        // The whole screen already shows the background, so the card would only get in the way.
+        if (!previewPinned) previewVisible = false
         onAppDisplayOptionsChanged(updated)
     }
     val appearanceSection = when {
@@ -1390,17 +1445,7 @@ private fun AppearanceSettingsScreen(
                 )
             }
             AppearanceSection.Settings -> Box(Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BackIconButton(onBack)
-            Text("Оформление", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        }
+                SettingsPage(title = "Оформление", onBack = onBack) {
         Text(
             "Общее оформление приложения и расписания. Все сохранённые изменения применяются сразу.",
             style = MaterialTheme.typography.bodyMedium,
@@ -1413,75 +1458,61 @@ private fun AppearanceSettingsScreen(
             checked = darkTheme,
             onCheckedChange = onDarkThemeChanged,
         )
+        Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        val selectedCustomTheme = customThemes.firstOrNull {
+            selectedTheme == AppTheme.Custom && it.id == selectedCustomThemeId
+        }
+        val context = LocalContext.current
+        val builtInThemes = AppTheme.entries.filter { theme ->
+            theme != AppTheme.Custom && (theme != AppTheme.Dynamic || supportsDynamicTheme)
+        }
+        val swatches = builtInThemes.map { theme ->
+            val palette = (if (theme == AppTheme.Dynamic) dynamicThemePalette(context, darkTheme) else null)
+                ?: builtInThemeOverrides.firstOrNull { it.theme == theme && it.isDark == darkTheme }?.palette
+                ?: defaultThemePalette(theme, darkTheme)
+            ThemeSwatch(
+                key = theme.storageId,
+                name = appThemeTitle(theme),
+                primary = Color(palette.primary),
+                secondary = Color(palette.secondary),
+                tertiary = Color(palette.tertiary),
+                selected = selectedTheme == theme,
+                onClick = { onThemeSelected(theme) },
+            )
+        } + customThemes.map { theme ->
+            ThemeSwatch(
+                key = theme.id,
+                name = theme.name,
+                primary = Color(theme.primary),
+                secondary = Color(theme.secondary),
+                tertiary = Color(theme.tertiary),
+                selected = theme == selectedCustomTheme,
+                onClick = { onCustomThemeSelected(theme.id) },
+            )
+        }
+        ThemeSwatchRow(swatches, onCreate = { creatingTheme = true })
+        Text(
+            selectedCustomTheme?.let { "Своя тема «${it.name}»" } ?: appThemeDescription(selectedTheme),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Wallpaper colours come from the system, so there is nothing to edit there.
+        if (selectedTheme != AppTheme.Dynamic) FilledTonalButton(
+            onClick = {
+                if (selectedCustomTheme != null) editedTheme = selectedCustomTheme
+                else editedBuiltInTheme = selectedTheme.takeUnless { it == AppTheme.Custom } ?: AppTheme.default
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Rounded.Create, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text("Изменить цвета")
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         AppBackgroundSettings(
             options = appDisplayOptions,
             onOptionsChanged = ::updateBackgroundOptions,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        AppTheme.entries.filterNot { it == AppTheme.Custom }.forEach { theme ->
-            val selected = theme == selectedTheme
-            Surface(
-                onClick = { onThemeSelected(theme) },
-                modifier = Modifier.fillMaxWidth().semantics { this.selected = selected },
-                shape = RoundedCornerShape(20.dp),
-                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(appThemePreviewColor(theme), RoundedCornerShape(12.dp)),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(appThemeTitle(theme), style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            appThemeDescription(theme),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    TextButton(onClick = { editedBuiltInTheme = theme }) { Text("Изменить") }
-                    ThemeSelectionIndicator(selected)
-                }
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Мои темы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        customThemes.forEach { theme ->
-            val selected = selectedTheme == AppTheme.Custom && selectedCustomThemeId == theme.id
-            Surface(
-                onClick = { onCustomThemeSelected(theme.id) },
-                modifier = Modifier.fillMaxWidth().semantics { this.selected = selected },
-                shape = RoundedCornerShape(20.dp),
-                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        listOf(theme.primary, theme.secondary, theme.tertiary).forEach { color ->
-                            Box(Modifier.size(12.dp, 36.dp).background(Color(color), RoundedCornerShape(6.dp)))
-                        }
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Text(theme.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { editedTheme = theme }) { Text("Изменить") }
-                    ThemeSelectionIndicator(selected)
-                }
-            }
-        }
-        Button(onClick = { creatingTheme = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Создать тему")
-        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text("Оформление расписания", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(
@@ -1493,14 +1524,7 @@ private fun AppearanceSettingsScreen(
             options = appDisplayOptions,
             onOptionsChanged = ::updateDisplayOptions,
         )
-        val defaultScheduleOptions = AppDisplayOptions(
-            backgroundStyle = appDisplayOptions.backgroundStyle,
-            backgroundIntensityPercent = appDisplayOptions.backgroundIntensityPercent,
-            backgroundSpeedPercent = appDisplayOptions.backgroundSpeedPercent,
-            backgroundGradientStartColor = appDisplayOptions.backgroundGradientStartColor,
-            backgroundGradientEndColor = appDisplayOptions.backgroundGradientEndColor,
-            backgroundGradientAngleDegrees = appDisplayOptions.backgroundGradientAngleDegrees,
-        )
+        val defaultScheduleOptions = appDisplayOptions.withDefaultCards()
         OutlinedButton(
             onClick = {
                 previewOptions = defaultScheduleOptions
@@ -1517,20 +1541,32 @@ private fun AppearanceSettingsScreen(
             subtitle = "Цвета, содержимое, шрифт, размеры и отступы",
             onClick = onOpenWidgetSettings,
         )
-        Spacer(Modifier.height(12.dp))
+        // Room to scroll the last controls above the floating preview.
+        val previewSpace by animateDpAsState(
+            if (previewVisible) PREVIEW_RESERVED_HEIGHT else 12.dp,
+            MaterialTheme.motionScheme.defaultSpatialSpec(),
+            label = "preview-space",
+        )
+        Spacer(Modifier.height(previewSpace))
                 }
                 AnimatedVisibility(
                     visible = previewVisible,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    enter = fadeIn(tween(160)),
-                    exit = fadeOut(tween(180)),
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 } +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it / 2 } +
+                        fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
                 ) {
                     AppDisplayPreview(
                         options = previewOptions,
-                        lessonType = previewLessonType,
-                        onDismiss = { previewVisible = false },
+                        pinned = previewPinned,
+                        onPinnedChange = { previewPinned = it },
+                        onDismiss = {
+                            previewPinned = false
+                            previewVisible = false
+                        },
                     )
                 }
             }
@@ -1538,12 +1574,14 @@ private fun AppearanceSettingsScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AppBackgroundSettings(
     options: AppDisplayOptions,
     onOptionsChanged: (AppDisplayOptions) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    val style = options.backgroundStyle
     val usesCustomGradient = options.backgroundGradientStartColor != null &&
         options.backgroundGradientEndColor != null
     Column(
@@ -1552,50 +1590,87 @@ private fun AppBackgroundSettings(
     ) {
         Text("Фон приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(
-            "Выберите однотонный классический фон или плавные цветовые поля активной темы.",
+            "Однотонный фон, плавные цветовые поля или живые линии — лабиринт, отпечаток, топография и волны.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxItemsInEachRow = 3,
+        ) {
+            AppBackgroundStyle.entries.forEach { option ->
+                BackgroundStyleCard(
+                    title = option.title,
+                    selected = style == option,
+                    options = options.copy(backgroundStyle = option, backgroundSpeedPercent = 0),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOptionsChanged(options.copy(backgroundStyle = option)) },
+                )
+            }
+        }
+        if (!style.isColorful) {
+            Text(
+                "Однотонный фон темы без градиентов и анимации, как до появления динамического фона.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        Text("Цвета", style = MaterialTheme.typography.titleSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            BackgroundStyleCard(
-                title = "Динамический",
-                selected = options.backgroundStyle == AppBackgroundStyle.Dynamic,
-                options = options.copy(
-                    backgroundStyle = AppBackgroundStyle.Dynamic,
-                    backgroundSpeedPercent = 0,
-                ),
-                modifier = Modifier.weight(1f),
-                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Dynamic)) },
-            )
-            BackgroundStyleCard(
-                title = "Классический",
-                selected = options.backgroundStyle == AppBackgroundStyle.Classic,
-                options = options.copy(backgroundStyle = AppBackgroundStyle.Classic),
-                modifier = Modifier.weight(1f),
-                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Classic)) },
-            )
-        }
-        if (options.backgroundStyle == AppBackgroundStyle.Dynamic) {
-            WidgetSettingSwitch(
-                title = "Свои цвета градиента",
-                description = "Иначе используются цвета выбранной темы",
-                checked = usesCustomGradient,
-            ) { enabled ->
+            GradientPill(
+                title = "Цвета темы",
+                colors = listOf(colors.primary, colors.tertiary, colors.secondary),
+                selected = !usesCustomGradient,
+            ) {
                 onOptionsChanged(
                     options.copy(
-                        backgroundGradientStartColor = colors.primary.toArgb().takeIf { enabled },
-                        backgroundGradientEndColor = colors.secondary.toArgb().takeIf { enabled },
-                        backgroundGradientAccentColor = colors.tertiary.toArgb().takeIf { enabled },
+                        backgroundGradientStartColor = null,
+                        backgroundGradientEndColor = null,
+                        backgroundGradientAccentColor = null,
                     ),
                 )
             }
-            if (usesCustomGradient) {
+            val activePreset = GradientPreset.of(options)
+            GradientPreset.entries.forEach { preset ->
+                GradientPill(
+                    title = preset.title,
+                    colors = listOf(Color(preset.start), Color(preset.middle), Color(preset.end)),
+                    selected = preset == activePreset,
+                ) { onOptionsChanged(preset.applyTo(options)) }
+            }
+            GradientPill(
+                title = "Свои",
+                colors = listOf(colors.surfaceContainerHighest, colors.outline, colors.surfaceContainerHighest),
+                selected = usesCustomGradient && activePreset == null,
+            ) {
+                if (!usesCustomGradient) {
+                    onOptionsChanged(
+                        options.copy(
+                            backgroundGradientStartColor = colors.primary.toArgb(),
+                            backgroundGradientEndColor = colors.secondary.toArgb(),
+                            backgroundGradientAccentColor = colors.tertiary.toArgb(),
+                        ),
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = usesCustomGradient,
+            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 WallpaperColorField(
                     label = "Начало градиента",
-                    color = options.backgroundGradientStartColor!!,
+                    color = options.backgroundGradientStartColor ?: colors.primary.toArgb(),
                 ) { onOptionsChanged(options.copy(backgroundGradientStartColor = it)) }
                 WallpaperColorField(
                     label = "Середина градиента",
@@ -1603,36 +1678,90 @@ private fun AppBackgroundSettings(
                 ) { onOptionsChanged(options.copy(backgroundGradientAccentColor = it)) }
                 WallpaperColorField(
                     label = "Конец градиента",
-                    color = options.backgroundGradientEndColor!!,
+                    color = options.backgroundGradientEndColor ?: colors.secondary.toArgb(),
                 ) { onOptionsChanged(options.copy(backgroundGradientEndColor = it)) }
-                WidgetDimensionSlider(
-                    title = "Направление градиента",
-                    description = "Угол перехода между цветами",
-                    value = options.backgroundGradientAngleDegrees,
-                    range = 0..360,
-                    unit = "°",
-                    showSteps = false,
-                ) { onOptionsChanged(options.copy(backgroundGradientAngleDegrees = it)) }
             }
+        }
+        WidgetDimensionSlider(
+            title = "Направление градиента",
+            description = "Угол перехода между цветами",
+            value = options.backgroundGradientAngleDegrees,
+            range = 0..360,
+            unit = "°",
+            showSteps = false,
+        ) { onOptionsChanged(options.copy(backgroundGradientAngleDegrees = it)) }
+        if (style.linePattern != null) {
             BackgroundMotionSlider(
-                title = "Интенсивность фона",
-                description = "Насыщенность цветовых полей",
-                value = options.backgroundIntensityPercent,
-                range = 25..150,
-            ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
-            BackgroundMotionSlider(
-                title = "Скорость фона",
-                description = "0 % полностью останавливает движение",
-                value = options.backgroundSpeedPercent,
-                range = 0..100,
-            ) { onOptionsChanged(options.copy(backgroundSpeedPercent = it)) }
-        } else {
-            Text(
-                "Однотонный фон темы без градиентов и анимации, как до появления динамического фона.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                title = "Плотность линий",
+                description = "Сколько линий помещается на экране",
+                value = options.backgroundLineDensityPercent,
+                range = 50..150,
+            ) { onOptionsChanged(options.copy(backgroundLineDensityPercent = it)) }
+            WidgetDimensionSlider(
+                title = "Толщина линий",
+                description = "От тонких штрихов до плотных линий",
+                value = options.backgroundLineWeight,
+                range = 1..5,
+                unit = "",
+            ) { onOptionsChanged(options.copy(backgroundLineWeight = it)) }
+        }
+        BackgroundMotionSlider(
+            title = "Интенсивность фона",
+            description = if (style.linePattern != null) "Яркость линий" else "Насыщенность цветовых полей",
+            value = options.backgroundIntensityPercent,
+            range = 25..150,
+        ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
+        BackgroundMotionSlider(
+            title = if (style.linePattern != null) "Скорость рисования" else "Скорость фона",
+            description = if (style.linePattern != null) {
+                "Как быстро прорисовываются линии; 0 % — сразу готовый узор"
+            } else {
+                "0 % полностью останавливает движение"
+            },
+            value = options.backgroundSpeedPercent,
+            range = 0..100,
+        ) { onOptionsChanged(options.copy(backgroundSpeedPercent = it)) }
+    }
+}
+
+/** A gradient swatch with its name; the selected one gets a ring. */
+@Composable
+private fun GradientPill(title: String, colors: List<Color>, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(76.dp)
+            .semantics {
+                this.selected = selected
+                contentDescription = "Градиент: $title"
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(50),
+            border = BorderStroke(
+                if (selected) 2.5.dp else 1.dp,
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            ),
+            color = Color.Transparent,
+            modifier = Modifier.width(64.dp).height(36.dp),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(if (selected) 3.dp else 0.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.linearGradient(colors)),
             )
         }
+        Text(
+            title,
+            modifier = Modifier.padding(top = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1646,7 +1775,7 @@ private fun BackgroundMotionSlider(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
@@ -1660,7 +1789,7 @@ private fun BackgroundMotionSlider(
             ) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = MaterialTheme.shapes.medium,
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Text(
@@ -1725,7 +1854,7 @@ private fun BackgroundStyleCard(
             contentDescription = "Фон: ${title.lowercase(ru)}"
             this.selected = selected
         },
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(
             width = if (selected) 2.dp else 1.dp,
@@ -1740,7 +1869,7 @@ private fun BackgroundStyleCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(76.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+                    .clip(MaterialTheme.shapes.medium),
                 options = options,
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
@@ -1825,12 +1954,7 @@ private fun CustomThemeEditor(
             onSurface = parsed[5]!!,
         )
     } else null
-    Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SettingsScreenHeader(title, onBack)
+    SettingsPage(title = title, onBack = onBack, modifier = modifier) {
         Text(
             "Выберите оттенки на hue-колесе, из готовой палитры или введите их в формате #RRGGBB. Предпросмотр обновляется сразу, тема сохранится только по кнопке ниже.",
             style = MaterialTheme.typography.bodyMedium,
@@ -1912,7 +2036,7 @@ private fun ThemeColorField(
         singleLine = true,
         leadingIcon = {
             Box(
-                Modifier.size(24.dp).background(parsed?.let(::Color) ?: Color.Transparent, RoundedCornerShape(8.dp)),
+                Modifier.size(24.dp).background(parsed?.let(::Color) ?: Color.Transparent, MaterialTheme.shapes.small),
             )
         },
         trailingIcon = {
@@ -1949,7 +2073,7 @@ private fun ThemeColorField(
                             contentDescription = "$label, цвет $hex"
                             this.selected = selected
                         },
-                    shape = RoundedCornerShape(13.dp),
+                    shape = MaterialTheme.shapes.medium,
                     color = Color(color),
                     border = BorderStroke(
                         width = if (selected) 3.dp else 1.dp,
@@ -2041,14 +2165,14 @@ private fun AppThemePreview(options: AppDisplayOptions) {
     MaterialYouBackground(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(MaterialTheme.shapes.extraLarge)
             .semantics { contentDescription = "Живой предпросмотр темы приложения" },
         options = options,
     ) {
         Surface(
             color = Color.Transparent,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Предпросмотр приложения", style = MaterialTheme.typography.titleLarge)
@@ -2059,7 +2183,7 @@ private fun AppThemePreview(options: AppDisplayOptions) {
                 )
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2089,15 +2213,8 @@ private fun AppThemePreview(options: AppDisplayOptions) {
     }
 }
 
-@Composable
-private fun SettingsScreenHeader(title: String, onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        BackIconButton(onBack)
-        Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-    }
-}
-
 private fun appThemeTitle(theme: AppTheme): String = when (theme) {
+    AppTheme.Dynamic -> "Обои"
     AppTheme.Sirius -> "Сириус"
     AppTheme.Ocean -> "Океан"
     AppTheme.Forest -> "Лес"
@@ -2113,6 +2230,7 @@ private fun appThemeTitle(theme: AppTheme): String = when (theme) {
 }
 
 private fun appThemeDescription(theme: AppTheme): String = when (theme) {
+    AppTheme.Dynamic -> "Material You: цвета подбираются под обои телефона"
     AppTheme.Sirius -> "Фирменный синий"
     AppTheme.Ocean -> "Бирюзовый и лазурный"
     AppTheme.Forest -> "Зелёный и природный"
@@ -2139,7 +2257,7 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
     AppTheme.Neon -> Color(0xFFB6FF00)
     AppTheme.Fuchsia -> Color(0xFFFF3CAC)
     AppTheme.Electric -> Color(0xFF2979FF)
-    AppTheme.Custom -> Color(0xFF8AABFF)
+    AppTheme.Custom, AppTheme.Dynamic -> Color(0xFF8AABFF)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -2308,17 +2426,7 @@ private fun LessonAlertPauseItem(
 @Composable
 private fun NotificationTestingScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
     val context = LocalContext.current
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BackIconButton(onBack)
-            Text("Тестирование", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        }
+    SettingsPage(title = "Тестирование", onBack = onBack, modifier = modifier) {
         Text(
             "Запусти сценарий, сверни приложение и проверь карточку в шторке, LiveChip в строке состояния, таймер и линию прогресса.",
             style = MaterialTheme.typography.bodyMedium,
@@ -2326,7 +2434,7 @@ private fun NotificationTestingScreen(modifier: Modifier = Modifier, onBack: () 
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2340,13 +2448,13 @@ private fun NotificationTestingScreen(modifier: Modifier = Modifier, onBack: () 
         }
         Button(
             onClick = { LessonAlerts.testUpcoming(context) },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
         ) { Text("До начала — 15 минут") }
         OutlinedButton(
             onClick = { LessonAlerts.testCurrentHourFifteen(context) },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
         ) { Text("Идёт пара — осталось 1 ч 15 мин") }
         SettingsNavigationRow("Системные Live Updates", "Разрешение на LiveChip") {
             LessonAlerts.openLiveUpdateSettings(context)
@@ -2379,18 +2487,7 @@ private fun AboutScreen(
     LaunchedEffect(Unit) {
         if (updateState == AppUpdateState.Idle) onCheckForUpdates()
     }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BackIconButton(onBack)
-            Text("О приложении", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        }
+    SettingsPage(title = "О приложении", onBack = onBack, modifier = modifier) {
         Text(
             stringResource(R.string.app_full_name),
             style = MaterialTheme.typography.titleLarge,
@@ -2447,7 +2544,7 @@ private fun UpdateStatus(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
@@ -2533,22 +2630,7 @@ private fun UpdateStatus(
 
 @Composable
 private fun PrivacyScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BackIconButton(onBack)
-            Text(
-                "Конфиденциальность",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-            )
-        }
+    SettingsPage(title = "Конфиденциальность", onBack = onBack, modifier = modifier, spacing = 16.dp) {
         Text(
             "Lecturial 2 не является официальным приложением Университета «Сириус».",
             style = MaterialTheme.typography.titleMedium,
@@ -2573,7 +2655,7 @@ private fun PrivacyScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
 private fun PrivacySection(title: String, text: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2592,20 +2674,7 @@ private fun LessonNamesScreen(
     onAliasChanged: (String, String) -> Unit,
     onBack: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BackIconButton(onBack)
-            Text("Названия пар", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        }
+    SettingsPage(title = "Названия пар", onBack = onBack, modifier = modifier, spacing = 16.dp) {
         Text(
             "Подставьте короткие имена — они появятся в расписании, виджете и уведомлениях.",
             style = MaterialTheme.typography.bodyMedium,
@@ -2651,139 +2720,220 @@ private fun AppDisplaySettings(
     options: AppDisplayOptions,
     onOptionsChanged: (AppDisplayOptions) -> Unit,
 ) {
+    var fineTuning by rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        if (fineTuning) 180f else 0f,
+        MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "fine-tuning-arrow",
+    )
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Цветовые полосы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        PresetChoice("Плотность", CardDensity.entries, CardDensity.of(options), { it.title }) {
+            onOptionsChanged(it.applyTo(options))
+        }
+        PresetChoice("Размер текста", CardTextSize.entries, CardTextSize.of(options), { it.title }) {
+            onOptionsChanged(it.applyTo(options))
+        }
+        PresetChoice("Углы карточек", CardCorners.entries, CardCorners.of(options), { it.title }) {
+            onOptionsChanged(it.applyTo(options))
+        }
+        WidgetDimensionSlider("Прозрачность", "Насколько карточки закрывают фон", options.tileOpacityPercent, 0..100, "%") {
+            onOptionsChanged(options.copy(tileOpacityPercent = it))
+        }
+        FontStylePicker(options.fontStyleId) { onOptionsChanged(options.copy(fontStyleId = it)) }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text("Цветные полосы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         StripeColorPicker("Лекция", options.lectureStripeColor) {
             onOptionsChanged(options.copy(lectureStripeColor = it))
         }
         StripeColorPicker("Практика", options.practiceStripeColor) {
             onOptionsChanged(options.copy(practiceStripeColor = it))
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Text("Содержимое", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text("Что показывать", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         WidgetSettingSwitch("Показывать аудиторию", "Аудитория и адрес занятия", options.showClassroom) {
             onOptionsChanged(options.copy(showClassroom = it))
         }
         WidgetSettingSwitch("Показывать время", "Время слева от названия предмета", options.showTime) {
             onOptionsChanged(options.copy(showTime = it))
         }
-        WidgetSettingSwitch("Показывать цветную полосу", "Акцент у текущего занятия", options.showStripe) {
-            onOptionsChanged(options.copy(showStripe = it))
-        }
-        WidgetSettingSwitch("Время окончания", "Показывать окончание под временем начала", options.showEndTime) {
+        WidgetSettingSwitch("Время окончания", "Окончание пары под временем начала", options.showEndTime) {
             onOptionsChanged(options.copy(showEndTime = it))
         }
-        WidgetSettingSwitch("Переносить название", "Разрешить несколько строк для предмета", options.wrapTitle) {
+        WidgetSettingSwitch("Показывать цветную полосу", "Полоса цвета лекции или практики слева у каждой пары", options.showStripe) {
+            onOptionsChanged(options.copy(showStripe = it))
+        }
+        WidgetSettingSwitch("Переносить название", "Длинное название предмета в несколько строк", options.wrapTitle) {
             onOptionsChanged(options.copy(wrapTitle = it))
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Text("Размер текста", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        FontStylePicker(options.fontStyleId) { onOptionsChanged(options.copy(fontStyleId = it)) }
-        WidgetDimensionSlider("Название предмета", "Размер основного текста", options.titleTextSizeSp, 12..24, "sp") {
-            onOptionsChanged(options.copy(titleTextSizeSp = it))
-        }
-        WidgetDimensionSlider("Время и детали", "Размер вспомогательного текста", options.secondaryTextSizeSp, 10..20, "sp") {
-            onOptionsChanged(options.copy(secondaryTextSizeSp = it))
-        }
-        WidgetDimensionSlider("Межбуквенный интервал", "Плотность букв", options.letterSpacingPercent, -5..10, "%") {
-            onOptionsChanged(options.copy(letterSpacingPercent = it))
-        }
-        WidgetDimensionSlider("Максимум строк названия", "Используется при включённом переносе", options.titleMaxLines, 1..5, "стр.") {
-            onOptionsChanged(options.copy(titleMaxLines = it))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Text("Стиль тайлов", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        WidgetDimensionSlider("Скругление", "Радиус углов карточки занятия", options.tileCornerRadiusDp, 0..32) {
-            onOptionsChanged(options.copy(tileCornerRadiusDp = it))
-        }
-        WidgetDimensionSlider("Прозрачность", "Плотность поверхности поверх обоев", options.tileOpacityPercent, 0..100, "%") {
-            onOptionsChanged(options.copy(tileOpacityPercent = it))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Text("Отступы и плотность", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        WidgetDimensionSlider("Отступ от краёв", "Поля списка расписания", options.outerPaddingDp, 0..32) {
-            onOptionsChanged(options.copy(outerPaddingDp = it))
-        }
-        WidgetDimensionSlider("Отступ текста", "Расстояние между временем и предметом", options.horizontalPaddingDp, 0..24) {
-            onOptionsChanged(options.copy(horizontalPaddingDp = it))
-        }
-        WidgetDimensionSlider("Вертикальный отступ", "Свободное место внутри занятия", options.verticalPaddingDp, 0..16) {
-            onOptionsChanged(options.copy(verticalPaddingDp = it))
-        }
-        WidgetDimensionSlider("Расстояние между занятиями", "Пустое место между карточками", options.itemSpacingDp, 0..24) {
-            onOptionsChanged(options.copy(itemSpacingDp = it))
-        }
-        Text("Изменения применяются сразу.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun AppDisplayPreview(
-    options: AppDisplayOptions,
-    lessonType: PreviewLessonType,
-    onDismiss: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .semantics { contentDescription = "Живой предпросмотр расписания" },
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        tonalElevation = 8.dp,
-        shadowElevation = 8.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Surface(
+            onClick = { fineTuning = !fineTuning },
+            shape = MaterialTheme.shapes.largeIncreased,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Живой предпросмотр", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Тонкая настройка", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Изменения видны сразу",
+                        "Точные размеры текста, отступы и скругление",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onDismiss) { Text("Скрыть") }
-            }
-            Column(
-                modifier = Modifier.padding(
-                    start = options.outerPaddingDp.dp,
-                    end = options.outerPaddingDp.dp,
-                ),
-            ) {
-                LessonTimelineItem(
-                    lesson = ScheduleRow.Lesson(
-                        eventId = "appearance-preview",
-                        typeLabel = if (lessonType == PreviewLessonType.Lecture) "Лекция" else "Практика",
-                        isLecture = lessonType == PreviewLessonType.Lecture,
-                        startTime = "08:45",
-                        endTime = "10:05",
-                        discipline = if (lessonType == PreviewLessonType.Lecture) {
-                            "Основы программирования"
-                        } else {
-                            "Практические занятия"
-                        },
-                        location = "5.7 · Главный корпус",
-                        teachers = "И. Иван Иванович",
-                        comment = null,
-                        liveLabel = null,
-                    ),
-                    options = options,
+                Icon(
+                    Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = if (fineTuning) "Свернуть" else "Развернуть",
+                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
                 )
+            }
+        }
+        AnimatedVisibility(
+            visible = fineTuning,
+            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                WidgetDimensionSlider("Название предмета", "Размер основного текста", options.titleTextSizeSp, 12..24, "") {
+                    onOptionsChanged(options.copy(titleTextSizeSp = it))
+                }
+                WidgetDimensionSlider("Время и детали", "Размер вспомогательного текста", options.secondaryTextSizeSp, 10..20, "") {
+                    onOptionsChanged(options.copy(secondaryTextSizeSp = it))
+                }
+                WidgetDimensionSlider("Максимум строк названия", "Когда включён перенос", options.titleMaxLines, 1..5, "") {
+                    onOptionsChanged(options.copy(titleMaxLines = it))
+                }
+                WidgetDimensionSlider("Скругление", "Радиус углов карточки", options.tileCornerRadiusDp, 0..32, "") {
+                    onOptionsChanged(options.copy(tileCornerRadiusDp = it))
+                }
+                WidgetDimensionSlider("Отступ от краёв", "Поля слева и справа от расписания", options.outerPaddingDp, 0..32, "") {
+                    onOptionsChanged(options.copy(outerPaddingDp = it))
+                }
+                WidgetDimensionSlider("Отступ текста", "Между временем и предметом", options.horizontalPaddingDp, 0..24, "") {
+                    onOptionsChanged(options.copy(horizontalPaddingDp = it))
+                }
+                WidgetDimensionSlider("Высота карточки", "Свободное место внутри пары", options.verticalPaddingDp, 0..16, "") {
+                    onOptionsChanged(options.copy(verticalPaddingDp = it))
+                }
+                WidgetDimensionSlider("Расстояние между парами", "Пустое место между карточками", options.itemSpacingDp, 0..24, "") {
+                    onOptionsChanged(options.copy(itemSpacingDp = it))
+                }
+                WidgetDimensionSlider("Межбуквенный интервал", "Плотность букв", options.letterSpacingPercent, -5..10, "%") {
+                    onOptionsChanged(options.copy(letterSpacingPercent = it))
+                }
             }
         }
     }
 }
+
+/**
+ * Floating live preview of the schedule cards: a lecture and a practice, so both stripe
+ * colours and the gap between lessons are visible, drawn over the app background so
+ * opacity and corners look as they will in the schedule.
+ */
+@Composable
+private fun AppDisplayPreview(
+    options: AppDisplayOptions,
+    pinned: Boolean,
+    onPinnedChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val dynamicBackground = options.backgroundStyle == AppBackgroundStyle.Dynamic
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Живой предпросмотр расписания" },
+        shape = MaterialTheme.shapes.extraLarge,
+        color = colors.surfaceContainerHigh,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        shadowElevation = 12.dp,
+    ) {
+        Column(Modifier.padding(top = 10.dp, bottom = 12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Живой предпросмотр", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (pinned) "Закреплён — обновляется вместе с настройками" else "Так карточки будут выглядеть в расписании",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { onPinnedChange(!pinned) }) { Text(if (pinned) "Открепить" else "Закрепить") }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Скрыть предпросмотр")
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 8.dp)
+                    .clip(MaterialTheme.shapes.largeIncreased)
+                    .background(colors.background)
+                    .drawBehind {
+                        // A still hint of the dynamic background behind the cards.
+                        if (!dynamicBackground) return@drawBehind
+                        val strength = options.backgroundIntensityPercent.coerceIn(25, 150) / 100f
+                        drawRect(
+                            Brush.radialGradient(
+                                listOf(colors.primary.copy(alpha = 0.22f * strength), Color.Transparent),
+                                center = Offset(size.width * 0.9f, 0f),
+                                radius = size.maxDimension * 0.8f,
+                            ),
+                        )
+                        drawRect(
+                            Brush.radialGradient(
+                                listOf(colors.secondary.copy(alpha = 0.16f * strength), Color.Transparent),
+                                center = Offset(0f, size.height),
+                                radius = size.maxDimension * 0.7f,
+                            ),
+                        )
+                    }
+                    .padding(horizontal = options.outerPaddingDp.coerceAtMost(24).dp, vertical = 10.dp),
+            ) {
+                Column {
+                    PreviewLessons.forEach { lesson -> LessonTimelineItem(lesson = lesson, options = options) }
+                }
+            }
+        }
+    }
+}
+
+private val PreviewLessons = listOf(
+    ScheduleRow.Lesson(
+        eventId = "appearance-preview-lecture",
+        typeLabel = "Лекция",
+        isLecture = true,
+        startTime = "08:45",
+        endTime = "10:05",
+        discipline = "Основы программирования",
+        location = "5.7 · Главный корпус",
+        teachers = "И. Иван Иванович",
+        comment = null,
+        liveLabel = null,
+    ),
+    ScheduleRow.Lesson(
+        eventId = "appearance-preview-practice",
+        typeLabel = "Практика",
+        isLecture = false,
+        startTime = "10:20",
+        endTime = "11:40",
+        discipline = "Практические занятия",
+        location = "Альфа 5.8",
+        teachers = "П. Анна Олеговна",
+        comment = null,
+        liveLabel = null,
+    ),
+)
+
+private const val PREVIEW_HIDE_DELAY_MILLIS = 4_000L
+private val PREVIEW_RESERVED_HEIGHT = 380.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2807,147 +2957,171 @@ private fun WidgetSettingsScreen(
     onFontStyleChanged: (String) -> Unit,
     onLetterSpacingChanged: (Int) -> Unit,
     onTitleMaxLinesChanged: (Int) -> Unit,
+    onMatchAppChanged: (Boolean) -> Unit,
+    onBackgroundOpacityChanged: (Int) -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BackIconButton(onBack)
-                Text("Виджет", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            }
+    SettingsPage(title = "Виджет", onBack = onBack, modifier = modifier) {
             Text(
-                "Эти параметры влияют только на виджет на рабочем столе.",
+                "Виджет повторяет тему и фон приложения — динамический, линии или однотонный, с вашим градиентом.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Text(
-                "Цветовые полосы",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            StripeColorPicker("Лекция", state.lectureStripeColor, onLectureColorSelected)
-            StripeColorPicker("Практика", state.practiceStripeColor, onPracticeColorSelected)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Text(
-                "Содержимое",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
             WidgetSettingSwitch(
-                title = "Показывать аудиторию",
-                description = "Номер аудитории под названием предмета",
-                checked = state.widgetShowClassroom,
-                onCheckedChange = onShowClassroomChanged,
-            )
-            WidgetSettingSwitch(
-                title = "Показывать время",
-                description = "Время начала или полный диапазон занятия",
-                checked = state.widgetShowTime,
-                onCheckedChange = onShowTimeChanged,
-            )
-            WidgetSettingSwitch(
-                title = "Показывать цветную полосу",
-                description = "Акцент слева для различения лекций и практик",
-                checked = state.widgetShowStripe,
-                onCheckedChange = onShowStripeChanged,
-            )
-            WidgetSettingSwitch(
-                title = "Время окончания",
-                description = "Полный диапазон, например 08:45–10:05",
-                checked = state.widgetShowEndTime,
-                onCheckedChange = onShowEndTimeChanged,
-            )
-            WidgetSettingSwitch(
-                title = "Переносить название",
-                description = "До двух строк для длинного названия предмета",
-                checked = state.widgetWrapTitle,
-                onCheckedChange = onWrapTitleChanged,
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Text(
-                "Размер текста",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            FontStylePicker(
-                selectedId = state.widgetFontStyleId,
-                onSelected = onFontStyleChanged,
+                title = "Как в приложении",
+                description = "Цветные полосы, шрифт, размер текста, отступы и что показывать — как в расписании",
+                checked = state.widgetMatchApp,
+                onCheckedChange = onMatchAppChanged,
             )
             WidgetDimensionSlider(
-                title = "Название предмета",
-                description = "Размер основного текста в виджете",
-                value = state.widgetTitleTextSizeSp,
-                range = 9..18,
-                unit = "sp",
-                onValueChanged = onTitleTextSizeChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Время и аудитория",
-                description = "Размер вспомогательного текста",
-                value = state.widgetSecondaryTextSizeSp,
-                range = 7..14,
-                unit = "sp",
-                onValueChanged = onSecondaryTextSizeChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Межбуквенный интервал",
-                description = "От плотного текста до более разреженного",
-                value = state.widgetLetterSpacingPercent,
-                range = -5..10,
+                title = "Фон виджета",
+                description = "Насколько фон закрывает обои рабочего стола",
+                value = state.widgetBackgroundOpacityPercent,
+                range = 0..100,
                 unit = "%",
-                onValueChanged = onLetterSpacingChanged,
+                showSteps = false,
+                onValueChanged = onBackgroundOpacityChanged,
             )
-            WidgetDimensionSlider(
-                title = "Максимум строк названия",
-                description = "Используется, когда включён перенос названия",
-                value = state.widgetTitleMaxLines,
-                range = 1..4,
-                unit = "стр.",
-                onValueChanged = onTitleMaxLinesChanged,
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Text(
-                "Отступы и плотность",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            WidgetDimensionSlider(
-                title = "Отступ от краёв виджета",
-                description = "Не даёт строкам заходить на скруглённые края",
-                value = state.widgetOuterPaddingDp,
-                range = 0..24,
-                onValueChanged = onOuterPaddingChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Отступ текста слева и справа",
-                description = "Расстояние от цветной полосы и правого края",
-                value = state.widgetHorizontalPaddingDp,
-                range = 0..24,
-                onValueChanged = onHorizontalPaddingChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Вертикальный отступ строки",
-                description = "Высота свободного места внутри каждого занятия",
-                value = state.widgetVerticalPaddingDp,
-                range = 0..16,
-                onValueChanged = onVerticalPaddingChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Расстояние между занятиями",
-                description = "Пустое место между соседними строками",
-                value = state.widgetItemSpacingDp,
-                range = 0..12,
-                onValueChanged = onItemSpacingChanged,
-            )
+            AnimatedVisibility(
+                visible = state.widgetMatchApp,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
+                Text(
+                    "Меняйте оформление карточек в разделе «Оформление» — виджет подстроится сам. " +
+                        "Выключите «Как в приложении», чтобы настроить виджет отдельно.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AnimatedVisibility(
+                visible = !state.widgetMatchApp,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        "Цветовые полосы",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    StripeColorPicker("Лекция", state.lectureStripeColor, onLectureColorSelected)
+                    StripeColorPicker("Практика", state.practiceStripeColor, onPracticeColorSelected)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        "Содержимое",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    WidgetSettingSwitch(
+                        title = "Показывать аудиторию",
+                        description = "Номер аудитории под названием предмета",
+                        checked = state.widgetShowClassroom,
+                        onCheckedChange = onShowClassroomChanged,
+                    )
+                    WidgetSettingSwitch(
+                        title = "Показывать время",
+                        description = "Время начала или полный диапазон занятия",
+                        checked = state.widgetShowTime,
+                        onCheckedChange = onShowTimeChanged,
+                    )
+                    WidgetSettingSwitch(
+                        title = "Показывать цветную полосу",
+                        description = "Акцент слева для различения лекций и практик",
+                        checked = state.widgetShowStripe,
+                        onCheckedChange = onShowStripeChanged,
+                    )
+                    WidgetSettingSwitch(
+                        title = "Время окончания",
+                        description = "Полный диапазон, например 08:45–10:05",
+                        checked = state.widgetShowEndTime,
+                        onCheckedChange = onShowEndTimeChanged,
+                    )
+                    WidgetSettingSwitch(
+                        title = "Переносить название",
+                        description = "До двух строк для длинного названия предмета",
+                        checked = state.widgetWrapTitle,
+                        onCheckedChange = onWrapTitleChanged,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        "Размер текста",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    FontStylePicker(
+                        selectedId = state.widgetFontStyleId,
+                        onSelected = onFontStyleChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Название предмета",
+                        description = "Размер основного текста в виджете",
+                        value = state.widgetTitleTextSizeSp,
+                        range = 9..18,
+                        unit = "sp",
+                        onValueChanged = onTitleTextSizeChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Время и аудитория",
+                        description = "Размер вспомогательного текста",
+                        value = state.widgetSecondaryTextSizeSp,
+                        range = 7..14,
+                        unit = "sp",
+                        onValueChanged = onSecondaryTextSizeChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Межбуквенный интервал",
+                        description = "От плотного текста до более разреженного",
+                        value = state.widgetLetterSpacingPercent,
+                        range = -5..10,
+                        unit = "%",
+                        onValueChanged = onLetterSpacingChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Максимум строк названия",
+                        description = "Используется, когда включён перенос названия",
+                        value = state.widgetTitleMaxLines,
+                        range = 1..4,
+                        unit = "стр.",
+                        onValueChanged = onTitleMaxLinesChanged,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        "Отступы и плотность",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Отступ от краёв виджета",
+                        description = "Не даёт строкам заходить на скруглённые края",
+                        value = state.widgetOuterPaddingDp,
+                        range = 0..24,
+                        onValueChanged = onOuterPaddingChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Отступ текста слева и справа",
+                        description = "Расстояние от цветной полосы и правого края",
+                        value = state.widgetHorizontalPaddingDp,
+                        range = 0..24,
+                        onValueChanged = onHorizontalPaddingChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Вертикальный отступ строки",
+                        description = "Высота свободного места внутри каждого занятия",
+                        value = state.widgetVerticalPaddingDp,
+                        range = 0..16,
+                        onValueChanged = onVerticalPaddingChanged,
+                    )
+                    WidgetDimensionSlider(
+                        title = "Расстояние между занятиями",
+                        description = "Пустое место между соседними строками",
+                        value = state.widgetItemSpacingDp,
+                        range = 0..12,
+                        onValueChanged = onItemSpacingChanged,
+                    )
+                }
+            }
             Text(
                 "Изменения применяются к виджету сразу.",
                 style = MaterialTheme.typography.bodySmall,
@@ -2972,7 +3146,7 @@ private fun FontStylePicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics { contentDescription = "Выбрать шрифт, сейчас ${selected.name}" },
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Row(
@@ -3047,7 +3221,7 @@ private fun WidgetDimensionSlider(
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text(
-                "$value $unit",
+                "$value $unit".trim(),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -3062,7 +3236,7 @@ private fun WidgetDimensionSlider(
             onValueChange = { onValueChanged(it.roundToInt()) },
             valueRange = range.first.toFloat()..range.last.toFloat(),
             steps = steps,
-            modifier = Modifier.semantics { contentDescription = "$title: $value $unit" },
+            modifier = Modifier.semantics { contentDescription = "$title: $value $unit".trim() },
         )
     }
 }
@@ -3115,7 +3289,7 @@ private fun StripeColorPicker(
                             contentDescription = "$label: ${option.name}${if (isSelected) ", выбран" else ""}"
                             selected = isSelected
                         },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.large,
                     color = Color.Transparent,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -3253,6 +3427,9 @@ private fun GroupDropdown(
 @Composable
 private fun ScheduleContent(
     state: ScheduleUiState,
+    rows: List<ScheduleRow>,
+    listState: LazyListState,
+    scrolledForState: MutableState<String?>,
     onRetry: () -> Unit,
     onToday: () -> Unit,
     onStudyPlanSaved: (StudyPlan) -> Unit,
@@ -3265,38 +3442,9 @@ private fun ScheduleContent(
         state.scheduleWeeks.isEmpty() && state.week == null && state.nextWeek == null && state.errorMessage != null ->
             FullError(state.errorMessage, onRetry)
         else -> {
-            val rows = remember(
-                state.scheduleWeeks,
-                state.week,
-                state.nextWeek,
-                state.errorMessage,
-                state.lastUpdatedMillis,
-                state.selectedGroup,
-                state.weekStart,
-                state.selectedDate,
-                state.now,
-                state.lessonAliases,
-                state.studyPlans,
-            ) {
-                buildScheduleRows(
-                    scheduleWeeks = state.scheduleWeeks,
-                    week = state.week,
-                    nextWeek = state.nextWeek,
-                    currentWeekStart = state.weekStart,
-                    errorMessage = state.errorMessage,
-                    lastUpdatedMillis = state.lastUpdatedMillis,
-                    group = state.scheduleLabel,
-                    teacherMode = state.isTeacherMode,
-                    selectedDate = state.selectedDate,
-                    now = state.now,
-                    aliases = state.lessonAliases,
-                    plans = state.studyPlans,
-                )
-            }
             CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                val listState = rememberLazyListState()
                 val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.selectedDate}|${state.isLoading}"
-                var scrolledFor by remember { mutableStateOf<String?>(null) }
+                var scrolledFor by scrolledForState
                 LaunchedEffect(rows, scrollSession) {
                     if (state.isLoading) return@LaunchedEffect
                     if (scrolledFor == scrollSession) return@LaunchedEffect
@@ -3479,7 +3627,7 @@ private fun ScheduleHeader(group: String, subtitle: String) {
 private fun EmptyScheduleState() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
@@ -3529,7 +3677,7 @@ private fun WeekDivider(title: String, range: String, isCurrent: Boolean) {
                 .padding(top = 12.dp, bottom = 16.dp)
                 .testTag("current-week")
                 .semantics { selected = true },
-            shape = RoundedCornerShape(20.dp),
+            shape = MaterialTheme.shapes.largeIncreased,
             color = MaterialTheme.colorScheme.primaryContainer,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
         ) {
@@ -3749,6 +3897,8 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
             LinearWavyProgressIndicator(
                 progress = { animated },
                 modifier = Modifier
+                    // The wave moves every frame; a layer keeps that from redrawing the list.
+                    .graphicsLayer()
                     .fillMaxWidth()
                     .padding(start = if (options.showTime) LessonTimeColumnWidth else 0.dp, top = 12.dp)
                     .semantics { contentDescription = "Прошло ${(progress * 100).roundToInt()}% пары" },
@@ -4272,7 +4422,7 @@ private fun EmptyDay(date: LocalDate) {
         Text("Свободный день", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "На ${date.format(DateTimeFormatter.ofPattern("d MMMM", ru))} занятий нет",
+            "На ${date.format(dayMonthFormatter)} занятий нет",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )

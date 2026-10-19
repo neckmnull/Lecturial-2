@@ -10,6 +10,7 @@ import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
 import com.rassvet.lecturial.model.TeacherInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +66,48 @@ class ScheduleRepository(
         } finally {
             if (active.isCompleted) inFlight.remove(key, active)
         }
+    }
+
+    /**
+     * Refreshes the consecutive weeks [starts] in one site session instead of one session
+     * per week, handing each week to [onWeek] as soon as it is cached. If the session
+     * breaks off midway, the weeks it didn't reach are retried one by one. Throws the
+     * first failure once everything that could load has loaded.
+     */
+    suspend fun refreshWeeks(group: String, starts: List<LocalDate>, onWeek: suspend (CachedSchedule) -> Unit) {
+        val pending = starts.toMutableList()
+        var failure: Throwable? = null
+        val consecutive = starts.zipWithNext().all { (previous, next) -> next == previous.plusWeeks(1) }
+        if (starts.size > 1 && consecutive) {
+            try {
+                refreshMutex.withLock {
+                    remote.fetchWeeks(group, starts.first(), starts.size) { week ->
+                        val updatedAt = nowMillis()
+                        database.cacheWeek(group, week, updatedAt)
+                        pending.remove(week.weekStart)
+                        onWeek(CachedSchedule(week, updatedAt))
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                failure = error
+            } finally {
+                if (pending.size < starts.size) onCacheUpdated()
+            }
+            // Nothing loaded at all: the site is unreachable, retrying week by week won't help.
+            if (failure != null && pending.size == starts.size) throw failure
+        }
+        for (start in pending) {
+            try {
+                onWeek(refreshWeek(group, start))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                if (failure == null) failure = error
+            }
+        }
+        failure?.let { throw it }
     }
 
     private suspend fun fetchAndCache(group: String, weekStart: LocalDate): CachedSchedule {

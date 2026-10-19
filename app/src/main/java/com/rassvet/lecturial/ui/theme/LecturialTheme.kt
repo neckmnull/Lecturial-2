@@ -1,12 +1,16 @@
 package com.rassvet.lecturial.ui.theme
 
-import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Context
+import android.os.Build
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -382,7 +386,8 @@ private fun builtInDarkColors(theme: AppTheme) = when (theme) {
     AppTheme.Neon -> NeonColors
     AppTheme.Fuchsia -> FuchsiaColors
     AppTheme.Electric -> ElectricColors
-    AppTheme.Custom -> LecturialColors
+    // Without a context the wallpaper colours aren't known; Sirius stands in.
+    AppTheme.Custom, AppTheme.Dynamic -> LecturialColors
 }
 
 fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
@@ -399,7 +404,7 @@ fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
         )
     }
     return when (theme) {
-        AppTheme.Sirius -> ThemePalette(0xFF345EBC.toInt(), 0xFF535F7D.toInt(), 0xFF6B5592.toInt(), 0xFFF9F9FF.toInt(), 0xFFF1F3FA.toInt(), 0xFF191C20.toInt())
+        AppTheme.Sirius, AppTheme.Dynamic -> ThemePalette(0xFF345EBC.toInt(), 0xFF535F7D.toInt(), 0xFF6B5592.toInt(), 0xFFF9F9FF.toInt(), 0xFFF1F3FA.toInt(), 0xFF191C20.toInt())
         AppTheme.Ocean -> ThemePalette(0xFF006875.toInt(), 0xFF146B61.toInt(), 0xFF405B9D.toInt(), 0xFFF4FBFC.toInt(), 0xFFEBF5F6.toInt(), 0xFF161D1E.toInt())
         AppTheme.Forest -> ThemePalette(0xFF2D6A3A.toInt(), 0xFF52634F.toInt(), 0xFF6C5D2F.toInt(), 0xFFF7FBF5.toInt(), 0xFFEEF5EB.toInt(), 0xFF191D18.toInt())
         AppTheme.Sunset -> ThemePalette(0xFF9C4230.toInt(), 0xFF77574F.toInt(), 0xFF705B2E.toInt(), 0xFFFFF8F5.toInt(), 0xFFF9EFEB.toInt(), 0xFF211A18.toInt())
@@ -445,15 +450,34 @@ private fun paletteColors(palette: ThemePalette, isDark: Boolean) =
         surface = Color(palette.surface),
         onSurface = Color(palette.onSurface),
         surfaceVariant = Color(palette.onSurface).copy(alpha = if (isDark) 0.12f else 0.08f).compositeOver(Color(palette.surface)),
-        onSurfaceVariant = Color(palette.onSurface).copy(alpha = 0.72f),
+        // Roles are opaque, as in Material 3: translucent text colours stacked over tinted
+        // containers and wallpapers lost contrast.
+        onSurfaceVariant = Color(palette.onSurface).copy(alpha = 0.74f).compositeOver(Color(palette.surface)),
         surfaceContainerLowest = Color(palette.background),
         surfaceContainerLow = Color(palette.onSurface).copy(alpha = if (isDark) 0.05f else 0.025f).compositeOver(Color(palette.surface)),
         surfaceContainer = Color(palette.onSurface).copy(alpha = if (isDark) 0.08f else 0.045f).compositeOver(Color(palette.surface)),
         surfaceContainerHigh = Color(palette.onSurface).copy(alpha = if (isDark) 0.12f else 0.07f).compositeOver(Color(palette.surface)),
         surfaceContainerHighest = Color(palette.onSurface).copy(alpha = if (isDark) 0.16f else 0.1f).compositeOver(Color(palette.surface)),
-        outline = Color(palette.onSurface).copy(alpha = 0.4f),
-        outlineVariant = Color(palette.onSurface).copy(alpha = 0.22f),
+        outline = Color(palette.onSurface).copy(alpha = 0.45f).compositeOver(Color(palette.surface)),
+        outlineVariant = Color(palette.onSurface).copy(alpha = 0.22f).compositeOver(Color(palette.surface)),
     )
+
+/** The wallpaper-based Material You palette (Android 12+), in the form the widget draws with. */
+fun dynamicThemePalette(context: Context, isDark: Boolean): ThemePalette? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+    val colors = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    return ThemePalette(
+        primary = colors.primary.toArgb(),
+        secondary = colors.secondary.toArgb(),
+        tertiary = colors.tertiary.toArgb(),
+        background = colors.background.toArgb(),
+        surface = colors.surfaceContainer.toArgb(),
+        onSurface = colors.onSurface.toArgb(),
+    )
+}
+
+/** Whether the device can colour the app from the wallpaper. */
+val supportsDynamicTheme: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 private fun contrastColor(argb: Int): Color {
     val red = (argb shr 16) and 0xFF
@@ -462,13 +486,8 @@ private fun contrastColor(argb: Int): Color {
     return if (red * 299 + green * 587 + blue * 114 > 150_000) Color(0xFF171717) else Color.White
 }
 
-private val ExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(20.dp),
-)
+/** The standard Material 3 shape scale: 4, 8, 12, 16 and 28 dp, plus the Expressive steps. */
+private val ExpressiveShapes = Shapes()
 
 private fun manropeTypography(): Typography {
     val base = Typography()
@@ -501,7 +520,10 @@ fun LecturialTheme(
     builtInOverride: ThemePalette? = null,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
     val colors = when {
+        appTheme == AppTheme.Dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         appTheme == AppTheme.Custom && customTheme != null -> {
             val palette = if (darkTheme) customTheme.toPalette() else customTheme.toPalette().copy(
                 background = 0xFFFFFBFF.toInt(),

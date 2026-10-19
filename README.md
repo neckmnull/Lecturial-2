@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.8.1/Lecturial-2-v1.8.1.apk"><img src="https://img.shields.io/badge/Download_APK-v1.8.1-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.8.1 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.9.0/Lecturial-2-v1.9.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.9.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.9.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -43,11 +43,11 @@ keep common actions one tap away.
   <tr>
     <td width="50%" valign="top">
       <h3>◈ Make it yours</h3>
-      <p>Light and dark modes, editable palettes, custom themes, typography controls, and configurable schedule density.</p>
+      <p>Material You wallpaper colors, light and dark modes, editable palettes, custom themes, self-drawing line wallpapers with gradients, typography controls, and schedule density presets.</p>
     </td>
     <td width="50%" valign="top">
       <h3>◈ See it outside the app</h3>
-      <p>A configurable Today widget plus reminders, class boundaries, and an optional live notification.</p>
+      <p>A Today widget that follows the app’s look and marks the current class, plus reminders, class boundaries, and an optional live notification.</p>
     </td>
   </tr>
 </table>
@@ -59,11 +59,11 @@ keep common actions one tap away.
 | **Schedule** | Daily feed, week navigation, pull-to-refresh, current class, remaining time, and meaningful gaps |
 | **Study context** | Group selection, foreign-language instructor selection, custom subject names, rooms, and instructors |
 | **Offline behavior** | Cache-first loading with previously fetched weeks stored in Room |
-| **Appearance** | 11 built-in themes, custom palettes, light/dark modes, font styles, sizing, spacing, and title wrapping |
-| **At a glance** | Resizable Today widget with configurable fields, colors, text sizes, and spacing |
+| **Appearance** | Material You plus 11 built-in themes, custom palettes, light/dark modes, animated line wallpapers, gradient presets, font styles, sizing, spacing, and title wrapping |
+| **At a glance** | Resizable Today widget that mirrors the app’s background and cards, marks the current class, and can be tuned separately |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.8.1` (`versionCode 30`) · minimum Android version:
+> **Current release:** `1.9.0` (`versionCode 31`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,7 +94,7 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.8.1.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.8.1/Lecturial-2-v1.8.1.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.9.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.9.0/Lecturial-2-v1.9.0.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 

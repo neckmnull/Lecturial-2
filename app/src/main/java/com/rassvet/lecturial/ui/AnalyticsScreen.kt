@@ -49,11 +49,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -68,6 +75,7 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -105,7 +113,7 @@ internal fun AnalyticsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifie
             .fillMaxSize()
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
+            .padding(horizontal = 16.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -169,6 +177,7 @@ private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) 
         "Подбор пары, когда свободны все выбранные преподаватели и группы, — например, для встречи, консультации или пересдачи.",
         listOf(
             "Добавьте участников: преподавателей по фамилии или группы по названию. Группы специалитета (ИОП-ИТ) вашего курса добавляются сразу; фильтр «Только специалитет» оставляет в поиске только их.",
+            "Нажатие на участника в списке временно исключает его из подбора — он остаётся в списке, повторное нажатие возвращает. Крестик убирает участника совсем.",
             "Сравниваются пары с понедельника по субботу: с 1 пары (08:45) по 7 пару (18:15).",
             "Пара занята, если у кого-то из участников в это время есть любое занятие, даже не совпадающее с сеткой пар.",
             "«Лучшие варианты» — сначала пары, когда свободны все: в будни и в середине дня (2–5 пары). Если таких нет — пары с наименьшим числом занятых и их список.",
@@ -177,22 +186,22 @@ private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) 
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.participants.forEach { participant ->
-            InputChip(
-                selected = true,
-                onClick = { viewModel.removeParticipant(participant.key) },
-                label = { Text(participant.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                trailingIcon = {
-                    Icon(Icons.Rounded.Close, contentDescription = "Убрать ${participant.label}", Modifier.size(InputChipDefaults.IconSize))
-                },
+            ToggleableChip(
+                label = participant.label,
+                fullLabel = participant.label,
+                included = participant.key !in state.excludedParticipants,
+                onToggle = { viewModel.toggleParticipant(participant.key) },
+                onRemove = { viewModel.removeParticipant(participant.key) },
             )
         }
     }
+    if (state.participants.isNotEmpty()) ToggleHint()
     ParticipantPicker(state, viewModel, actionLabel = "Добавить", onPick = viewModel::addParticipant)
     ConnectedChoice(FreeTimeRange.entries, state.freeRange, { it.title }, viewModel::setFreeRange)
     Button(
         onClick = viewModel::findFreeTime,
-        enabled = state.participants.isNotEmpty() && !state.isBusy,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
+        enabled = state.activeParticipants.isNotEmpty() && !state.isBusy,
+        modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
     ) { Text("Найти общее время") }
 
     val result = state.freeResult ?: return
@@ -242,15 +251,71 @@ private fun FreeTimeResults(result: FreeTimeResult, state: AnalyticsUiState, vie
     }
 }
 
+/**
+ * A listed teacher or group. A tap switches it off for the calculation and back on, so
+ * someone can be left out for a moment without searching for them again; the cross
+ * takes it out of the list.
+ */
+@Composable
+private fun ToggleableChip(
+    label: String,
+    fullLabel: String,
+    included: Boolean,
+    onToggle: () -> Unit,
+    onRemove: (() -> Unit)?,
+) {
+    InputChip(
+        selected = included,
+        onClick = onToggle,
+        label = {
+            Text(
+                label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (included) null else TextDecoration.LineThrough,
+            )
+        },
+        modifier = Modifier.semantics { stateDescription = if (included) "учитывается" else "не учитывается" },
+        leadingIcon = if (included) {
+            { Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(InputChipDefaults.IconSize)) }
+        } else {
+            null
+        },
+        trailingIcon = onRemove?.let { remove ->
+            {
+                Box(
+                    Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = remove),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Убрать $fullLabel", Modifier.size(InputChipDefaults.IconSize))
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ToggleHint() {
+    Text(
+        "Нажмите, чтобы временно не учитывать — участник останется в списке. Крестик убирает его совсем.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
 // ------------------------------------------------------------------------------- load
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     TabIntro(
-        "Сводка для куратора: сколько пар у каждого преподавателя ваших групп и у самих групп за выбранный период.",
+        "Сводка для преподавателя: сколько пар у каждого преподавателя ваших групп и у самих групп за выбранный период.",
         listOf(
-            "Курс — группы, которые вы курируете. Сначала подставляются группы, у которых вы сами ведёте пары; кнопка «Изменить» добавляет и убирает группы, а также преподавателей вручную.",
+            "Курс — группы, с которыми вы работаете. Сначала подставляются группы, у которых вы сами ведёте пары; кнопка «Изменить» добавляет и убирает группы, а также преподавателей вручную.",
+            "Нажатие на группу или преподавателя курса выключает их из расчёта, не убирая из курса; выбор запоминается.",
             "Преподаватели находятся автоматически: берутся все, кто ведёт пары у групп курса, и загружается их полное расписание.",
             "Пары и часы — все занятия преподавателя за период; одна пара — два академических часа. «В курсе» — сколько из них у ваших групп.",
             "«≈ в неделю» — среднее по неделям, в которых есть занятия. Нагрузка высокая — от 10 пар в неделю, средняя — от 4, низкая — меньше 4.",
@@ -258,7 +323,7 @@ private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
             "Расписание сохраняется в телефоне: повторный расчёт быстрее, прошедшие недели заново не загружаются.",
         ),
     )
-    ResultCard(shape = RoundedCornerShape(24.dp)) {
+    ResultCard(shape = MaterialTheme.shapes.extraLarge) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Курс", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { viewModel.setEditingCourse(!state.editingCourse) }) {
@@ -274,18 +339,20 @@ private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             (state.courseGroups.map { AnalyticsParticipant(it, it) } + state.extraTeachers).forEach { member ->
-                InputChip(
-                    selected = true,
-                    onClick = { if (state.editingCourse) viewModel.removeFromCourse(member.key) },
-                    label = { Text(surnameWithInitials(member.label).takeIf { ScheduleTarget.isTeacher(member.key) } ?: member.label) },
-                    trailingIcon = if (state.editingCourse) {
-                        { Icon(Icons.Rounded.Close, contentDescription = "Убрать ${member.label}", Modifier.size(InputChipDefaults.IconSize)) }
+                ToggleableChip(
+                    label = surnameWithInitials(member.label).takeIf { ScheduleTarget.isTeacher(member.key) } ?: member.label,
+                    fullLabel = member.label,
+                    included = member.key !in state.excludedCourse,
+                    onToggle = { viewModel.toggleCourseMember(member.key) },
+                    onRemove = if (state.editingCourse) {
+                        { viewModel.removeFromCourse(member.key) }
                     } else {
                         null
                     },
                 )
             }
         }
+        if (state.courseGroups.isNotEmpty() || state.extraTeachers.isNotEmpty()) ToggleHint()
     }
     if (state.editingCourse) {
         ParticipantPicker(state, viewModel, actionLabel = "Добавить", onPick = viewModel::addToCourse)
@@ -293,8 +360,8 @@ private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     ConnectedChoice(AnalyticsPeriod.entries, state.loadPeriod, { it.title }, viewModel::setLoadPeriod)
     Button(
         onClick = viewModel::computeCourse,
-        enabled = (state.courseGroups.isNotEmpty() || state.extraTeachers.isNotEmpty()) && !state.isBusy,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
+        enabled = (state.activeCourseGroups.isNotEmpty() || state.activeExtraTeachers.isNotEmpty()) && !state.isBusy,
+        modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
     ) { Text(if (state.courseResult == null) "Показать нагрузку" else "Обновить") }
 
     val result = state.courseResult ?: return
@@ -349,7 +416,7 @@ private fun CourseResults(state: AnalyticsUiState, viewModel: AnalyticsViewModel
 
 @Composable
 private fun SummaryTile(value: String, label: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(modifier = modifier, shape = MaterialTheme.shapes.largeIncreased, color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Text(value, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -440,7 +507,7 @@ private fun LoadDetailSheet(row: LoadRow, range: ClosedRange<LocalDate>, onDismi
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -525,7 +592,7 @@ private fun RoomsTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     Button(
         onClick = viewModel::computeRooms,
         enabled = !state.isBusy,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
+        modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
     ) { Text("Собрать статистику") }
 
     val result = state.roomsResult ?: return
@@ -647,7 +714,7 @@ private fun <T> ConnectedChoice(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ProgressCard(progress: AnalyticsProgress, onCancel: () -> Unit) {
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -667,7 +734,7 @@ private fun ProgressCard(progress: AnalyticsProgress, onCancel: () -> Unit) {
 }
 
 @Composable
-private fun ResultCard(shape: RoundedCornerShape, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun ResultCard(shape: Shape, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
     }
@@ -748,7 +815,7 @@ private fun TabIntro(summary: String, points: List<String>) {
     Text(summary, style = MaterialTheme.typography.bodyLarge)
     Surface(
         onClick = { expanded = !expanded },
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -830,7 +897,7 @@ private fun SlotCard(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RoomSuggestionRow(suggestion: RoomSuggestion?) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Place, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Spacer(Modifier.width(10.dp))

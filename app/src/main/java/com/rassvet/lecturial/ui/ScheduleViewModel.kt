@@ -97,6 +97,8 @@ data class ScheduleUiState(
     val widgetFontStyleId: String = WidgetFontStyles.defaultId,
     val widgetLetterSpacingPercent: Int = 0,
     val widgetTitleMaxLines: Int = 2,
+    val widgetMatchApp: Boolean = true,
+    val widgetBackgroundOpacityPercent: Int = 100,
     val lessonAliases: Map<String, String> = emptyMap(),
     val studyPlans: List<StudyPlan> = emptyList(),
     val deadlineReminderDays: Set<Int> = DeadlineReminder.default,
@@ -185,6 +187,8 @@ class ScheduleViewModel(
                     widgetFontStyleId = displayOptions.fontStyleId,
                     widgetLetterSpacingPercent = displayOptions.letterSpacingPercent,
                     widgetTitleMaxLines = displayOptions.titleMaxLines,
+                    widgetMatchApp = displayOptions.matchApp,
+                    widgetBackgroundOpacityPercent = displayOptions.backgroundOpacityPercent,
                     lessonAliases = aliases,
                 )
             }
@@ -558,7 +562,7 @@ class ScheduleViewModel(
     }
 
     fun saveBuiltInThemeOverride(theme: AppTheme, palette: ThemePalette) {
-        if (theme == AppTheme.Custom) return
+        if (theme == AppTheme.Custom || theme == AppTheme.Dynamic) return
         val current = _state.value
         val nextOverride = BuiltInThemeOverride(theme, current.darkTheme, palette)
         val overrides = current.builtInThemeOverrides
@@ -629,18 +633,7 @@ class ScheduleViewModel(
     }
 
     fun resetAppDisplayOptions() {
-        val current = _state.value.appDisplayOptions
-        setAppDisplayOptions(
-            AppDisplayOptions(
-                backgroundStyle = current.backgroundStyle,
-                backgroundIntensityPercent = current.backgroundIntensityPercent,
-                backgroundSpeedPercent = current.backgroundSpeedPercent,
-                backgroundGradientStartColor = current.backgroundGradientStartColor,
-                backgroundGradientEndColor = current.backgroundGradientEndColor,
-                backgroundGradientAccentColor = current.backgroundGradientAccentColor,
-                backgroundGradientAngleDegrees = current.backgroundGradientAngleDegrees,
-            ),
-        )
+        setAppDisplayOptions(_state.value.appDisplayOptions.withDefaultCards())
     }
 
     fun setLectureStripeColor(color: Int) {
@@ -750,6 +743,20 @@ class ScheduleViewModel(
         range = 1..4,
     )
 
+    fun setWidgetMatchApp(value: Boolean) {
+        if (_state.value.widgetMatchApp == value) return
+        _state.update { it.copy(widgetMatchApp = value) }
+        viewModelScope.launch { preferences.setWidgetMatchApp(value) }
+    }
+
+    fun setWidgetBackgroundOpacity(value: Int) = updateWidgetDimension(
+        current = { it.widgetBackgroundOpacityPercent },
+        update = { copy(widgetBackgroundOpacityPercent = value) },
+        persist = { preferences.setWidgetBackgroundOpacity(it) },
+        value = value,
+        range = 0..100,
+    )
+
     fun setLessonAlias(original: String, custom: String) {
         val key = original.trim()
         if (key.isEmpty()) return
@@ -811,10 +818,9 @@ class ScheduleViewModel(
                     errorMessage = null,
                 )
             }
-            var firstFailure: Throwable? = null
-            starts.forEach { start ->
-                try {
-                    val fresh = repository.refreshWeek(group, start)
+            val firstFailure = try {
+                repository.refreshWeeks(group, starts) { fresh ->
+                    val start = fresh.week.weekStart
                     _state.update {
                         if (!it.matchesRequest()) it else {
                             val updatedWeeks = (it.scheduleWeeks.filterNot { item -> item.weekStart == start } + fresh.week)
@@ -833,11 +839,12 @@ class ScheduleViewModel(
                             )
                         }
                     }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Throwable) {
-                    if (firstFailure == null) firstFailure = failure
                 }
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                failure
             }
             _state.update {
                 if (!it.matchesRequest()) it else it.copy(

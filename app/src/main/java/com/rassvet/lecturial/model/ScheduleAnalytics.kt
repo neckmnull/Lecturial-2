@@ -209,7 +209,7 @@ fun intradayRoomLoad(loads: List<RoomLoad>, slots: List<PairSlot> = SiriusPairSl
 fun isSpecialistGroup(name: String): Boolean = name.trim().uppercase().startsWith("ИОП-ИТ")
 
 // ---------------------------------------------------------------------------------------
-// Course overview for a curator
+// Course overview for a teacher
 
 /** "Семенов Михаил Евгеньевич" → "Семенов М. Е."; anything else is returned trimmed. */
 fun surnameWithInitials(fullName: String): String {

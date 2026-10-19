@@ -51,6 +51,8 @@ class UserPreferences(private val context: Context) {
     private val fontStyleKey = stringPreferencesKey("widget_font_style")
     private val letterSpacingKey = intPreferencesKey("widget_letter_spacing_percent")
     private val titleMaxLinesKey = intPreferencesKey("widget_title_max_lines")
+    private val widgetMatchAppKey = booleanPreferencesKey("widget_match_app")
+    private val widgetBackgroundOpacityKey = intPreferencesKey("widget_background_opacity_percent")
     private val lessonAliasesKey = stringPreferencesKey("lesson_aliases")
     private val appThemeKey = stringPreferencesKey("app_theme")
     private val selectedCustomThemeIdKey = stringPreferencesKey("selected_custom_theme_id")
@@ -157,6 +159,8 @@ class UserPreferences(private val context: Context) {
                 ?: WidgetFontStyles.defaultId,
             letterSpacingPercent = (preferences[letterSpacingKey] ?: 0).coerceIn(-5, 10),
             titleMaxLines = (preferences[titleMaxLinesKey] ?: 2).coerceIn(1, 4),
+            matchApp = preferences[widgetMatchAppKey] ?: true,
+            backgroundOpacityPercent = (preferences[widgetBackgroundOpacityKey] ?: 100).coerceIn(0, 100),
         )
     }
 
@@ -271,6 +275,10 @@ class UserPreferences(private val context: Context) {
     suspend fun setLetterSpacing(value: Int) = setWidgetDimension(letterSpacingKey, value, -5..10)
 
     suspend fun setTitleMaxLines(value: Int) = setWidgetDimension(titleMaxLinesKey, value, 1..4)
+
+    suspend fun setWidgetMatchApp(value: Boolean) = setWidgetBoolean(widgetMatchAppKey, value)
+
+    suspend fun setWidgetBackgroundOpacity(value: Int) = setWidgetDimension(widgetBackgroundOpacityKey, value, 0..100)
 
     suspend fun setLessonAliases(aliases: Map<String, String>) {
         context.dataStore.edit { preferences ->
@@ -469,6 +477,8 @@ internal fun encodeAppDisplayOptions(options: AppDisplayOptions): String = org.j
     .put("backgroundGradientEndColor", options.backgroundGradientEndColor)
     .put("backgroundGradientAccentColor", options.backgroundGradientAccentColor)
     .put("backgroundGradientAngleDegrees", options.backgroundGradientAngleDegrees)
+    .put("backgroundLineDensityPercent", options.backgroundLineDensityPercent)
+    .put("backgroundLineWeight", options.backgroundLineWeight)
     .toString()
 
 internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
@@ -507,6 +517,8 @@ internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
             backgroundGradientEndColor = item.optNullableInt("backgroundGradientEndColor"),
             backgroundGradientAccentColor = item.optNullableInt("backgroundGradientAccentColor"),
             backgroundGradientAngleDegrees = item.optInt("backgroundGradientAngleDegrees", 135).coerceIn(0, 360),
+            backgroundLineDensityPercent = item.optInt("backgroundLineDensityPercent", 100).coerceIn(50, 150),
+            backgroundLineWeight = item.optInt("backgroundLineWeight", 2).coerceIn(1, 5),
         )
     }.getOrDefault(AppDisplayOptions())
 }

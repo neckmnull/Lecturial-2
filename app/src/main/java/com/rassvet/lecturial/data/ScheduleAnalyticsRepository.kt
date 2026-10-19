@@ -136,7 +136,7 @@ class ScheduleAnalyticsRepository(
         return id
     }
 
-    /** Groups the curator follows; empty until chosen. */
+    /** Groups of the teacher's course; empty until chosen. */
     fun courseGroups(): List<String> =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_COURSE_GROUPS, null)
             ?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
@@ -144,6 +144,17 @@ class ScheduleAnalyticsRepository(
     fun setCourseGroups(groups: List<String>) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_COURSE_GROUPS, groups.joinToString("\n"))
+            .apply()
+    }
+
+    /** Course groups and teachers switched off for now: kept in the list, left out of the count. */
+    fun excludedCourseMembers(): Set<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_COURSE_EXCLUDED, null)
+            ?.split('\n')?.filter { it.isNotBlank() }?.toSet().orEmpty()
+
+    fun setExcludedCourseMembers(keys: Set<String>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_COURSE_EXCLUDED, keys.joinToString("\n"))
             .apply()
     }
 
@@ -168,6 +179,7 @@ class ScheduleAnalyticsRepository(
         const val KEY_TEACHER_IDS = "teacher_ids"
         const val KEY_CLASSROOM_IDS = "classroom_ids"
         const val KEY_COURSE_GROUPS = "course_groups"
+        const val KEY_COURSE_EXCLUDED = "course_excluded"
         val ROOM_SEEDS = listOf(
             "Альфа", "К_", "К", "Л", "Б", "А", "Г", "Д", "Н", "О", "П", "Р", "С", "Т", "Ф",
             "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", ",", "-",

@@ -99,7 +99,11 @@ class SiriusScheduleDataSource(
                     ?: throw IOException("Сайт не содержит список учебных групп")
             }
             val state = livewireStateFromHtml(initialHtml)
-            LivewireGroupParser.parse(state.syncInput("search", normalizedQuery))
+            // Habitual spellings like "иоп ит" are retried as "иоп-ит" in the same session;
+            // the search field keeps what the user typed.
+            SearchVariants.forGroup(normalizedQuery)
+                .flatMap { variant -> LivewireGroupParser.parse(state.syncInput("search", variant)) }
+                .distinct()
         }
     }
 
@@ -107,9 +111,14 @@ class SiriusScheduleDataSource(
         withContext(Dispatchers.IO) {
             cookieJar.clear()
             val state = livewireStateFromHtml(execute(Request.Builder().url(teacherPageUrl).get().build()))
-            val normalizedQuery = query.trim()
-            if (normalizedQuery.isNotEmpty()) state.syncInput("search", normalizedQuery)
-            LivewireTeacherParser.parse(state.serverMemo["data"]?.jsonObject?.get("teachersList"))
+            val variants = SearchVariants.forTeacher(query)
+            if (variants.isEmpty()) {
+                return@withContext LivewireTeacherParser.parse(state.serverMemo["data"]?.jsonObject?.get("teachersList"))
+            }
+            variants.flatMap { variant ->
+                state.syncInput("search", variant)
+                LivewireTeacherParser.parse(state.serverMemo["data"]?.jsonObject?.get("teachersList"))
+            }.distinctBy { it.id }
         }
     }
 
@@ -250,9 +259,9 @@ class SiriusScheduleDataSource(
     }
 
     private fun livewireStateFromHtml(html: String): LivewireState {
-        val initial = Regex("wire:initial-data=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+        val initial = initialDataPattern.find(html)?.groupValues?.get(1)
             ?: throw IOException("Сайт не содержит начальное состояние Livewire")
-        val token = Regex("window\\.livewire_token\\s*=\\s*'([^']+)'").find(html)?.groupValues?.get(1)
+        val token = tokenPattern.find(html)?.groupValues?.get(1)
             ?: throw IOException("Сайт не содержит CSRF-токен Livewire")
         val decoded = initial
             .replace("&quot;", "\"")
@@ -291,8 +300,33 @@ class SiriusScheduleDataSource(
         }
     }
 
-    private fun parseSiteDate(value: String): LocalDate =
-        LocalDate.parse(value, DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+    private fun parseSiteDate(value: String): LocalDate = LocalDate.parse(value, siteDateFormatter)
+
+    private companion object {
+        val initialDataPattern = Regex("wire:initial-data=\"([^\"]+)\"")
+        val tokenPattern = Regex("window\\.livewire_token\\s*=\\s*'([^']+)'")
+        val siteDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+    }
+}
+
+/** Forgiving spellings to try for a search, most literal first. */
+internal object SearchVariants {
+    private val separators = Regex("""[\s_–—]+""")
+    private val spaces = Regex("""\s+""")
+
+    /** "иоп ит" → "иоп ит", "иоп-ит", "иопит": the site only matches its own "ИОП-ИТ". */
+    fun forGroup(query: String): List<String> {
+        val typed = query.trim()
+        if (typed.isEmpty()) return emptyList()
+        return listOf(typed, typed.replace(separators, "-"), typed.replace(separators, "")).distinct()
+    }
+
+    /** Collapses spaces and also tries "е" for "ё": "Семёнов  М" → "Семёнов М", "Семенов М". */
+    fun forTeacher(query: String): List<String> {
+        val typed = query.trim().replace(spaces, " ")
+        if (typed.isEmpty()) return emptyList()
+        return listOf(typed, typed.replace('ё', 'е').replace('Ё', 'Е')).distinct()
+    }
 }
 
 internal object LivewireClassroomParser {
@@ -337,6 +371,8 @@ internal object LivewireTeacherParser {
 
 internal object LivewireGroupParser {
     private val groupAttribute = Regex("""data-group\s*=\s*(["'])(.*?)\1""", RegexOption.IGNORE_CASE)
+    private val decimalEntity = Regex("""&#(\d+);""")
+    private val hexEntity = Regex("""&#[xX]([0-9a-fA-F]+);""")
 
     fun parse(html: String): List<String> = groupAttribute.findAll(html)
         .map { decodeHtml(it.groupValues[2]).trim() }
@@ -352,10 +388,10 @@ internal object LivewireGroupParser {
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&amp;", "&")
-        val decimal = Regex("&#(\\d+);").replace(named) { match ->
+        val decimal = decimalEntity.replace(named) { match ->
             match.groupValues[1].toIntOrNull()?.let(::codePointToString) ?: match.value
         }
-        return Regex("&#[xX]([0-9a-fA-F]+);").replace(decimal) { match ->
+        return hexEntity.replace(decimal) { match ->
             match.groupValues[1].toIntOrNull(16)?.let(::codePointToString) ?: match.value
         }
     }
@@ -469,9 +505,18 @@ internal object LivewireEventParser {
         return text
     }
 
-    private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
-        .digest(toByteArray(StandardCharsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
+    private const val HEX = "0123456789abcdef"
+
+    private fun String.sha256(): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(toByteArray(StandardCharsets.UTF_8))
+        val hex = CharArray(digest.size * 2)
+        digest.forEachIndexed { index, byte ->
+            val value = byte.toInt() and 0xFF
+            hex[index * 2] = HEX[value ushr 4]
+            hex[index * 2 + 1] = HEX[value and 0x0F]
+        }
+        return String(hex)
+    }
 }
 
 private class InMemoryCookieJar : CookieJar {

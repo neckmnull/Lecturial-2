@@ -1,6 +1,20 @@
 package com.rassvet.lecturial.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,10 +60,10 @@ internal fun settingsGroupShape(index: Int, count: Int): RoundedCornerShape {
 }
 
 @Composable
-internal fun BackIconButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
+internal fun BackIconButton(onBack: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Назад") {
     // Pull the 48dp touch target left so the arrow lines up with the screen's text edge.
     IconButton(onClick = onBack, modifier = modifier.offset(x = (-12).dp)) {
-        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
+        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = contentDescription)
     }
 }
 
@@ -199,3 +213,54 @@ private fun statisticsIcon(name: String, filled: Boolean): ImageVector =
 /** Bar-chart icon for the statistics destination; core icons have no chart. */
 internal val StatisticsIconFilled: ImageVector by lazy { statisticsIcon("StatisticsFilled", filled = true) }
 internal val StatisticsIconOutlined: ImageVector by lazy { statisticsIcon("StatisticsOutlined", filled = false) }
+
+/**
+ * A settings sub-screen: a Material 3 top app bar with the back arrow, whose large title
+ * collapses into the bar as the content scrolls. Transparent, so the app background shows.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun SettingsPage(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    spacing: Dp = 12.dp,
+    overlay: @Composable BoxScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = Color.Transparent,
+        // The status bar is already padded above and the navigation bar sits below.
+        contentWindowInsets = WindowInsets(0),
+        topBar = {
+            MediumFlexibleTopAppBar(
+                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+                windowInsets = WindowInsets(0),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+            )
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                content = content,
+            )
+            overlay()
+        }
+    }
+}
