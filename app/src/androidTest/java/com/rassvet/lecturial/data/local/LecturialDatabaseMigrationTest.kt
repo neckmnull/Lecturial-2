@@ -70,7 +70,7 @@ class LecturialDatabaseMigrationTest {
         }
 
         database = Room.databaseBuilder(context, LecturialDatabase::class.java, databaseName)
-            .addMigrations(LecturialDatabase.MIGRATION_3_4)
+            .addMigrations(LecturialDatabase.MIGRATION_3_4, LecturialDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         val sqlite = requireNotNull(database).openHelper.writableDatabase
@@ -92,6 +92,14 @@ class LecturialDatabaseMigrationTest {
         assertNull(defaults["endTime"])
         assertNull(defaults["reminderMinutesBefore"])
         assertNull(defaults["todoistId"])
+
+        val eventColumns = buildList {
+            sqlite.query("PRAGMA table_info(`schedule_events`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                while (cursor.moveToNext()) add(cursor.getString(nameIndex))
+            }
+        }
+        assertEquals(true, "studentGroup" in eventColumns)
 
         sqlite.query("SELECT * FROM `study_plans` WHERE `id` = 'legacy'").use { cursor ->
             cursor.moveToFirst()

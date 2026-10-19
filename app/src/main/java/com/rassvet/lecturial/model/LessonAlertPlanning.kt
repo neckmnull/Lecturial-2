@@ -10,14 +10,22 @@ enum class LessonAlarmKind { REMIND, START, END }
 enum class LessonLivePhase { UPCOMING, CURRENT }
 
 /** How long lesson alerts stay muted when the user won't attend classes. */
-enum class LessonAlertPause(val title: String, private val extraDays: Long) {
+enum class LessonAlertPause(val title: String, private val extraDays: Long?) {
     Today("На сегодня", 0),
     ThreeDays("На 3 дня", 2),
-    Week("На неделю", 6);
+    Week("На неделю", 6),
+    Forever("Навсегда", null);
 
-    /** Pause end: the start of the day after the last muted day. */
-    fun until(now: LocalDateTime, zone: ZoneId): Long =
-        now.toLocalDate().plusDays(extraDays + 1).atStartOfDay(zone).toInstant().toEpochMilli()
+    /** Pause end: the start of the day after the last muted day, or [Forever] millis. */
+    fun until(now: LocalDateTime, zone: ZoneId): Long {
+        val days = extraDays ?: return FOREVER_MILLIS
+        return now.toLocalDate().plusDays(days + 1).atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+
+    companion object {
+        /** Stored pause end meaning "until the user turns lesson alerts back on". */
+        const val FOREVER_MILLIS = Long.MAX_VALUE
+    }
 }
 
 /** Lessons that still get alerts: those starting at or after the end of an active pause. */

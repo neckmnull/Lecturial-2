@@ -37,6 +37,14 @@ import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.time.ZoneId
 import com.rassvet.lecturial.model.LessonAlertPause
+import com.rassvet.lecturial.model.ScheduleTarget
+import com.rassvet.lecturial.model.TeacherInfo
+
+enum class ScheduleSearchMode { Group, Teacher }
+
+val ScheduleUiState.isTeacherMode: Boolean get() = ScheduleTarget.isTeacher(selectedGroup)
+
+val ScheduleUiState.scheduleLabel: String get() = ScheduleTarget.label(selectedGroup, scheduleTargetName)
 
 data class ScheduleUiState(
     val appTheme: AppTheme = AppTheme.default,
@@ -45,7 +53,12 @@ data class ScheduleUiState(
     val builtInThemeOverrides: List<BuiltInThemeOverride> = emptyList(),
     val selectedCustomThemeId: String? = null,
     val appDisplayOptions: AppDisplayOptions = AppDisplayOptions(),
+    /** Schedule key: a group name or [ScheduleTarget.teacherKey]. */
     val selectedGroup: String? = null,
+    /** Teacher's name when [selectedGroup] is a teacher key. */
+    val scheduleTargetName: String? = null,
+    val searchMode: ScheduleSearchMode = ScheduleSearchMode.Group,
+    val availableTeachers: List<TeacherInfo> = emptyList(),
     val languageTeacher: String? = null,
     val choosingLanguageTeacher: Boolean = false,
     val selectedDate: LocalDate = LocalDate.now(),
@@ -117,6 +130,7 @@ class ScheduleViewModel(
         }
         viewModelScope.launch {
             val group = preferences.selectedGroup.first()
+            val targetName = preferences.selectedTargetName.first()
             val savedTeacher = if (group == null) null else preferences.languageTeacher(group).first()
             val stripeColors = preferences.widgetStripeColors.first()
             val displayOptions = preferences.widgetDisplayOptions.first()
@@ -146,8 +160,11 @@ class ScheduleViewModel(
                     scheduleWeeksBack = scheduleWeeksBack,
                     scheduleWeeksForward = scheduleWeeksForward,
                     selectedGroup = group,
+                    scheduleTargetName = targetName,
+                    searchMode = if (ScheduleTarget.isTeacher(group)) ScheduleSearchMode.Teacher else ScheduleSearchMode.Group,
                     languageTeacher = savedTeacher,
-                    choosingLanguageTeacher = group != null && savedTeacher == null,
+                    // Teachers see their own lessons, so the language-teacher filter doesn't apply.
+                    choosingLanguageTeacher = group != null && savedTeacher == null && !ScheduleTarget.isTeacher(group),
                     selectedDate = date,
                     weekStart = date.with(DayOfWeek.MONDAY),
                     isStarting = false,
@@ -193,11 +210,15 @@ class ScheduleViewModel(
         val normalizedGroup = group.trim()
         require(normalizedGroup.isNotEmpty())
         selectionJob?.cancel()
-        selectionJob = viewModelScope.launch { preferences.setSelectedGroup(normalizedGroup) }
+        selectionJob = viewModelScope.launch {
+            preferences.setSelectedGroup(normalizedGroup)
+            preferences.setSelectedTargetName(null)
+        }
         val date = today()
         _state.update {
             it.copy(
                 selectedGroup = normalizedGroup,
+                scheduleTargetName = null,
                 languageTeacher = null,
                 choosingLanguageTeacher = true,
                 selectedDate = date,
@@ -212,6 +233,50 @@ class ScheduleViewModel(
             )
         }
         loadCurrentWeek()
+    }
+
+    fun selectTeacher(teacher: TeacherInfo) {
+        val key = ScheduleTarget.teacherKey(teacher.id)
+        selectionJob?.cancel()
+        selectionJob = viewModelScope.launch {
+            preferences.setSelectedGroup(key)
+            preferences.setSelectedTargetName(teacher.name)
+            preferences.setLanguageTeacher(key, null)
+        }
+        val date = today()
+        _state.update {
+            it.copy(
+                selectedGroup = key,
+                scheduleTargetName = teacher.name,
+                languageTeacher = "",
+                choosingLanguageTeacher = false,
+                selectedDate = date,
+                weekStart = date.with(DayOfWeek.MONDAY),
+                week = null,
+                nextWeek = null,
+                scheduleWeeks = emptyList(),
+                events = emptyList(),
+                errorMessage = null,
+                showingCachedData = false,
+                lastUpdatedMillis = null,
+            )
+        }
+        loadCurrentWeek()
+    }
+
+    /** Switches the onboarding/settings search between groups and teachers. */
+    fun setSearchMode(mode: ScheduleSearchMode) {
+        if (_state.value.searchMode == mode) return
+        _state.update {
+            it.copy(
+                searchMode = mode,
+                groupSearchQuery = "",
+                availableGroups = emptyList(),
+                availableTeachers = emptyList(),
+                groupsError = null,
+            )
+        }
+        requestGroups()
     }
 
     fun checkForUpdates() {
@@ -294,6 +359,7 @@ class ScheduleViewModel(
             it.copy(
                 groupSearchQuery = query,
                 availableGroups = emptyList(),
+                availableTeachers = emptyList(),
                 groupsError = null,
             )
         }
@@ -302,6 +368,7 @@ class ScheduleViewModel(
 
     fun requestGroups(debounce: Boolean = false) {
         val query = _state.value.groupSearchQuery
+        val mode = _state.value.searchMode
         groupsJob?.cancel()
         groupsJob = viewModelScope.launch {
             if (debounce) delay(350)
@@ -312,9 +379,20 @@ class ScheduleViewModel(
                 )
             }
             try {
+                if (mode == ScheduleSearchMode.Teacher) {
+                    val teachers = repository.teachers(query)
+                    _state.update { current ->
+                        if (current.groupSearchQuery != query || current.searchMode != mode) current else current.copy(
+                            availableTeachers = teachers,
+                            isGroupsLoading = false,
+                            groupsError = null,
+                        )
+                    }
+                    return@launch
+                }
                 val groups = repository.groups(query)
                 _state.update { current ->
-                    if (current.groupSearchQuery != query) current else current.copy(
+                    if (current.groupSearchQuery != query || current.searchMode != mode) current else current.copy(
                         availableGroups = groups,
                         isGroupsLoading = false,
                         groupsError = null,
@@ -326,7 +404,11 @@ class ScheduleViewModel(
                 _state.update { current ->
                     if (current.groupSearchQuery != query) current else current.copy(
                         isGroupsLoading = false,
-                        groupsError = failure.message ?: "Не удалось загрузить группы",
+                        groupsError = failure.message ?: if (mode == ScheduleSearchMode.Teacher) {
+                            "Не удалось загрузить преподавателей"
+                        } else {
+                            "Не удалось загрузить группы"
+                        },
                     )
                 }
             }

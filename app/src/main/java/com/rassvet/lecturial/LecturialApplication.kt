@@ -1,6 +1,7 @@
 package com.rassvet.lecturial
 
 import android.app.Application
+import com.rassvet.lecturial.data.ScheduleAnalyticsRepository
 import com.rassvet.lecturial.data.ScheduleRepository
 import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.LecturialDatabase
@@ -22,6 +23,9 @@ class LecturialApplication : Application() {
             TodayScheduleWidget.updateAll(this)
             DeadlineAlerts.sync(this)
         }
+    }
+    val analyticsRepository by lazy {
+        ScheduleAnalyticsRepository(this, database, { SiriusScheduleDataSource() })
     }
     val repository by lazy {
         ScheduleRepository(

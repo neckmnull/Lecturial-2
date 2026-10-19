@@ -1,5 +1,12 @@
 package com.rassvet.lecturial.ui
 
+import androidx.compose.material.icons.rounded.Search
+import com.rassvet.lecturial.model.TeacherInfo
+import androidx.compose.material.icons.outlined.AccountBox
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import com.rassvet.lecturial.model.LessonAlertPause
 import java.time.ZoneId
 import androidx.compose.material.icons.rounded.Close
@@ -246,7 +253,7 @@ private val WallpaperGradientColors = listOf(
     0xFF0F766E, 0xFF166534, 0xFF9F1239, 0xFF581C87,
 )
 
-private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
+private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Analytics, Testing, About, Privacy }
 private enum class MainSection { Schedule, Plans, Settings }
 private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
 private enum class PreviewLessonType { Lecture, Practice }
@@ -308,6 +315,8 @@ fun LecturialApp(
     onCheckForUpdates: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},
     onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit = {},
+    onTeacherSelected: (TeacherInfo) -> Unit = {},
+    onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
     val stage = when {
@@ -340,6 +349,11 @@ fun LecturialApp(
                         returnToGroups = false
                         onGroupSelected(group)
                     },
+                    onTeacherSelected = { teacher ->
+                        returnToGroups = false
+                        onTeacherSelected(teacher)
+                    },
+                    onSearchModeChanged = onSearchModeChanged,
                 )
                 2 -> LanguageTeacherSelectionScreen(
                     state = state,
@@ -400,6 +414,8 @@ fun LecturialApp(
                     onCheckForUpdates,
                     onDownloadUpdate,
                     onInstallUpdate,
+                    onTeacherSelected = onTeacherSelected,
+                    onSearchModeChanged = onSearchModeChanged,
                 )
             }
         }
@@ -506,11 +522,20 @@ private fun GroupSelectionScreen(
     onSearchQueryChanged: (String) -> Unit,
     onRetry: () -> Unit,
     onGroupSelected: (String) -> Unit,
+    onTeacherSelected: (TeacherInfo) -> Unit = {},
+    onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
 ) {
+    val teacherSearch = state.searchMode == ScheduleSearchMode.Teacher
     var selectedGroup by remember { mutableStateOf<String?>(null) }
+    var selectedTeacher by remember { mutableStateOf<TeacherInfo?>(null) }
     LaunchedEffect(state.availableGroups) {
         if (selectedGroup !in state.availableGroups) selectedGroup = null
     }
+    LaunchedEffect(state.availableTeachers) {
+        if (selectedTeacher !in state.availableTeachers) selectedTeacher = null
+    }
+    val hasSelection = if (teacherSearch) selectedTeacher != null else selectedGroup != null
+    val nothingLoaded = if (teacherSearch) state.availableTeachers.isEmpty() else state.availableGroups.isEmpty()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -534,26 +559,36 @@ private fun GroupSelectionScreen(
         Spacer(Modifier.height(2.dp))
         Text("Привет!", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
-        Text("Из какой ты группы?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            if (teacherSearch) "Найдите себя в списке" else "Из какой ты группы?",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Найди свою группу — дальше выбери преподавателя иностранного языка",
+            if (teacherSearch) {
+                "Покажем ваши пары во всех группах и напомним о них"
+            } else {
+                "Найди свою группу — дальше выбери преподавателя иностранного языка"
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
+        ScheduleSearchModeButtons(mode = state.searchMode, onModeChanged = onSearchModeChanged)
+        Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = state.groupSearchQuery,
             onValueChange = onSearchQueryChanged,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Поиск группы") },
-            placeholder = { Text("Например, ИОП-ИТ") },
+            label = { Text(if (teacherSearch) "Поиск преподавателя" else "Поиск группы") },
+            placeholder = { Text(if (teacherSearch) "Например, Иванов" else "Например, ИОП-ИТ") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         )
         Spacer(Modifier.height(12.dp))
         when {
-            state.isGroupsLoading && state.availableGroups.isEmpty() ->
+            state.isGroupsLoading && nothingLoaded ->
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -561,19 +596,45 @@ private fun GroupSelectionScreen(
                         .semantics { contentDescription = "Загрузка групп" },
                     contentAlignment = Alignment.Center,
                 ) { LoadingIndicator() }
-            state.groupsError != null && state.availableGroups.isEmpty() -> Column(
+            state.groupsError != null && nothingLoaded -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(state.groupsError, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                 TextButton(onClick = onRetry) { Text("Повторить") }
             }
-            state.availableGroups.isEmpty() -> Text(
-                "Группы не найдены",
+            nothingLoaded -> Text(
+                if (teacherSearch) "Преподаватели не найдены" else "Группы не найдены",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
+            teacherSearch -> state.availableTeachers.forEach { teacher ->
+                val selected = selectedTeacher == teacher
+                Surface(
+                    onClick = { selectedTeacher = teacher },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .semantics { this.selected = selected },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                    border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(teacher.name, style = MaterialTheme.typography.titleMedium)
+                        teacher.department?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
             else -> state.availableGroups.forEach { group ->
                 val selected = selectedGroup == group
                 Surface(
@@ -592,17 +653,26 @@ private fun GroupSelectionScreen(
         }
         Spacer(Modifier.height(22.dp))
         Button(
-            onClick = { selectedGroup?.let(onGroupSelected) },
-            enabled = selectedGroup != null,
+            onClick = {
+                if (teacherSearch) selectedTeacher?.let(onTeacherSelected) else selectedGroup?.let(onGroupSelected)
+            },
+            enabled = hasSelection,
             modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(14.dp),
         ) {
             AnimatedContent(
-                targetState = selectedGroup != null,
+                targetState = hasSelection,
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "continue-button-label",
-            ) { hasSelection ->
-                Text(if (hasSelection) "Продолжить" else "Выбери группу", style = MaterialTheme.typography.titleMedium)
+            ) { selectionMade ->
+                Text(
+                    when {
+                        selectionMade -> "Продолжить"
+                        teacherSearch -> "Выберите себя в списке"
+                        else -> "Выбери группу"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -669,6 +739,8 @@ private fun ScheduleScreen(
     onCheckForUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit,
+    onTeacherSelected: (TeacherInfo) -> Unit = {},
+    onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
 ) {
     var mainSection by remember { mutableStateOf(MainSection.Schedule) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -794,6 +866,10 @@ private fun ScheduleScreen(
                         onAliasChanged = onLessonAliasChanged,
                         onBack = { settingsSection = null },
                     )
+                    SettingsSection.Analytics -> AnalyticsScreen(
+                        modifier = nestedModifier,
+                        onBack = { settingsSection = null },
+                    )
                     SettingsSection.Testing -> NotificationTestingScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
@@ -814,11 +890,14 @@ private fun ScheduleScreen(
                     null -> AppSettingsScreen(
                         state = state,
                         onGroupSelected = onGroupSelected,
+                        onTeacherSelected = onTeacherSelected,
+                        onSearchModeChanged = onSearchModeChanged,
                         onGroupSearchQueryChanged = onGroupSearchQueryChanged,
                         onGroupsRetry = onGroupsRetry,
                         onOpenLanguageTeacher = { settingsSection = SettingsSection.LanguageTeacher },
                         onOpenAppearance = { settingsSection = SettingsSection.Appearance },
                         onOpenLessonNames = { settingsSection = SettingsSection.Names },
+                        onOpenAnalytics = { settingsSection = SettingsSection.Analytics },
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
@@ -938,11 +1017,14 @@ private fun RowScope.BottomBarItem(
 private fun AppSettingsScreen(
     state: ScheduleUiState,
     onGroupSelected: (String) -> Unit,
+    onTeacherSelected: (TeacherInfo) -> Unit,
+    onSearchModeChanged: (ScheduleSearchMode) -> Unit,
     onGroupSearchQueryChanged: (String) -> Unit,
     onGroupsRetry: () -> Unit,
     onOpenLanguageTeacher: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenLessonNames: () -> Unit,
+    onOpenAnalytics: () -> Unit,
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
@@ -967,21 +1049,23 @@ private fun AppSettingsScreen(
         SettingsGroup(title = "Расписание") {
             item { shape ->
                 SettingsListItem(
-                    title = "Учебная группа",
-                    subtitle = state.selectedGroup.orEmpty(),
+                    title = if (state.isTeacherMode) "Преподаватель" else "Учебная группа",
+                    subtitle = state.scheduleLabel,
                     shape = shape,
-                    icon = Icons.Rounded.AccountBox,
+                    icon = if (state.isTeacherMode) Icons.Rounded.Person else Icons.Rounded.AccountBox,
                     trailing = {
                         GroupDropdown(
                             state = state,
                             onSearchQueryChanged = onGroupSearchQueryChanged,
                             onRetry = onGroupsRetry,
                             onSelected = onGroupSelected,
+                            onTeacherSelected = onTeacherSelected,
+                            onSearchModeChanged = onSearchModeChanged,
                         )
                     },
                 )
             }
-            item { shape ->
+            if (!state.isTeacherMode) item { shape ->
                 SettingsListItem(
                     title = "Преподаватель иностранного языка",
                     subtitle = state.languageTeacher?.takeIf { it.isNotBlank() } ?: "Все преподаватели",
@@ -999,6 +1083,16 @@ private fun AppSettingsScreen(
                     icon = Icons.AutoMirrored.Rounded.List,
                     onClick = onOpenLessonNames,
                     accessibilityLabel = "Открыть: Названия пар",
+                )
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "Аналитика",
+                    subtitle = "Общее свободное время, нагрузка, аудитории",
+                    shape = shape,
+                    icon = Icons.Rounded.Search,
+                    onClick = onOpenAnalytics,
+                    accessibilityLabel = "Открыть: Аналитика",
                 )
             }
             item { shape ->
@@ -2055,8 +2149,8 @@ private fun NotificationSettings(
     SettingsGroup(title = "Уведомления") {
         item { shape ->
             SettingsListItem(
-                title = "Уведомления о парах",
-                subtitle = "За 15 минут до пары и ход текущей пары",
+                title = "Системные настройки",
+                subtitle = "Звук, вибрация и показ на экране блокировки",
                 shape = shape,
                 icon = Icons.Rounded.Notifications,
                 onClick = {
@@ -2159,16 +2253,17 @@ private fun LessonAlertPauseItem(
     shape: RoundedCornerShape,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val lastMutedDay = pausedUntil?.let {
+    val lastMutedDay = pausedUntil?.takeIf { it != LessonAlertPause.FOREVER_MILLIS }?.let {
         java.time.Instant.ofEpochMilli(it - 1).atZone(ZoneId.systemDefault()).toLocalDate()
     }
     val subtitle = when {
-        lastMutedDay == null -> "Отключить на время, если не идёшь на пары"
+        pausedUntil == LessonAlertPause.FOREVER_MILLIS -> "Выключены, пока не включишь снова"
+        lastMutedDay == null -> "Отключить на время или навсегда"
         lastMutedDay == LocalDate.now() -> "Выключены до конца дня"
         else -> "Выключены по ${lastMutedDay.format(dayMonthFormatter)} включительно"
     }
     SettingsListItem(
-        title = "Пауза напоминаний о парах",
+        title = "Напоминания о парах",
         subtitle = subtitle,
         shape = shape,
         icon = if (pausedUntil != null) Icons.Rounded.Close else Icons.Rounded.DateRange,
@@ -2176,10 +2271,10 @@ private fun LessonAlertPauseItem(
         subtitleColor = if (pausedUntil != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         trailing = {
             if (pausedUntil != null) {
-                TextButton(onClick = { onPause(null) }) { Text("Возобновить") }
+                TextButton(onClick = { onPause(null) }) { Text("Включить") }
             } else {
                 Box {
-                    TextButton(onClick = { menuOpen = true }) { Text("Пауза") }
+                    TextButton(onClick = { menuOpen = true }) { Text("Выключить") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         LessonAlertPause.entries.forEach { option ->
                             DropdownMenuItem(
@@ -3041,7 +3136,10 @@ private fun GroupDropdown(
     onSearchQueryChanged: (String) -> Unit,
     onRetry: () -> Unit,
     onSelected: (String) -> Unit,
+    onTeacherSelected: (TeacherInfo) -> Unit = {},
+    onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
 ) {
+    val teacherSearch = state.searchMode == ScheduleSearchMode.Teacher
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(
@@ -3050,7 +3148,7 @@ private fun GroupDropdown(
                 onRetry()
             },
             modifier = Modifier.semantics {
-                contentDescription = "Выбрать группу, сейчас ${state.selectedGroup.orEmpty()}"
+                contentDescription = "Выбрать группу, сейчас ${state.scheduleLabel}"
             },
         ) {
             Text(
@@ -3071,40 +3169,68 @@ private fun GroupDropdown(
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ScheduleSearchModeButtons(
+                mode = state.searchMode,
+                onModeChanged = onSearchModeChanged,
+                modifier = Modifier.width(300.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+            )
             OutlinedTextField(
                 value = state.groupSearchQuery,
                 onValueChange = onSearchQueryChanged,
                 modifier = Modifier.width(300.dp).padding(horizontal = 8.dp),
-                label = { Text("Поиск группы") },
+                label = { Text(if (teacherSearch) "Поиск преподавателя" else "Поиск группы") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
+            val nothingLoaded = if (teacherSearch) state.availableTeachers.isEmpty() else state.availableGroups.isEmpty()
             when {
-                state.isGroupsLoading && state.availableGroups.isEmpty() -> Box(
+                state.isGroupsLoading && nothingLoaded -> Box(
                     Modifier
                         .width(300.dp)
                         .height(64.dp)
                         .semantics { contentDescription = "Загрузка групп" },
                     contentAlignment = Alignment.Center,
                 ) { LoadingIndicator() }
-                state.groupsError != null && state.availableGroups.isEmpty() -> Column(
+                state.groupsError != null && nothingLoaded -> Column(
                     modifier = Modifier.width(300.dp).padding(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(state.groupsError, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                     TextButton(onClick = onRetry) { Text("Повторить") }
                 }
-                state.availableGroups.isEmpty() -> Text(
-                    "Группы не найдены",
+                nothingLoaded -> Text(
+                    if (teacherSearch) "Преподаватели не найдены" else "Группы не найдены",
                     modifier = Modifier.width(300.dp).padding(16.dp),
                     textAlign = TextAlign.Center,
                 )
             }
-            state.availableGroups.forEach { group ->
-                DropdownMenuItem(
-                    text = { Text(group) },
-                    onClick = { expanded = false; onSelected(group) },
-                )
+            if (teacherSearch) {
+                state.availableTeachers.forEach { teacher ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(teacher.name)
+                                teacher.department?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        },
+                        onClick = { expanded = false; onTeacherSelected(teacher) },
+                    )
+                }
+            } else {
+                state.availableGroups.forEach { group ->
+                    DropdownMenuItem(
+                        text = { Text(group) },
+                        onClick = { expanded = false; onSelected(group) },
+                    )
+                }
             }
         }
     }
@@ -3146,7 +3272,8 @@ private fun ScheduleContent(
                     currentWeekStart = state.weekStart,
                     errorMessage = state.errorMessage,
                     lastUpdatedMillis = state.lastUpdatedMillis,
-                    group = state.selectedGroup.orEmpty(),
+                    group = state.scheduleLabel,
+                    teacherMode = state.isTeacherMode,
                     selectedDate = state.selectedDate,
                     now = state.now,
                     aliases = state.lessonAliases,
@@ -3287,6 +3414,34 @@ private fun JumpToTodayButton(direction: Int?, onClick: () -> Unit, modifier: Mo
             },
             text = { Text("Сегодня") },
         )
+    }
+}
+
+/** Student / teacher switch as an Expressive connected button group. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ScheduleSearchModeButtons(
+    mode: ScheduleSearchMode,
+    onModeChanged: (ScheduleSearchMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        listOf(ScheduleSearchMode.Group to "Студент", ScheduleSearchMode.Teacher to "Преподаватель")
+            .forEachIndexed { index, (option, title) ->
+                ToggleButton(
+                    checked = mode == option,
+                    onCheckedChange = { onModeChanged(option) },
+                    modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+                    shapes = if (index == 0) {
+                        ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    } else {
+                        ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    },
+                ) { Text(title, maxLines = 1) }
+            }
     }
 }
 
@@ -3561,7 +3716,11 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
                     LessonDetail(Icons.Outlined.Place, lesson.location, options)
                 }
                 if (!lesson.teachers.isNullOrBlank()) {
-                    LessonDetail(Icons.Outlined.Person, lesson.teachers, options)
+                    LessonDetail(
+                        if (lesson.teachersIsGroup) Icons.Outlined.AccountBox else Icons.Outlined.Person,
+                        lesson.teachers,
+                        options,
+                    )
                 }
                 if (!lesson.comment.isNullOrBlank()) {
                     LessonDetail(Icons.Outlined.Info, lesson.comment, options)
@@ -3826,6 +3985,7 @@ private sealed class ScheduleRow {
         val comment: String?,
         val liveLabel: String?,
         val liveProgress: Float? = null,
+        val teachersIsGroup: Boolean = false,
     ) : ScheduleRow() {
         override val key = "lesson-$eventId"
         override val contentType = "lesson"
@@ -3854,6 +4014,7 @@ private fun buildScheduleRows(
     now: LocalDateTime,
     aliases: Map<String, String>,
     plans: List<StudyPlan>,
+    teacherMode: Boolean = false,
 ): List<ScheduleRow> {
     val rows = ArrayList<ScheduleRow>(96)
     if (errorMessage != null) rows += ScheduleRow.Banner(errorMessage, lastUpdatedMillis)
@@ -3896,7 +4057,7 @@ private fun buildScheduleRows(
         if (days.isEmpty()) {
             rows += ScheduleRow.EmptyWeek(start)
         } else {
-            rows.addDays(days, weekPlans, today, now, live, startSeparated = false, aliases = aliases)
+            rows.addDays(days, weekPlans, today, now, live, startSeparated = false, aliases = aliases, teacherMode = teacherMode)
             if (scheduleWeek.days.all { it.events.isEmpty() } && weekPlans.isEmpty()) {
                 rows += ScheduleRow.EmptyWeek(start)
             }
@@ -3989,6 +4150,7 @@ private fun ArrayList<ScheduleRow>.addDays(
     live: LessonLiveState?,
     startSeparated: Boolean,
     aliases: Map<String, String>,
+    teacherMode: Boolean = false,
 ) {
     days.forEachIndexed { dayIndex, day ->
         val isToday = day.date == today
@@ -4035,7 +4197,9 @@ private fun ArrayList<ScheduleRow>.addDays(
                     endTime = event.endTime,
                     discipline = renamedDiscipline(event.discipline, aliases),
                     location = location,
-                    teachers = shortenTeachers(event.teachers),
+                    // A teacher already knows who teaches; the group is what matters.
+                    teachers = if (teacherMode) event.studentGroup else shortenTeachers(event.teachers),
+                    teachersIsGroup = teacherMode,
                     comment = displayComment(event.comment),
                     liveLabel = live?.takeIf { it.eventKey == eventKey }?.label,
                     liveProgress = live?.takeIf { it.eventKey == eventKey }

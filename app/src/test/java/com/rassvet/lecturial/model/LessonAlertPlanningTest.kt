@@ -106,6 +106,16 @@ class LessonAlertPlanningTest {
     }
 
     @Test
+    fun `forever pause mutes every future lesson`() {
+        val now = LocalDateTime.of(2026, 10, 19, 12, 30)
+        val until = LessonAlertPause.Forever.until(now, ZoneOffset.UTC)
+        val nextYear = event.copy(id = "later", date = event.date.plusYears(1))
+
+        assertEquals(LessonAlertPause.FOREVER_MILLIS, until)
+        assertEquals(emptyList<ScheduleEvent>(), lessonsOutsidePause(listOf(event, nextYear), until, ZoneOffset.UTC))
+    }
+
+    @Test
     fun `paused lessons get no alerts and later ones still do`() {
         val tomorrow = event.copy(id = "tomorrow", date = event.date.plusDays(1))
         val pausedUntil = LessonAlertPause.Today.until(LocalDateTime.of(event.date, LocalTime.of(8, 0)), ZoneOffset.UTC)

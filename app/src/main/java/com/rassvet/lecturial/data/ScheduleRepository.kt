@@ -9,6 +9,7 @@ import com.rassvet.lecturial.model.CachedSchedule
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
+import com.rassvet.lecturial.model.TeacherInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,8 @@ class ScheduleRepository(
     private val inFlight = ConcurrentHashMap<String, Deferred<CachedSchedule>>()
 
     suspend fun groups(query: String): List<String> = remote.fetchGroups(query)
+
+    suspend fun teachers(query: String): List<TeacherInfo> = remote.fetchTeachers(query)
 
     suspend fun eventsBetween(group: String, start: LocalDate, end: LocalDate): List<ScheduleEvent> =
         database.scheduleDao()
@@ -67,20 +70,25 @@ class ScheduleRepository(
     private suspend fun fetchAndCache(group: String, weekStart: LocalDate): CachedSchedule {
         val week = remote.fetchWeek(group, weekStart)
         val updatedAt = nowMillis()
-        val start = weekStart.toString()
-        val end = weekStart.plusDays(6).toString()
-        database.withTransaction {
-            database.scheduleDao().deleteWeek(group, start, end)
-            val entities = week.days.flatMap { day -> day.events.map { it.toEntity(group) } }
-            if (entities.isNotEmpty()) database.scheduleDao().insertEvents(entities)
-            database.scheduleDao().insertWeekCache(WeekCacheEntity(group, start, updatedAt))
-        }
+        database.cacheWeek(group, week, updatedAt)
         onCacheUpdated()
         return CachedSchedule(week, updatedAt)
     }
 }
 
-private fun ScheduleEvent.toEntity(group: String) = ScheduleEventEntity(
+/** Replaces one cached week of [group] with [week]. */
+internal suspend fun LecturialDatabase.cacheWeek(group: String, week: ScheduleWeek, updatedAt: Long) {
+    val start = week.weekStart.toString()
+    val end = week.weekStart.plusDays(6).toString()
+    withTransaction {
+        scheduleDao().deleteWeek(group, start, end)
+        val entities = week.days.flatMap { day -> day.events.map { it.toEntity(group) } }
+        if (entities.isNotEmpty()) scheduleDao().insertEvents(entities)
+        scheduleDao().insertWeekCache(WeekCacheEntity(group, start, updatedAt))
+    }
+}
+
+internal fun ScheduleEvent.toEntity(group: String) = ScheduleEventEntity(
     groupName = group,
     id = id,
     date = date.toString(),
@@ -94,9 +102,10 @@ private fun ScheduleEvent.toEntity(group: String) = ScheduleEventEntity(
     teachers = teachers.joinToString("\u001F"),
     comment = comment,
     onlineUrl = onlineUrl,
+    studentGroup = studentGroup,
 )
 
-private fun ScheduleEventEntity.toDomain() = ScheduleEvent(
+internal fun ScheduleEventEntity.toDomain() = ScheduleEvent(
     id = id,
     date = LocalDate.parse(date),
     startTime = startTime,
@@ -109,4 +118,5 @@ private fun ScheduleEventEntity.toDomain() = ScheduleEvent(
     teachers = teachers.split("\u001F").filter { it.isNotBlank() },
     comment = comment,
     onlineUrl = onlineUrl,
+    studentGroup = studentGroup,
 )

@@ -27,6 +27,7 @@ data class ScheduleEventEntity(
     val teachers: String,
     val comment: String?,
     val onlineUrl: String?,
+    val studentGroup: String? = null,
 )
 
 @Entity(tableName = "week_cache", primaryKeys = ["groupName", "weekStart"])
@@ -59,7 +60,7 @@ interface ScheduleDao {
 
 @Database(
     entities = [ScheduleEventEntity::class, WeekCacheEntity::class, StudyPlanEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class LecturialDatabase : RoomDatabase() {
@@ -106,10 +107,16 @@ abstract class LecturialDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `schedule_events` ADD COLUMN `studentGroup` TEXT")
+            }
+        }
+
         fun create(context: Context): LecturialDatabase = Room.databaseBuilder(
             context,
             LecturialDatabase::class.java,
             "lecturial.db",
-        ).addMigrations(migration1To2, migration2To3, MIGRATION_3_4).build()
+        ).addMigrations(migration1To2, migration2To3, MIGRATION_3_4, MIGRATION_4_5).build()
     }
 }

@@ -34,6 +34,7 @@ private val Context.dataStore by preferencesDataStore(
 
 class UserPreferences(private val context: Context) {
     private val selectedGroupKey = stringPreferencesKey("selected_group")
+    private val selectedTargetNameKey = stringPreferencesKey("selected_target_name")
     private val lectureStripeColorKey = intPreferencesKey("widget_lecture_stripe_color")
     private val practiceStripeColorKey = intPreferencesKey("widget_practice_stripe_color")
     private val showClassroomKey = booleanPreferencesKey("widget_show_classroom")
@@ -69,6 +70,10 @@ class UserPreferences(private val context: Context) {
 
     val selectedGroup: Flow<String?> = safePreferences
         .map { preferences -> preferences[selectedGroupKey]?.trim()?.takeIf { it.isNotEmpty() } }
+
+    /** Display name for a teacher schedule key; groups are shown by their key. */
+    val selectedTargetName: Flow<String?> = safePreferences
+        .map { preferences -> preferences[selectedTargetNameKey]?.trim()?.takeIf { it.isNotEmpty() } }
 
     val appTheme: Flow<AppTheme> = safePreferences
         .map { preferences -> AppTheme.fromStorageId(preferences[appThemeKey]) }
@@ -163,6 +168,14 @@ class UserPreferences(private val context: Context) {
         val normalized = group.trim()
         require(normalized.isNotEmpty())
         context.dataStore.edit { it[selectedGroupKey] = normalized }
+    }
+
+    suspend fun setSelectedTargetName(name: String?) {
+        context.dataStore.edit { preferences ->
+            val normalized = name?.trim()?.takeIf { it.isNotEmpty() }
+            if (normalized == null) preferences.remove(selectedTargetNameKey)
+            else preferences[selectedTargetNameKey] = normalized
+        }
     }
 
     suspend fun setAppTheme(theme: AppTheme, customThemeId: String? = null) {
