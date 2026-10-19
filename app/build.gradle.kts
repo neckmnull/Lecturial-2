@@ -23,8 +23,8 @@ android {
         applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 27
-        versionName = "1.6.1"
+        versionCode = 28
+        versionName = "1.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -52,6 +52,15 @@ android {
                 "proguard-rules.pro",
             )
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+        }
+        // Release-optimized build signed with the debug key, for measuring performance
+        // on a device without replacing the installed release app.
+        create("benchmark") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".benchmark"
+            versionNameSuffix = "-benchmark"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
 

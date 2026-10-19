@@ -35,6 +35,7 @@ object DeadlineAlerts {
     private const val EXTRA_TITLE = "title"
     private const val EXTRA_TYPE = "type"
     private const val EXTRA_DAYS_BEFORE = "days_before"
+    private const val EXTRA_MINUTES_BEFORE = "minutes_before"
     private const val ACCENT = 0xFF8AABFF.toInt()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,25 +55,32 @@ object DeadlineAlerts {
         }
     }
 
-    fun onAlarm(context: Context, intent: Intent) {
-        val title = intent.getStringExtra(EXTRA_TITLE)?.takeIf(String::isNotBlank) ?: return
+    fun onAlarm(context: Context, intent: Intent, onComplete: (() -> Unit)? = null) {
+        val title = intent.getStringExtra(EXTRA_TITLE)?.takeIf(String::isNotBlank) ?: run {
+            onComplete?.invoke()
+            return
+        }
         val type = intent.getStringExtra(EXTRA_TYPE).orEmpty()
         val daysBefore = intent.getIntExtra(EXTRA_DAYS_BEFORE, 0)
+        val minutesBefore = intent.getIntExtra(EXTRA_MINUTES_BEFORE, -1).takeIf { it >= 0 }
         val planId = intent.getStringExtra(EXTRA_PLAN_ID).orEmpty()
         ensureChannel(context)
         if (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            val text = when (daysBefore) {
-                0 -> "Срок сегодня"
-                1 -> "До срока остался 1 день"
+            val text = when {
+                minutesBefore == 0 -> "Начинается сейчас"
+                minutesBefore != null && minutesBefore < 60 -> "Начнётся через $minutesBefore мин."
+                minutesBefore != null -> "Начнётся через ${minutesBefore / 60} ч."
+                daysBefore == 0 -> "Срок сегодня"
+                daysBefore == 1 -> "До срока остался 1 день"
                 else -> "До срока осталось $daysBefore дня"
             }
             val openApp = PendingIntent.getActivity(
                 context,
-                0,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                planId.hashCode(),
+                MainActivity.openPlanIntent(context, planId).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -86,16 +94,15 @@ object DeadlineAlerts {
                 .setAutoCancel(true)
                 .setContentIntent(openApp)
                 .build()
-            NotificationManagerCompat.from(context).notify(notificationId(planId, daysBefore), notification)
+            NotificationManagerCompat.from(context).notify(notificationId(planId, daysBefore, minutesBefore), notification)
         }
-        sync(context)
+        sync(context, onComplete)
     }
 
     private suspend fun refresh(app: LecturialApplication) {
         ensureChannel(app)
         cancelAlarms(app)
         val days = app.preferences.deadlineReminderDays.first()
-        if (days.isEmpty()) return
         val reminders = scheduledDeadlineReminders(
             plans = app.studyPlanRepository.all(),
             reminderDays = days,
@@ -106,11 +113,16 @@ object DeadlineAlerts {
         val exact = Build.VERSION.SDK_INT < 31 || alarmManager.canScheduleExactAlarms()
         val codes = linkedSetOf<Int>()
         reminders.forEach { reminder ->
-            val code = requestCode(reminder.plan.id, reminder.daysBefore)
+            val code = requestCode(
+                reminder.plan.id,
+                reminder.daysBefore,
+                reminder.minutesBefore,
+                reminder.occurrenceDate.toString(),
+            )
             val pending = PendingIntent.getBroadcast(
                 app,
                 code,
-                alarmIntent(app, reminder.plan, reminder.daysBefore),
+                alarmIntent(app, reminder.plan, reminder.daysBefore, reminder.minutesBefore),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             if (exact) {
@@ -137,7 +149,7 @@ object DeadlineAlerts {
             val pending = PendingIntent.getBroadcast(
                 context,
                 code,
-                Intent(context, DeadlineAlertReceiver::class.java).setAction(ACTION_ALARM),
+                Intent(context, DeadlineAlertReceiver::class.java).setAction(ACTION_ALARM).setPackage(context.packageName),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             alarmManager.cancel(pending)
@@ -145,7 +157,7 @@ object DeadlineAlerts {
         prefs.edit().remove(KEY_CODES).apply()
     }
 
-    private fun alarmIntent(context: Context, plan: StudyPlan, daysBefore: Int) =
+    private fun alarmIntent(context: Context, plan: StudyPlan, daysBefore: Int, minutesBefore: Int?) =
         Intent(context, DeadlineAlertReceiver::class.java).apply {
             action = ACTION_ALARM
             setPackage(context.packageName)
@@ -153,13 +165,14 @@ object DeadlineAlerts {
             putExtra(EXTRA_TITLE, plan.title)
             putExtra(EXTRA_TYPE, plan.type.title)
             putExtra(EXTRA_DAYS_BEFORE, daysBefore)
+            minutesBefore?.let { putExtra(EXTRA_MINUTES_BEFORE, it) }
         }
 
-    private fun requestCode(planId: String, daysBefore: Int): Int =
-        31 * planId.hashCode() + daysBefore
+    private fun requestCode(planId: String, daysBefore: Int, minutesBefore: Int?, occurrence: String): Int =
+        listOf(planId, daysBefore, minutesBefore, occurrence).hashCode()
 
-    private fun notificationId(planId: String, daysBefore: Int): Int =
-        requestCode(planId, daysBefore) xor 0x4D31
+    private fun notificationId(planId: String, daysBefore: Int, minutesBefore: Int?): Int =
+        listOf(planId, daysBefore, minutesBefore).hashCode() xor 0x4D31
 
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -174,6 +187,8 @@ object DeadlineAlerts {
 
 class DeadlineAlertReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == DeadlineAlerts.ACTION_ALARM) DeadlineAlerts.onAlarm(context, intent)
+        if (intent.action != DeadlineAlerts.ACTION_ALARM) return
+        val pendingResult = goAsync()
+        DeadlineAlerts.onAlarm(context, intent) { pendingResult.finish() }
     }
 }

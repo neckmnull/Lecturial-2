@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.ColumnInfo
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "study_plans", primaryKeys = ["id"])
@@ -15,6 +16,14 @@ data class StudyPlanEntity(
     val note: String,
     val dueDate: String?,
     val dueTime: String?,
+    val endDate: String?,
+    val endTime: String?,
+    @ColumnInfo(defaultValue = "0") val isAllDay: Boolean,
+    @ColumnInfo(defaultValue = "'none'") val recurrence: String,
+    val reminderMinutesBefore: Int?,
+    @ColumnInfo(defaultValue = "-7689217") val color: Int,
+    val todoistId: String?,
+    @ColumnInfo(defaultValue = "0") val updatedAtMillis: Long,
     val isCompleted: Boolean,
     val createdAtMillis: Long,
 )

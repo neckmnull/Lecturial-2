@@ -2,6 +2,16 @@
     <string name="app_name">Lecturial 2</string>
     <string name="app_full_name">Lecturial 2</string>
     <string name="widget_description">Расписание и ближайшие планы на сегодня</string>
-    <string name="widget_no_lessons">Нет занятий</string>
+    <string name="widget_no_lessons">Нет занятий и планов</string>
+    <string name="widget_loading">Обновляем расписание…</string>
+    <string name="widget_loading_hint">Занятия появятся через несколько секунд</string>
+    <string name="widget_initial_hint">Нажмите, чтобы открыть приложение</string>
+    <string name="widget_load_error">Не удалось обновить расписание</string>
+    <string name="widget_load_error_hint">Нажмите, чтобы открыть приложение и повторить</string>
     <string name="widget_today">Сегодня</string>
+    <string name="widget_preview_date">14 октября</string>
+    <string name="widget_preview_lesson_count">2 пары</string>
+    <string name="widget_preview_time">09:00–10:30</string>
+    <string name="widget_preview_lesson">Основы программирования</string>
+    <string name="widget_preview_room">Аудитория 5.7</string>
 </resources>

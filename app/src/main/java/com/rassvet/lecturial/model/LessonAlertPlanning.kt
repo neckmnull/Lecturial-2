@@ -9,6 +9,30 @@ enum class LessonAlarmKind { REMIND, START, END }
 
 enum class LessonLivePhase { UPCOMING, CURRENT }
 
+/** How long lesson alerts stay muted when the user won't attend classes. */
+enum class LessonAlertPause(val title: String, private val extraDays: Long) {
+    Today("На сегодня", 0),
+    ThreeDays("На 3 дня", 2),
+    Week("На неделю", 6);
+
+    /** Pause end: the start of the day after the last muted day. */
+    fun until(now: LocalDateTime, zone: ZoneId): Long =
+        now.toLocalDate().plusDays(extraDays + 1).atStartOfDay(zone).toInstant().toEpochMilli()
+}
+
+/** Lessons that still get alerts: those starting at or after the end of an active pause. */
+fun lessonsOutsidePause(
+    events: List<ScheduleEvent>,
+    pausedUntilMillis: Long?,
+    zone: ZoneId = ZoneId.systemDefault(),
+): List<ScheduleEvent> {
+    if (pausedUntilMillis == null) return events
+    return events.filter { event ->
+        val start = eventEpochMillis(event.date, event.startTime, zone) ?: return@filter false
+        start >= pausedUntilMillis
+    }
+}
+
 data class ScheduledLessonAlarm(
     val event: ScheduleEvent,
     val kind: LessonAlarmKind,
@@ -23,6 +47,29 @@ data class VisibleLessonLive(
     val remainingMinutes: Int,
 ) {
     val targetMillis: Long get() = if (phase == LessonLivePhase.UPCOMING) startMillis else endMillis
+}
+
+data class LessonProgress(val current: Int, val max: Int)
+
+fun lessonProgress(
+    live: VisibleLessonLive,
+    nowMillis: Long,
+    remindMinutes: Int = LessonRemindMinutes,
+    max: Int = 360,
+): LessonProgress {
+    val safeMax = max.coerceAtLeast(1)
+    val periodStart = when (live.phase) {
+        LessonLivePhase.UPCOMING -> live.startMillis - remindMinutes.coerceAtLeast(0) * 60_000L
+        LessonLivePhase.CURRENT -> live.startMillis
+    }
+    val periodEnd = when (live.phase) {
+        LessonLivePhase.UPCOMING -> live.startMillis
+        LessonLivePhase.CURRENT -> live.endMillis
+    }
+    val duration = (periodEnd - periodStart).coerceAtLeast(1L)
+    val elapsed = (nowMillis - periodStart).coerceIn(0L, duration)
+    val current = ((elapsed.toDouble() / duration) * safeMax).toInt().coerceIn(0, safeMax)
+    return LessonProgress(current, safeMax)
 }
 
 fun eventEpochMillis(date: LocalDate, time: String, zone: ZoneId): Long? {

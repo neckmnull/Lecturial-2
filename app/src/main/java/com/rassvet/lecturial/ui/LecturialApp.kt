@@ -1,5 +1,40 @@
 package com.rassvet.lecturial.ui
 
+import com.rassvet.lecturial.model.LessonAlertPause
+import java.time.ZoneId
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.AccountBox
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.material.icons.rounded.Create
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.data.local.UserPreferences
@@ -9,6 +44,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +59,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -37,10 +74,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -72,6 +107,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.foundation.Image
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
@@ -98,11 +135,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -123,6 +162,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.rassvet.lecturial.model.LessonLiveState
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
@@ -149,6 +189,8 @@ import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
 import com.rassvet.lecturial.model.StudyPlan
 import com.rassvet.lecturial.model.DeadlineReminder
+import com.rassvet.lecturial.model.occursOn
+import com.rassvet.lecturial.model.occurrenceOn
 import com.rassvet.lecturial.model.toPalette
 import com.rassvet.lecturial.ui.theme.defaultThemePalette
 import com.rassvet.lecturial.model.parseThemeColor
@@ -166,6 +208,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 
 private val ru = Locale.forLanguageTag("ru")
@@ -173,15 +216,12 @@ private val fullWeekdayFormatter = DateTimeFormatter.ofPattern("EEEE", ru)
 private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", ru)
 private val LessonTimeColumnWidth = 68.dp
 private const val RestGapMinutes = 40
-private const val ScreenSlideDurationMillis = 220
-private const val ScreenFadeDurationMillis = 140
+private const val MaxSliderTickIntervals = 32
 
-private fun <T> screenSlideSpec() = tween<T>(
-    durationMillis = ScreenSlideDurationMillis,
-    easing = FastOutSlowInEasing,
-)
+// Expressive spatial/effects springs; slightly more damped for full-screen slides.
+private fun <T> screenSlideSpec() = spring<T>(dampingRatio = 0.9f, stiffness = 380f)
 
-private fun <T> screenFadeSpec() = tween<T>(durationMillis = ScreenFadeDurationMillis)
+private fun <T> screenFadeSpec() = spring<T>(dampingRatio = 1f, stiffness = 1600f)
 
 private val AccentThemeColors = listOf(
     0xFF8AABFF, 0xFF62D5E8, 0xFF67D391, 0xFFFF897D,
@@ -200,10 +240,16 @@ private val TextThemeColors = listOf(
     0xFFF4F4F5, 0xFFE2E8F0, 0xFFD1D5DB, 0xFFA1A1AA,
     0xFF71717A, 0xFF3F3F46, 0xFF18181B, 0xFF09090B,
 )
+private val WallpaperGradientColors = listOf(
+    0xFF4F7DFF, 0xFF62D5E8, 0xFF67D391, 0xFFFF897D,
+    0xFFB69DF8, 0xFFFF8FB3, 0xFFE8B84A, 0xFF172554,
+    0xFF0F766E, 0xFF166534, 0xFF9F1239, 0xFF581C87,
+)
 
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
 private enum class MainSection { Schedule, Plans, Settings }
 private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
+private enum class PreviewLessonType { Lecture, Practice }
 
 private fun ScheduleUiState.loadedScheduleWeeks(): List<ScheduleWeek> =
     scheduleWeeks.ifEmpty { listOfNotNull(week, nextWeek) }
@@ -214,6 +260,9 @@ private fun ScheduleUiState.loadedScheduleWeeks(): List<ScheduleWeek> =
 @Composable
 fun LecturialApp(
     state: ScheduleUiState,
+    openPlanId: String? = null,
+    openPlanRequestKey: Long = 0L,
+    onOpenPlanConsumed: (Long) -> Unit = {},
     onGroupSelected: (String) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onMoveWeek: (Long) -> Unit,
@@ -253,6 +302,7 @@ fun LecturialApp(
     onStudyPlanCompletedChanged: (String, Boolean) -> Unit = { _, _ -> },
     onStudyPlanDeleted: (String) -> Unit = {},
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
+    onLessonAlertsPause: (LessonAlertPause?) -> Unit = {},
     onScheduleWeeksBackChanged: (Int) -> Unit = {},
     onScheduleWeeksForwardChanged: (Int) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
@@ -266,7 +316,10 @@ fun LecturialApp(
         state.choosingLanguageTeacher -> 2
         else -> 3
     }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    MaterialYouBackground(
+        modifier = Modifier.fillMaxSize(),
+        options = state.appDisplayOptions,
+    ) {
         AnimatedContent(
             modifier = Modifier.fillMaxSize().clipToBounds(),
             targetState = stage,
@@ -299,6 +352,9 @@ fun LecturialApp(
                         nextWeek = state.nextWeek?.forLanguageTeacher(state.languageTeacher),
                         scheduleWeeks = state.scheduleWeeks.map { it.forLanguageTeacher(state.languageTeacher) },
                         events = state.events.filter { com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, state.languageTeacher) }),
+                    openPlanId,
+                    openPlanRequestKey,
+                    onOpenPlanConsumed,
                     onGroupSelected,
                     onGroupSearchQueryChanged,
                     onGroupsRetry,
@@ -338,6 +394,7 @@ fun LecturialApp(
                     onStudyPlanCompletedChanged,
                     onStudyPlanDeleted,
                     onDeadlineReminderDaysChanged,
+                    onLessonAlertsPause,
                     onScheduleWeeksBackChanged,
                     onScheduleWeeksForwardChanged,
                     onCheckForUpdates,
@@ -564,6 +621,9 @@ private fun GroupSelectionScreen(
 @Composable
 private fun ScheduleScreen(
     state: ScheduleUiState,
+    openPlanId: String?,
+    openPlanRequestKey: Long,
+    onOpenPlanConsumed: (Long) -> Unit,
     onGroupSelected: (String) -> Unit,
     onGroupSearchQueryChanged: (String) -> Unit,
     onGroupsRetry: () -> Unit,
@@ -603,6 +663,7 @@ private fun ScheduleScreen(
     onStudyPlanCompletedChanged: (String, Boolean) -> Unit,
     onStudyPlanDeleted: (String) -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
+    onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
     onScheduleWeeksForwardChanged: (Int) -> Unit,
     onCheckForUpdates: () -> Unit,
@@ -613,6 +674,9 @@ private fun ScheduleScreen(
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val screenEffectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val predictiveBackProgress = remember { Animatable(0f) }
+    LaunchedEffect(openPlanId, openPlanRequestKey) {
+        if (openPlanId != null) mainSection = MainSection.Plans
+    }
     LaunchedEffect(mainSection) {
         if (mainSection != MainSection.Settings) settingsSection = null
     }
@@ -758,6 +822,7 @@ private fun ScheduleScreen(
                         onOpenTesting = { settingsSection = SettingsSection.Testing },
                         onOpenAbout = { settingsSection = SettingsSection.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
+                        onLessonAlertsPause = onLessonAlertsPause,
                         onScheduleWeeksBackChanged = onScheduleWeeksBackChanged,
                         onScheduleWeeksForwardChanged = onScheduleWeeksForwardChanged,
                     )
@@ -765,19 +830,35 @@ private fun ScheduleScreen(
             } else if (selectedSection == MainSection.Plans) {
                 StudyPlansScreen(
                     plans = state.studyPlans,
+                    displayOptions = state.appDisplayOptions,
+                    requestedPlanId = openPlanId,
+                    requestedPlanKey = openPlanRequestKey,
+                    onRequestedPlanOpened = onOpenPlanConsumed,
                     onSave = onStudyPlanSaved,
                     onCompletedChanged = onStudyPlanCompletedChanged,
                     onDelete = onStudyPlanDeleted,
                 )
             } else {
+                val pullState = rememberPullToRefreshState()
                 PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
+                    // Shown for pull-to-refresh and for the refresh on entering the app;
+                    // other reloads (range changes etc.) keep cached lessons quietly.
+                    isRefreshing = state.isManualRefreshing,
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(),
+                    state = pullState,
+                    indicator = {
+                        PullToRefreshDefaults.LoadingIndicator(
+                            state = pullState,
+                            isRefreshing = state.isManualRefreshing,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        )
+                    },
                 ) {
                     ScheduleContent(
                         state = state,
                         onRetry = onRetry,
+                        onToday = onToday,
                         onStudyPlanSaved = onStudyPlanSaved,
                         onStudyPlanCompletedChanged = onStudyPlanCompletedChanged,
                         onStudyPlanDeleted = onStudyPlanDeleted,
@@ -805,80 +886,51 @@ private fun LecturialBottomBar(
     onPlans: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    Row(
+    NavigationBar(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .navigationBarsPadding()
-            .height(56.dp)
             .testTag("bottom-navigation"),
-        verticalAlignment = Alignment.CenterVertically,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        LecturialBottomBarItem(
-            icon = Icons.Outlined.DateRange,
-            label = "Расписание",
+        BottomBarItem(
             selected = selectedSection == MainSection.Schedule,
             onClick = onHome,
+            selectedIcon = Icons.Filled.DateRange,
+            icon = Icons.Outlined.DateRange,
+            label = "Расписание",
         )
-        LecturialBottomBarItem(
-            icon = Icons.Outlined.CheckCircle,
-            label = "Планы",
+        BottomBarItem(
             selected = selectedSection == MainSection.Plans,
             onClick = onPlans,
+            selectedIcon = Icons.Filled.CheckCircle,
+            icon = Icons.Outlined.CheckCircle,
+            label = "Планы",
         )
-        LecturialBottomBarItem(
-            icon = Icons.Outlined.Settings,
-            label = "Настройки",
+        BottomBarItem(
             selected = selectedSection == MainSection.Settings,
             onClick = onSettings,
+            selectedIcon = Icons.Filled.Settings,
+            icon = Icons.Outlined.Settings,
+            label = "Настройки",
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun RowScope.LecturialBottomBarItem(
-    icon: ImageVector,
-    label: String,
+private fun RowScope.BottomBarItem(
     selected: Boolean,
     onClick: () -> Unit,
+    selectedIcon: ImageVector,
+    icon: ImageVector,
+    label: String,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val contentColor by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primaryFixed else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-        tween(durationMillis = 140), label = "navigation-color")
-    val indicatorColor by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        tween(durationMillis = 140), label = "navigation-indicator")
-    val iconScale by animateFloatAsState(if (selected) 1.12f else 1f,
-        tween(durationMillis = 160, easing = FastOutSlowInEasing), label = "navigation-scale")
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = { if (!selected) onClick() },
-            )
-            .semantics { this.selected = selected },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = indicatorColor,
-                    shape = RoundedCornerShape(16.dp),
-                )
-                .padding(horizontal = 18.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }, tint = contentColor)
-        }
-        Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = contentColor)
-    }
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = { Icon(if (selected) selectedIcon else icon, contentDescription = null) },
+        label = { Text(label) },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -894,6 +946,7 @@ private fun AppSettingsScreen(
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
+    onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
     onScheduleWeeksForwardChanged: (Int) -> Unit,
 ) {
@@ -911,56 +964,94 @@ private fun AppSettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Учебная группа", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        state.selectedGroup.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                GroupDropdown(
-                    state = state,
-                    onSearchQueryChanged = onGroupSearchQueryChanged,
-                    onRetry = onGroupsRetry,
-                    onSelected = onGroupSelected,
+        SettingsGroup(title = "Расписание") {
+            item { shape ->
+                SettingsListItem(
+                    title = "Учебная группа",
+                    subtitle = state.selectedGroup.orEmpty(),
+                    shape = shape,
+                    icon = Icons.Rounded.AccountBox,
+                    trailing = {
+                        GroupDropdown(
+                            state = state,
+                            onSearchQueryChanged = onGroupSearchQueryChanged,
+                            onRetry = onGroupsRetry,
+                            onSelected = onGroupSelected,
+                        )
+                    },
+                )
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "Преподаватель иностранного языка",
+                    subtitle = state.languageTeacher?.takeIf { it.isNotBlank() } ?: "Все преподаватели",
+                    shape = shape,
+                    icon = Icons.Rounded.Person,
+                    onClick = onOpenLanguageTeacher,
+                    accessibilityLabel = "Открыть: Преподаватель иностранного языка",
+                )
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "Названия пар",
+                    subtitle = "Сокращения предметов",
+                    shape = shape,
+                    icon = Icons.AutoMirrored.Rounded.List,
+                    onClick = onOpenLessonNames,
+                    accessibilityLabel = "Открыть: Названия пар",
+                )
+            }
+            item { shape ->
+                ScheduleRangeSettings(
+                    weeksBack = state.scheduleWeeksBack,
+                    weeksForward = state.scheduleWeeksForward,
+                    onWeeksBackChanged = onScheduleWeeksBackChanged,
+                    onWeeksForwardChanged = onScheduleWeeksForwardChanged,
+                    shape = shape,
                 )
             }
         }
-        SettingsNavigationRow(
-            "Преподаватель иностранного языка",
-            state.languageTeacher?.takeIf { it.isNotBlank() } ?: "Все преподаватели",
-            onOpenLanguageTeacher,
-        )
-        SettingsNavigationRow(
-            "Оформление",
-            "Тема, карточки расписания и виджет",
-            onOpenAppearance,
-        )
-        SettingsNavigationRow("Названия пар", "Сокращения предметов", onOpenLessonNames)
-        ScheduleRangeSettings(
-            weeksBack = state.scheduleWeeksBack,
-            weeksForward = state.scheduleWeeksForward,
-            onWeeksBackChanged = onScheduleWeeksBackChanged,
-            onWeeksForwardChanged = onScheduleWeeksForwardChanged,
-        )
         NotificationSettings(
             selectedDays = state.deadlineReminderDays,
             onSelectedDaysChanged = onDeadlineReminderDaysChanged,
+            pausedUntil = state.lessonAlertsPausedUntil
+                ?.takeIf { it > state.now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() },
+            onPause = onLessonAlertsPause,
         )
-        if (BuildConfig.DEBUG) {
-            SettingsNavigationRow("Тестирование", "LiveChip, прогресс и уведомления", onOpenTesting)
+        SettingsGroup(title = "Приложение") {
+            item { shape ->
+                SettingsListItem(
+                    title = "Оформление",
+                    subtitle = "Тема, карточки расписания и виджет",
+                    shape = shape,
+                    icon = Icons.Rounded.Create,
+                    onClick = onOpenAppearance,
+                    accessibilityLabel = "Открыть: Оформление",
+                )
+            }
+            if (BuildConfig.DEBUG) {
+                item { shape ->
+                    SettingsListItem(
+                        title = "Тестирование",
+                        subtitle = "LiveChip, прогресс и уведомления",
+                        shape = shape,
+                        icon = Icons.Rounded.Build,
+                        onClick = onOpenTesting,
+                        accessibilityLabel = "Открыть: Тестирование",
+                    )
+                }
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "О приложении",
+                    subtitle = "Источник и конфиденциальность",
+                    shape = shape,
+                    icon = Icons.Rounded.Info,
+                    onClick = onOpenAbout,
+                    accessibilityLabel = "Открыть: О приложении",
+                )
+            }
         }
-        SettingsNavigationRow("О приложении", "Источник и конфиденциальность", onOpenAbout)
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -994,7 +1085,7 @@ private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+            SettingsChevron()
         }
     }
 }
@@ -1005,22 +1096,29 @@ private fun ScheduleRangeSettings(
     weeksForward: Int,
     onWeeksBackChanged: (Int) -> Unit,
     onWeeksForwardChanged: (Int) -> Unit,
+    shape: Shape = RoundedCornerShape(24.dp),
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Диапазон расписания", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Какие недели загружать и показывать в общей ленте",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SettingsLeadingIcon(Icons.Rounded.DateRange)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("Диапазон расписания", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Какие недели загружать и показывать в общей ленте",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             WidgetDimensionSlider(
                 title = "Недель назад",
                 description = "Прошедшие недели до текущей",
@@ -1071,6 +1169,39 @@ private fun AppearanceSettingsScreen(
     var editedTheme by remember { mutableStateOf<CustomAppTheme?>(null) }
     var editedBuiltInTheme by remember { mutableStateOf<AppTheme?>(null) }
     var creatingTheme by remember { mutableStateOf(false) }
+    var previewOptions by remember { mutableStateOf(appDisplayOptions) }
+    var previewRequestKey by remember { mutableStateOf(0) }
+    var previewVisible by remember { mutableStateOf(false) }
+    var previewLessonType by remember { mutableStateOf(PreviewLessonType.Lecture) }
+    LaunchedEffect(appDisplayOptions) {
+        previewOptions = appDisplayOptions
+    }
+    LaunchedEffect(previewRequestKey) {
+        if (previewRequestKey == 0) return@LaunchedEffect
+        previewVisible = true
+        delay(2_400)
+        previewVisible = false
+    }
+    fun updateDisplayOptions(updated: AppDisplayOptions) {
+        val lectureChanged = updated.lectureStripeColor != appDisplayOptions.lectureStripeColor
+        val practiceChanged = updated.practiceStripeColor != appDisplayOptions.practiceStripeColor
+        if (lectureChanged || practiceChanged) {
+            previewOptions = updated
+            if (lectureChanged) {
+                previewLessonType = PreviewLessonType.Lecture
+            } else if (practiceChanged) {
+                previewLessonType = PreviewLessonType.Practice
+            }
+            previewRequestKey++
+        } else {
+            previewVisible = false
+        }
+        onAppDisplayOptionsChanged(updated)
+    }
+    fun updateBackgroundOptions(updated: AppDisplayOptions) {
+        previewVisible = false
+        onAppDisplayOptionsChanged(updated)
+    }
     val appearanceSection = when {
         editedBuiltInTheme != null -> AppearanceSection.BuiltInEditor
         creatingTheme || editedTheme != null -> AppearanceSection.CustomEditor
@@ -1118,6 +1249,7 @@ private fun AppearanceSettingsScreen(
                     allowRename = false,
                     darkTheme = darkTheme,
                     previewAppTheme = builtInTheme,
+                    backgroundOptions = appDisplayOptions,
                     onSave = {
                         onBuiltInThemeSaved(builtInTheme, it.toPalette())
                         closeEditor()
@@ -1136,6 +1268,7 @@ private fun AppearanceSettingsScreen(
                 CustomThemeEditor(
                     theme = theme,
                     darkTheme = darkTheme,
+                    backgroundOptions = appDisplayOptions,
                     onSave = {
                         onCustomThemeSaved(it)
                         closeEditor()
@@ -1149,22 +1282,16 @@ private fun AppearanceSettingsScreen(
                     onBack = ::closeEditor,
                 )
             }
-            AppearanceSection.Settings -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+            AppearanceSection.Settings -> Box(Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "‹",
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .semantics { contentDescription = "Назад" }
-                    .padding(end = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            BackIconButton(onBack)
             Text("Оформление", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
         Text(
@@ -1172,12 +1299,19 @@ private fun AppearanceSettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        AppThemePreview(options = appDisplayOptions)
         WidgetSettingSwitch(
             title = "Тёмный режим",
             description = if (darkTheme) "Тёмная палитра включена" else "Используется светлая палитра",
             checked = darkTheme,
             onCheckedChange = onDarkThemeChanged,
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AppBackgroundSettings(
+            options = appDisplayOptions,
+            onOptionsChanged = ::updateBackgroundOptions,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         AppTheme.entries.filterNot { it == AppTheme.Custom }.forEach { theme ->
             val selected = theme == selectedTheme
@@ -1207,7 +1341,7 @@ private fun AppearanceSettingsScreen(
                         )
                     }
                     TextButton(onClick = { editedBuiltInTheme = theme }) { Text("Изменить") }
-                    RadioButton(selected = selected, onClick = null)
+                    ThemeSelectionIndicator(selected)
                 }
             }
         }
@@ -1234,7 +1368,7 @@ private fun AppearanceSettingsScreen(
                     Spacer(Modifier.width(12.dp))
                     Text(theme.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = { editedTheme = theme }) { Text("Изменить") }
-                    RadioButton(selected = selected, onClick = null)
+                    ThemeSelectionIndicator(selected)
                 }
             }
         }
@@ -1250,11 +1384,23 @@ private fun AppearanceSettingsScreen(
         )
         AppDisplaySettings(
             options = appDisplayOptions,
-            onOptionsChanged = onAppDisplayOptionsChanged,
+            onOptionsChanged = ::updateDisplayOptions,
+        )
+        val defaultScheduleOptions = AppDisplayOptions(
+            backgroundStyle = appDisplayOptions.backgroundStyle,
+            backgroundIntensityPercent = appDisplayOptions.backgroundIntensityPercent,
+            backgroundSpeedPercent = appDisplayOptions.backgroundSpeedPercent,
+            backgroundGradientStartColor = appDisplayOptions.backgroundGradientStartColor,
+            backgroundGradientEndColor = appDisplayOptions.backgroundGradientEndColor,
+            backgroundGradientAngleDegrees = appDisplayOptions.backgroundGradientAngleDegrees,
         )
         OutlinedButton(
-            onClick = onAppDisplayOptionsReset,
-            enabled = appDisplayOptions != AppDisplayOptions(),
+            onClick = {
+                previewOptions = defaultScheduleOptions
+                previewRequestKey++
+                onAppDisplayOptionsReset()
+            },
+            enabled = appDisplayOptions != defaultScheduleOptions,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Сбросить настройки расписания") }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1265,8 +1411,275 @@ private fun AppearanceSettingsScreen(
             onClick = onOpenWidgetSettings,
         )
         Spacer(Modifier.height(12.dp))
+                }
+                AnimatedVisibility(
+                    visible = previewVisible,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    enter = fadeIn(tween(160)),
+                    exit = fadeOut(tween(180)),
+                ) {
+                    AppDisplayPreview(
+                        options = previewOptions,
+                        lessonType = previewLessonType,
+                        onDismiss = { previewVisible = false },
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun AppBackgroundSettings(
+    options: AppDisplayOptions,
+    onOptionsChanged: (AppDisplayOptions) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val usesCustomGradient = options.backgroundGradientStartColor != null &&
+        options.backgroundGradientEndColor != null
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Фон приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Выберите однотонный классический фон или плавные цветовые поля активной темы.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            BackgroundStyleCard(
+                title = "Динамический",
+                selected = options.backgroundStyle == AppBackgroundStyle.Dynamic,
+                options = options.copy(
+                    backgroundStyle = AppBackgroundStyle.Dynamic,
+                    backgroundSpeedPercent = 0,
+                ),
+                modifier = Modifier.weight(1f),
+                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Dynamic)) },
+            )
+            BackgroundStyleCard(
+                title = "Классический",
+                selected = options.backgroundStyle == AppBackgroundStyle.Classic,
+                options = options.copy(backgroundStyle = AppBackgroundStyle.Classic),
+                modifier = Modifier.weight(1f),
+                onClick = { onOptionsChanged(options.copy(backgroundStyle = AppBackgroundStyle.Classic)) },
+            )
+        }
+        if (options.backgroundStyle == AppBackgroundStyle.Dynamic) {
+            WidgetSettingSwitch(
+                title = "Свои цвета градиента",
+                description = "Иначе используются цвета выбранной темы",
+                checked = usesCustomGradient,
+            ) { enabled ->
+                onOptionsChanged(
+                    options.copy(
+                        backgroundGradientStartColor = colors.primary.toArgb().takeIf { enabled },
+                        backgroundGradientEndColor = colors.secondary.toArgb().takeIf { enabled },
+                        backgroundGradientAccentColor = colors.tertiary.toArgb().takeIf { enabled },
+                    ),
+                )
+            }
+            if (usesCustomGradient) {
+                WallpaperColorField(
+                    label = "Начало градиента",
+                    color = options.backgroundGradientStartColor!!,
+                ) { onOptionsChanged(options.copy(backgroundGradientStartColor = it)) }
+                WallpaperColorField(
+                    label = "Середина градиента",
+                    color = options.backgroundGradientAccentColor ?: colors.tertiary.toArgb(),
+                ) { onOptionsChanged(options.copy(backgroundGradientAccentColor = it)) }
+                WallpaperColorField(
+                    label = "Конец градиента",
+                    color = options.backgroundGradientEndColor!!,
+                ) { onOptionsChanged(options.copy(backgroundGradientEndColor = it)) }
+                WidgetDimensionSlider(
+                    title = "Направление градиента",
+                    description = "Угол перехода между цветами",
+                    value = options.backgroundGradientAngleDegrees,
+                    range = 0..360,
+                    unit = "°",
+                    showSteps = false,
+                ) { onOptionsChanged(options.copy(backgroundGradientAngleDegrees = it)) }
+            }
+            BackgroundMotionSlider(
+                title = "Интенсивность фона",
+                description = "Насыщенность цветовых полей",
+                value = options.backgroundIntensityPercent,
+                range = 25..150,
+            ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
+            BackgroundMotionSlider(
+                title = "Скорость фона",
+                description = "0 % полностью останавливает движение",
+                value = options.backgroundSpeedPercent,
+                range = 0..100,
+            ) { onOptionsChanged(options.copy(backgroundSpeedPercent = it)) }
+        } else {
+            Text(
+                "Однотонный фон темы без градиентов и анимации, как до появления динамического фона.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BackgroundMotionSlider(
+    title: String,
+    description: String,
+    value: Int,
+    range: IntRange,
+    onValueChanged: (Int) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        "$value %",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Slider(
+                value = value.toFloat(),
+                onValueChange = { onValueChanged(it.roundToInt()) },
+                valueRange = range.first.toFloat()..range.last.toFloat(),
+                steps = 0,
+                modifier = Modifier.semantics { contentDescription = "$title: $value %" },
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${range.first} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${range.last} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WallpaperColorField(
+    label: String,
+    color: Int,
+    onColorChanged: (Int) -> Unit,
+) {
+    var value by remember(color) { mutableStateOf(themeColorHex(color)) }
+    val parsed = parseThemeColor(value)
+    ThemeColorField(
+        label = label,
+        value = value,
+        onValueChanged = { newValue ->
+            value = newValue
+            parseThemeColor(newValue)?.let(onColorChanged)
+        },
+        parsed = parsed,
+        palette = WallpaperGradientColors,
+    )
+}
+
+@Composable
+private fun BackgroundStyleCard(
+    title: String,
+    selected: Boolean,
+    options: AppDisplayOptions,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.semantics {
+            contentDescription = "Фон: ${title.lowercase(ru)}"
+            this.selected = selected
+        },
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MaterialYouBackground(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(76.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                options = options,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+                    Box(Modifier.padding(8.dp)) { ThemeSelectionIndicator(selected) }
+                }
+            }
+            Text(
+                title,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeSelectionIndicator(selected: Boolean) {
+    val outlineColor = MaterialTheme.colorScheme.outline
+    Box(
+        modifier = Modifier
+            .size(22.dp)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceContainerHighest,
+                CircleShape,
+            )
+            .drawBehind {
+                if (!selected) {
+                    drawCircle(
+                        color = outlineColor,
+                        style = Stroke(1.dp.toPx()),
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(if (selected) 9.dp else 6.dp)
+                .background(
+                    if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.outlineVariant,
+                    CircleShape,
+                ),
+        )
     }
 }
 
@@ -1277,6 +1690,7 @@ private fun CustomThemeEditor(
     allowRename: Boolean = true,
     darkTheme: Boolean = true,
     previewAppTheme: AppTheme = AppTheme.Custom,
+    backgroundOptions: AppDisplayOptions = AppDisplayOptions(),
     onSave: (CustomAppTheme) -> Unit,
     onDelete: (() -> Unit)? = null,
     onReset: (() -> Unit)? = null,
@@ -1339,7 +1753,7 @@ private fun CustomThemeEditor(
                 darkTheme = darkTheme,
                 builtInOverride = previewTheme.toPalette().takeIf { previewAppTheme != AppTheme.Custom },
             ) {
-                AppThemePreview()
+                AppThemePreview(options = backgroundOptions)
             }
         }
         Button(
@@ -1516,49 +1930,54 @@ private fun HueColorPicker(
 }
 
 @Composable
-private fun AppThemePreview() {
-    Surface(
+private fun AppThemePreview(options: AppDisplayOptions) {
+    MaterialYouBackground(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
             .semantics { contentDescription = "Живой предпросмотр темы приложения" },
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.background,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        options = options,
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Предпросмотр приложения", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Расписание на сегодня",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        LessonChip(
-                            "Лекция",
-                            MaterialTheme.colorScheme.secondaryContainer,
-                            MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        LessonChip(
-                            "Сейчас",
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.onPrimaryContainer,
+        Surface(
+            color = Color.Transparent,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shape = RoundedCornerShape(24.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Предпросмотр приложения", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Расписание на сегодня",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            LessonChip(
+                                "Лекция",
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            LessonChip(
+                                "Сейчас",
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                        Text("Основы программирования", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "08:45–10:05 · аудитория 5.7",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text("Основы программирования", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "08:45–10:05 · аудитория 5.7",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Основное действие") }
             }
-            Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Основное действие") }
         }
     }
 }
@@ -1566,11 +1985,7 @@ private fun AppThemePreview() {
 @Composable
 private fun SettingsScreenHeader(title: String, onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "‹",
-            modifier = Modifier.clickable(onClick = onBack).semantics { contentDescription = "Назад" }.padding(end = 12.dp),
-            style = MaterialTheme.typography.headlineMedium,
-        )
+        BackIconButton(onBack)
         Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
     }
 }
@@ -1625,90 +2040,161 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
 private fun NotificationSettings(
     selectedDays: Set<Int>,
     onSelectedDaysChanged: (Set<Int>) -> Unit,
+    pausedUntil: Long? = null,
+    onPause: (LessonAlertPause?) -> Unit = {},
 ) {
     val context = LocalContext.current
     val alarmManager = context.getSystemService(AlarmManager::class.java)
-    val needsExactAlarm = Build.VERSION.SDK_INT >= 31 && alarmManager?.canScheduleExactAlarms() == false
-    Surface(
-        onClick = {
-            runCatching {
-                context.startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-                )
-            }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Уведомления", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (needsExactAlarm) "Нужно разрешить точные напоминания" else "За 15 минут до пары",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (needsExactAlarm) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-        }
+    fun exactAlarmMissing() = Build.VERSION.SDK_INT >= 31 && alarmManager?.canScheduleExactAlarms() == false
+    // The permission is granted in system settings, so re-check whenever the user comes back.
+    var needsExactAlarm by remember { mutableStateOf(exactAlarmMissing()) }
+    LifecycleResumeEffect(Unit) {
+        needsExactAlarm = exactAlarmMissing()
+        onPauseOrDispose { }
     }
-    if (needsExactAlarm) {
-        TextButton(
-            onClick = {
-                runCatching { context.startActivity(
-                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                        .setData(Uri.parse("package:${context.packageName}")),
-                ) }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Разрешить точные напоминания")
-        }
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text("Напоминания о сроках", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Для всех активных задач, целей и дедлайнов с датой. Уведомления приходят в 09:00.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsGroup(title = "Уведомления") {
+        item { shape ->
+            SettingsListItem(
+                title = "Уведомления о парах",
+                subtitle = "За 15 минут до пары и ход текущей пары",
+                shape = shape,
+                icon = Icons.Rounded.Notifications,
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                        )
+                    }
+                },
+                accessibilityLabel = "Открыть: Уведомления",
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeadlineReminder.entries.forEach { reminder ->
-                    val selected = reminder.daysBefore in selectedDays
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            onSelectedDaysChanged(
-                                if (selected) selectedDays - reminder.daysBefore
-                                else selectedDays + reminder.daysBefore,
+        }
+        item { shape ->
+            LessonAlertPauseItem(pausedUntil = pausedUntil, onPause = onPause, shape = shape)
+        }
+        if (needsExactAlarm) {
+            item { shape ->
+                SettingsListItem(
+                    title = "Разрешить точные напоминания",
+                    subtitle = "Без этого прогресс пары не запустится, пока приложение закрыто",
+                    shape = shape,
+                    icon = Icons.Rounded.Warning,
+                    emphasizedIcon = true,
+                    subtitleColor = MaterialTheme.colorScheme.error,
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                    .setData(Uri.parse("package:${context.packageName}")),
                             )
-                        },
-                        label = { Text(reminder.title) },
-                    )
+                        }
+                    },
+                )
+            }
+        }
+        item { shape ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = shape,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SettingsLeadingIcon(Icons.Rounded.DateRange)
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text("Напоминания о сроках", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Для активных задач, целей и дедлайнов с датой. Приходят в 09:00.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        DeadlineReminder.entries.forEach { reminder ->
+                            val selected = reminder.daysBefore in selectedDays
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    onSelectedDaysChanged(
+                                        if (selected) selectedDays - reminder.daysBefore
+                                        else selectedDays + reminder.daysBefore,
+                                    )
+                                },
+                                label = { Text(reminder.title) },
+                                leadingIcon = if (selected) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                    }
+                    if (selectedDays.isEmpty()) {
+                        Text(
+                            "Напоминания о сроках выключены",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
-            Text(
-                if (selectedDays.isEmpty()) "Напоминания о сроках выключены"
-                else "Выбрано: ${DeadlineReminder.entries.filter { it.daysBefore in selectedDays }.joinToString { it.title.lowercase() }}",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (selectedDays.isEmpty()) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.primary,
-            )
         }
     }
+}
+
+/** Mutes lesson reminders and the live notification while the user skips classes. */
+@Composable
+private fun LessonAlertPauseItem(
+    pausedUntil: Long?,
+    onPause: (LessonAlertPause?) -> Unit,
+    shape: RoundedCornerShape,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val lastMutedDay = pausedUntil?.let {
+        java.time.Instant.ofEpochMilli(it - 1).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+    val subtitle = when {
+        lastMutedDay == null -> "Отключить на время, если не идёшь на пары"
+        lastMutedDay == LocalDate.now() -> "Выключены до конца дня"
+        else -> "Выключены по ${lastMutedDay.format(dayMonthFormatter)} включительно"
+    }
+    SettingsListItem(
+        title = "Пауза напоминаний о парах",
+        subtitle = subtitle,
+        shape = shape,
+        icon = if (pausedUntil != null) Icons.Rounded.Close else Icons.Rounded.DateRange,
+        emphasizedIcon = pausedUntil != null,
+        subtitleColor = if (pausedUntil != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        trailing = {
+            if (pausedUntil != null) {
+                TextButton(onClick = { onPause(null) }) { Text("Возобновить") }
+            } else {
+                Box {
+                    TextButton(onClick = { menuOpen = true }) { Text("Пауза") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        LessonAlertPause.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.title) },
+                                onClick = {
+                                    menuOpen = false
+                                    onPause(option)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -1722,11 +2208,7 @@ private fun NotificationTestingScreen(modifier: Modifier = Modifier, onBack: () 
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "‹",
-                modifier = Modifier.clickable(onClick = onBack).semantics { contentDescription = "Назад" }.padding(end = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            BackIconButton(onBack)
             Text("Тестирование", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
         Text(
@@ -1798,11 +2280,7 @@ private fun AboutScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "‹",
-                modifier = Modifier.clickable(onClick = onBack).semantics { contentDescription = "Назад" }.padding(end = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            BackIconButton(onBack)
             Text("О приложении", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
         Text(
@@ -1830,6 +2308,13 @@ private fun AboutScreen(
             runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/neckmnull/Lecturial-2")),
+                )
+            }
+        }
+        SettingsNavigationRow("Telegram", "Официальный канал @lecturial_2") {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/lecturial_2")),
                 )
             }
         }
@@ -1948,11 +2433,7 @@ private fun PrivacyScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "‹",
-                modifier = Modifier.clickable(onClick = onBack).semantics { contentDescription = "Назад" }.padding(end = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            BackIconButton(onBack)
             Text(
                 "Конфиденциальность",
                 style = MaterialTheme.typography.headlineMedium,
@@ -2014,15 +2495,7 @@ private fun LessonNamesScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "‹",
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .semantics { contentDescription = "Назад" }
-                    .padding(end = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+            BackIconButton(onBack)
             Text("Названия пар", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
         Text(
@@ -2074,7 +2547,6 @@ private fun AppDisplaySettings(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AppDisplayPreview(options)
         Text("Цветовые полосы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         StripeColorPicker("Лекция", options.lectureStripeColor) {
             onOptionsChanged(options.copy(lectureStripeColor = it))
@@ -2115,6 +2587,14 @@ private fun AppDisplaySettings(
             onOptionsChanged(options.copy(titleMaxLines = it))
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Text("Стиль тайлов", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        WidgetDimensionSlider("Скругление", "Радиус углов карточки занятия", options.tileCornerRadiusDp, 0..32) {
+            onOptionsChanged(options.copy(tileCornerRadiusDp = it))
+        }
+        WidgetDimensionSlider("Прозрачность", "Плотность поверхности поверх обоев", options.tileOpacityPercent, 0..100, "%") {
+            onOptionsChanged(options.copy(tileOpacityPercent = it))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Text("Отступы и плотность", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         WidgetDimensionSlider("Отступ от краёв", "Поля списка расписания", options.outerPaddingDp, 0..32) {
             onOptionsChanged(options.copy(outerPaddingDp = it))
@@ -2133,40 +2613,66 @@ private fun AppDisplaySettings(
 }
 
 @Composable
-private fun AppDisplayPreview(options: AppDisplayOptions) {
+private fun AppDisplayPreview(
+    options: AppDisplayOptions,
+    lessonType: PreviewLessonType,
+    onDismiss: () -> Unit,
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
             .semantics { contentDescription = "Живой предпросмотр расписания" },
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        tonalElevation = 8.dp,
+        shadowElevation = 8.dp,
     ) {
         Column(
-            modifier = Modifier.padding(
-                start = options.outerPaddingDp.dp,
-                end = options.outerPaddingDp.dp,
-                top = 16.dp,
-                bottom = 16.dp,
-            ),
+            modifier = Modifier.padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Предпросмотр расписания", style = MaterialTheme.typography.titleMedium)
-            LessonTimelineItem(
-                lesson = ScheduleRow.Lesson(
-                    eventId = "appearance-preview",
-                    typeLabel = "Лекция",
-                    isLecture = true,
-                    startTime = "08:45",
-                    endTime = "10:05",
-                    discipline = "Основы программирования",
-                    location = "5.7 · Главный корпус",
-                    teachers = "И. Иван Иванович",
-                    comment = null,
-                    liveLabel = null,
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Живой предпросмотр", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Изменения видны сразу",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onDismiss) { Text("Скрыть") }
+            }
+            Column(
+                modifier = Modifier.padding(
+                    start = options.outerPaddingDp.dp,
+                    end = options.outerPaddingDp.dp,
                 ),
-                options = options,
-            )
+            ) {
+                LessonTimelineItem(
+                    lesson = ScheduleRow.Lesson(
+                        eventId = "appearance-preview",
+                        typeLabel = if (lessonType == PreviewLessonType.Lecture) "Лекция" else "Практика",
+                        isLecture = lessonType == PreviewLessonType.Lecture,
+                        startTime = "08:45",
+                        endTime = "10:05",
+                        discipline = if (lessonType == PreviewLessonType.Lecture) {
+                            "Основы программирования"
+                        } else {
+                            "Практические занятия"
+                        },
+                        location = "5.7 · Главный корпус",
+                        teachers = "И. Иван Иванович",
+                        comment = null,
+                        liveLabel = null,
+                    ),
+                    options = options,
+                )
+            }
         }
     }
 }
@@ -2206,15 +2712,7 @@ private fun WidgetSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "‹",
-                    modifier = Modifier
-                        .clickable(onClick = onBack)
-                        .semantics { contentDescription = "Назад" }
-                        .padding(end = 12.dp),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+                BackIconButton(onBack)
                 Text("Виджет", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             }
             Text(
@@ -2383,7 +2881,7 @@ private fun FontStylePicker(
                     )
                     Text(selected.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("⌄", color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -2426,8 +2924,13 @@ private fun WidgetDimensionSlider(
     value: Int,
     range: IntRange,
     unit: String = "dp",
+    showSteps: Boolean = true,
     onValueChanged: (Int) -> Unit,
 ) {
+    // dp/sp/line ranges are discrete, so every value gets a tick mark. Only very dense
+    // ranges (percentages, angles) stay continuous; their rounded value is shown above.
+    val intervalCount = range.last - range.first
+    val steps = if (showSteps && intervalCount in 2..MaxSliderTickIntervals) intervalCount - 1 else 0
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2450,7 +2953,7 @@ private fun WidgetDimensionSlider(
             value = value.toFloat(),
             onValueChange = { onValueChanged(it.roundToInt()) },
             valueRange = range.first.toFloat()..range.last.toFloat(),
-            steps = (range.last - range.first - 1).coerceAtLeast(0),
+            steps = steps,
             modifier = Modifier.semantics { contentDescription = "$title: $value $unit" },
         )
     }
@@ -2497,20 +3000,35 @@ private fun StripeColorPicker(
             WidgetStripePalette.options.forEach { option ->
                 val isSelected = option.argb == selectedColor
                 Surface(
+                    onClick = { onSelected(option.argb) },
                     modifier = Modifier
-                        .size(38.dp)
-                        .clickable { onSelected(option.argb) }
+                        .size(48.dp)
                         .semantics {
                             contentDescription = "$label: ${option.name}${if (isSelected) ", выбран" else ""}"
                             selected = isSelected
                         },
-                    shape = MaterialTheme.shapes.small,
-                    color = Color(option.argb),
-                    border = BorderStroke(
-                        if (isSelected) 3.dp else 1.dp,
-                        if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-                    ),
-                ) {}
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Transparent,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(Color(option.argb), MaterialTheme.shapes.small)
+                                .then(
+                                    Modifier.border(
+                                        width = if (isSelected) 3.dp else 1.dp,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            MaterialTheme.colorScheme.outline
+                                        },
+                                        shape = MaterialTheme.shapes.small,
+                                    ),
+                                ),
+                        )
+                    }
+                }
             }
         }
     }
@@ -2541,7 +3059,16 @@ private fun GroupDropdown(
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
             )
-            Text(if (expanded) " ▴" else " ▾", color = MaterialTheme.colorScheme.primary)
+            val arrowRotation by animateFloatAsState(
+                if (expanded) 180f else 0f,
+                MaterialTheme.motionScheme.fastSpatialSpec(),
+                label = "group-arrow",
+            )
+            Icon(
+                Icons.Rounded.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             OutlinedTextField(
@@ -2588,6 +3115,7 @@ private fun GroupDropdown(
 private fun ScheduleContent(
     state: ScheduleUiState,
     onRetry: () -> Unit,
+    onToday: () -> Unit,
     onStudyPlanSaved: (StudyPlan) -> Unit,
     onStudyPlanCompletedChanged: (String, Boolean) -> Unit,
     onStudyPlanDeleted: (String) -> Unit,
@@ -2641,6 +3169,26 @@ private fun ScheduleContent(
                     listState.scrollToItem(index)
                     scrolledFor = scrollSession
                 }
+                val today = state.now.toLocalDate()
+                val todayRowIndex = remember(rows, today) {
+                    rows.indexOfFirst { it.key == "day-$today" }
+                }
+                // Visible whenever today's heading is scrolled away (or not loaded at all,
+                // e.g. after moving to another week).
+                val todayDirection by remember(todayRowIndex) {
+                    derivedStateOf {
+                        val visible = listState.layoutInfo.visibleItemsInfo
+                        when {
+                            todayRowIndex < 0 -> 0
+                            visible.isEmpty() -> null
+                            todayRowIndex < visible.first().index -> -1
+                            todayRowIndex > visible.last().index -> 1
+                            else -> null
+                        }
+                    }
+                }
+                val scope = rememberCoroutineScope()
+                Box(Modifier.fillMaxSize()) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().testTag("schedule-list"),
                     state = listState,
@@ -2648,7 +3196,8 @@ private fun ScheduleContent(
                         start = state.appDisplayOptions.outerPaddingDp.dp,
                         end = state.appDisplayOptions.outerPaddingDp.dp,
                         top = 12.dp,
-                        bottom = 40.dp,
+                        // Room for the "Сегодня" button over the last row.
+                        bottom = 96.dp,
                     ),
                 ) {
                     items(
@@ -2668,13 +3217,25 @@ private fun ScheduleContent(
                                 plan = row.plan,
                                 options = state.appDisplayOptions,
                                 onToggle = {
-                                    onStudyPlanCompletedChanged(row.plan.id, !row.plan.isCompleted)
+                                    onStudyPlanCompletedChanged(row.sourcePlan.id, !row.sourcePlan.isCompleted)
                                 },
-                                onEdit = { editingPlan = row.plan },
+                                onEdit = { editingPlan = row.sourcePlan },
                             )
                             is ScheduleRow.Rest -> BreakHint(row.text)
                         }
                     }
+                }
+                JumpToTodayButton(
+                    direction = todayDirection,
+                    onClick = {
+                        if (todayRowIndex >= 0) {
+                            scope.launch { listState.animateScrollToItem(todayRowIndex) }
+                        } else {
+                            onToday()
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+                )
                 }
             }
         }
@@ -2691,6 +3252,40 @@ private fun ScheduleContent(
                 onStudyPlanDeleted(plan.id)
                 editingPlan = null
             },
+        )
+    }
+}
+
+/**
+ * Returns to today's heading. [direction] is -1 when today is above the viewport,
+ * 1 when below, 0 when it isn't in the loaded range, and null to hide the button.
+ */
+@Composable
+private fun JumpToTodayButton(direction: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // Keep the last arrow while the button animates out instead of flipping to the calendar icon.
+    val lastDirection = remember { intArrayOf(0) }.also { if (direction != null) it[0] = direction }[0]
+    AnimatedVisibility(
+        visible = direction != null,
+        modifier = modifier,
+        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+    ) {
+        ExtendedFloatingActionButton(
+            onClick = onClick,
+            modifier = Modifier.testTag("jump-to-today"),
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            icon = {
+                Icon(
+                    when (lastDirection) {
+                        -1 -> Icons.Rounded.KeyboardArrowUp
+                        1 -> Icons.Rounded.KeyboardArrowDown
+                        else -> Icons.Rounded.DateRange
+                    },
+                    contentDescription = null,
+                )
+            },
+            text = { Text("Сегодня") },
         )
     }
 }
@@ -2876,26 +3471,45 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
         MaterialTheme.colorScheme.onTertiaryContainer
     }
     val live = lesson.liveLabel != null
+    val ongoing = lesson.liveProgress != null
     val stripeColor = when {
-        live -> MaterialTheme.colorScheme.primaryFixed
+        live -> MaterialTheme.colorScheme.primary
         lesson.isLecture -> Color(options.lectureStripeColor)
         else -> Color(options.practiceStripeColor)
+    }
+    val tileShape = RoundedCornerShape(options.tileCornerRadiusDp.dp)
+    val tileColor = if (ongoing) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = options.tileOpacityPercent / 100f))
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = options.tileOpacityPercent / 100f)
     }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = options.itemSpacingDp.dp)
+            .background(color = tileColor, shape = tileShape)
+            .then(
+                if (ongoing) Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), tileShape)
+                else Modifier,
+            )
             .drawBehind {
                 if (!options.showStripe) return@drawBehind
                 val thickness = 3.dp.toPx()
+                val verticalInset = 12.dp.toPx().coerceAtMost(size.height / 3f)
                 drawRoundRect(
                     color = stripeColor,
-                    topLeft = Offset(0f, 0f),
-                    size = Size(thickness, size.height),
-                    cornerRadius = CornerRadius(2.dp.toPx()),
+                    topLeft = Offset(6.dp.toPx(), verticalInset),
+                    size = Size(thickness, (size.height - verticalInset * 2f).coerceAtLeast(thickness)),
+                    cornerRadius = CornerRadius(thickness / 2f),
                 )
             }
-            .padding(start = options.horizontalPaddingDp.dp, top = options.verticalPaddingDp.dp, bottom = options.verticalPaddingDp.dp),
+            .padding(
+                start = (options.horizontalPaddingDp + 6).dp,
+                end = options.horizontalPaddingDp.dp,
+                top = (options.verticalPaddingDp + 8).dp,
+                bottom = (options.verticalPaddingDp + 8).dp,
+            ),
     ) {
         if (lesson.typeLabel.isNotBlank() || lesson.liveLabel != null) {
             FlowRow(
@@ -2954,6 +3568,20 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
                 }
             }
         }
+        lesson.liveProgress?.let { progress ->
+            val animated by animateFloatAsState(
+                progress,
+                MaterialTheme.motionScheme.slowEffectsSpec(),
+                label = "lesson-progress",
+            )
+            LinearWavyProgressIndicator(
+                progress = { animated },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = if (options.showTime) LessonTimeColumnWidth else 0.dp, top = 12.dp)
+                    .semantics { contentDescription = "Прошло ${(progress * 100).roundToInt()}% пары" },
+            )
+        }
     }
 }
 
@@ -2968,31 +3596,38 @@ private fun StudyPlanTimelineItem(
         com.rassvet.lecturial.model.StudyPlanType.Task -> MaterialTheme.colorScheme.primary
         com.rassvet.lecturial.model.StudyPlanType.Deadline -> MaterialTheme.colorScheme.error
         com.rassvet.lecturial.model.StudyPlanType.Goal -> MaterialTheme.colorScheme.tertiary
+        com.rassvet.lecturial.model.StudyPlanType.Event -> Color(plan.color)
     }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = options.itemSpacingDp.dp)
             .alpha(if (plan.isCompleted) 0.58f else 1f)
+            .clip(RoundedCornerShape(options.tileCornerRadiusDp.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = options.tileOpacityPercent / 100f))
             .clickable(onClick = onEdit)
             .drawBehind {
                 if (!options.showStripe) return@drawBehind
+                val thickness = 3.dp.toPx()
+                val verticalInset = 12.dp.toPx().coerceAtMost(size.height / 3f)
                 drawRoundRect(
                     color = accent,
-                    size = Size(3.dp.toPx(), size.height),
-                    cornerRadius = CornerRadius(2.dp.toPx()),
+                    topLeft = Offset(6.dp.toPx(), verticalInset),
+                    size = Size(thickness, (size.height - verticalInset * 2f).coerceAtLeast(thickness)),
+                    cornerRadius = CornerRadius(thickness / 2f),
                 )
             }
             .padding(
-                start = options.horizontalPaddingDp.dp,
-                top = options.verticalPaddingDp.dp,
-                bottom = options.verticalPaddingDp.dp,
+                start = (options.horizontalPaddingDp + 6).dp,
+                end = options.horizontalPaddingDp.dp,
+                top = (options.verticalPaddingDp + 8).dp,
+                bottom = (options.verticalPaddingDp + 8).dp,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (options.showTime) {
             Text(
-                plan.dueTime?.format(planTimeFormatter) ?: "—",
+                if (plan.isAllDay) "Весь день" else plan.dueTime?.format(planTimeFormatter) ?: "—",
                 modifier = Modifier.width(LessonTimeColumnWidth),
                 style = appTextStyle(MaterialTheme.typography.titleLarge, options.secondaryTextSizeSp, 14, options),
                 color = MaterialTheme.colorScheme.onBackground,
@@ -3001,6 +3636,7 @@ private fun StudyPlanTimelineItem(
         Surface(
             onClick = onToggle,
             modifier = Modifier
+                .minimumInteractiveComponentSize()
                 .size(30.dp)
                 .semantics {
                     contentDescription = if (plan.isCompleted) "Вернуть в активные" else "Отметить выполненным"
@@ -3010,7 +3646,14 @@ private fun StudyPlanTimelineItem(
             border = BorderStroke(2.dp, accent),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                if (plan.isCompleted) Text("✓", color = MaterialTheme.colorScheme.surface, fontWeight = FontWeight.Bold)
+                if (plan.isCompleted) {
+                    Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.surface,
+                    )
+                }
             }
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -3109,12 +3752,22 @@ private fun appTextStyle(
 
 @Composable
 private fun BreakHint(text: String) {
-    Text(
-        text,
-        modifier = Modifier.padding(start = 28.dp, top = 2.dp, bottom = 20.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(Modifier.width(20.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            text,
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+    }
 }
 
 private sealed class ScheduleRow {
@@ -3172,13 +3825,14 @@ private sealed class ScheduleRow {
         val teachers: String?,
         val comment: String?,
         val liveLabel: String?,
+        val liveProgress: Float? = null,
     ) : ScheduleRow() {
         override val key = "lesson-$eventId"
         override val contentType = "lesson"
     }
 
-    data class Plan(val plan: StudyPlan) : ScheduleRow() {
-        override val key = "plan-${plan.id}"
+    data class Plan(val plan: StudyPlan, val sourcePlan: StudyPlan = plan) : ScheduleRow() {
+        override val key = "plan-${plan.id}-${plan.dueDate}"
         override val contentType = "plan"
     }
 
@@ -3214,8 +3868,7 @@ private fun buildScheduleRows(
     val sections = weeks.map { scheduleWeek ->
         val start = scheduleWeek.weekStart
         val weekPlans = plans.filter { plan ->
-            val date = plan.dueDate ?: return@filter false
-            !date.isBefore(start) && !date.isAfter(start.plusDays(6))
+            (0L..6L).any { offset -> plan.occursOn(start.plusDays(offset)) }
         }
         Triple(
             scheduleWeek,
@@ -3243,7 +3896,7 @@ private fun buildScheduleRows(
         if (days.isEmpty()) {
             rows += ScheduleRow.EmptyWeek(start)
         } else {
-            rows.addDays(days, weekPlans, today, live, startSeparated = false, aliases = aliases)
+            rows.addDays(days, weekPlans, today, now, live, startSeparated = false, aliases = aliases)
             if (scheduleWeek.days.all { it.events.isEmpty() } && weekPlans.isEmpty()) {
                 rows += ScheduleRow.EmptyWeek(start)
             }
@@ -3291,12 +3944,15 @@ private fun scheduleDays(
     val dateToInclude = includedDate?.takeIf { date ->
         weekStart != null && date in weekStart..weekStart.plusDays(6)
     }
-    return (eventsByDate.keys + plans.mapNotNull(StudyPlan::dueDate) + listOfNotNull(dateToInclude))
+    val recurringDates = if (weekStart == null) emptyList() else (0L..6L)
+        .map { weekStart.plusDays(it) }
+        .filter { date -> plans.any { it.occursOn(date) } }
+    return (eventsByDate.keys + recurringDates + listOfNotNull(dateToInclude))
         .asSequence()
         .filter { notBefore == null || !it.isBefore(notBefore) }
         .map { date -> eventsByDate[date] ?: ScheduleDay(date, emptyList()) }
         .filter { day ->
-            day.date == dateToInclude || day.events.isNotEmpty() || plans.any { it.dueDate == day.date }
+            day.date == dateToInclude || day.events.isNotEmpty() || plans.any { it.occursOn(day.date) }
         }
         .sortedBy(ScheduleDay::date)
         .toList()
@@ -3309,15 +3965,27 @@ private sealed class DayScheduleItem {
         override val minuteOfDay = parseMinutes(event.startTime) ?: (24 * 60 - 1)
     }
 
-    data class Plan(val plan: StudyPlan) : DayScheduleItem() {
-        override val minuteOfDay = plan.dueTime?.let { it.hour * 60 + it.minute } ?: (24 * 60)
+    data class Plan(val source: StudyPlan, val occurrence: StudyPlan) : DayScheduleItem() {
+        override val minuteOfDay = occurrence.dueTime?.let { it.hour * 60 + it.minute } ?: (24 * 60)
     }
+}
+
+/** Share of the pair already passed, or null if it is not going on at [now]. */
+internal fun lessonProgressFraction(event: ScheduleEvent, now: LocalDateTime): Float? {
+    if (event.date != now.toLocalDate()) return null
+    val start = parseMinutes(event.startTime) ?: return null
+    val end = parseMinutes(event.endTime) ?: return null
+    if (end <= start) return null
+    val current = now.hour * 60 + now.minute + now.second / 60f
+    if (current < start || current >= end) return null
+    return ((current - start) / (end - start)).coerceIn(0f, 1f)
 }
 
 private fun ArrayList<ScheduleRow>.addDays(
     days: List<ScheduleDay>,
     plans: List<StudyPlan>,
     today: LocalDate,
+    now: LocalDateTime,
     live: LessonLiveState?,
     startSeparated: Boolean,
     aliases: Map<String, String>,
@@ -3334,7 +4002,7 @@ private fun ArrayList<ScheduleRow>.addDays(
                 subtitle = buildString {
                     append(day.date.format(dayMonthFormatter))
                     if (day.events.isNotEmpty()) append(" • ${pairCountText(day.events.size)}")
-                    val planCount = plans.count { it.dueDate == day.date }
+                    val planCount = plans.count { it.occursOn(day.date) }
                     if (planCount > 0) append(" • ${planCountText(planCount)}")
                 },
                 separated = startSeparated || dayIndex > 0,
@@ -3343,11 +4011,13 @@ private fun ArrayList<ScheduleRow>.addDays(
         )
         val timeline = buildList {
             day.events.forEach { add(DayScheduleItem.Lesson(it)) }
-            plans.filter { it.dueDate == day.date }.forEach { add(DayScheduleItem.Plan(it)) }
+            plans.forEach { plan ->
+                plan.occurrenceOn(day.date)?.let { add(DayScheduleItem.Plan(plan, it)) }
+            }
         }.sortedWith(compareBy<DayScheduleItem> { it.minuteOfDay }.thenBy { it is DayScheduleItem.Plan })
         timeline.forEachIndexed { index, item ->
             if (item is DayScheduleItem.Plan) {
-                add(ScheduleRow.Plan(item.plan))
+                add(ScheduleRow.Plan(item.occurrence, item.source))
                 return@forEachIndexed
             }
             val event = (item as DayScheduleItem.Lesson).event
@@ -3368,6 +4038,8 @@ private fun ArrayList<ScheduleRow>.addDays(
                     teachers = shortenTeachers(event.teachers),
                     comment = displayComment(event.comment),
                     liveLabel = live?.takeIf { it.eventKey == eventKey }?.label,
+                    liveProgress = live?.takeIf { it.eventKey == eventKey }
+                        ?.let { lessonProgressFraction(event, now) },
                 ),
             )
             val next = (timeline.getOrNull(index + 1) as? DayScheduleItem.Lesson)?.event
@@ -3375,7 +4047,7 @@ private fun ArrayList<ScheduleRow>.addDays(
                 add(
                     ScheduleRow.Rest(
                         eventId = eventKey,
-                        text = "•••     можно отдохнуть с ${event.endTime} до ${next.startTime}",
+                        text = "Перерыв ${event.endTime} – ${next.startTime}",
                     ),
                 )
             }

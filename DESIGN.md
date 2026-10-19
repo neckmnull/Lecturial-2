@@ -2,7 +2,7 @@
 
 ## Direction
 
-The interface is dark, calm, and minimal. Near-black backgrounds dominate, while blue and gold accents are used selectively for weekdays, active navigation, and lesson types. Large shadows, brightly colored cards, and decorative panels are avoided.
+The interface follows Material 3 Expressive while remaining calm and minimal. Screen backgrounds use large, soft Material You tonal fields derived from the active color scheme; they contain no lines, grain, or motion. Blue and gold accents are used selectively for weekdays, active navigation, and lesson types. Large shadows, brightly colored cards, and decorative panels are avoided.
 
 ## Palette
 
@@ -13,6 +13,7 @@ The interface is dark, calm, and minimal. Near-black backgrounds dominate, while
 - Lecture container: `#16506C`.
 - Practice container: `#6B4C00`.
 - App typeface: Manrope. The widget keeps the system typeface.
+- App surfaces follow the Material 3 tonal hierarchy: the background sits below `surfaceContainer*`, with `primaryContainer` reserved for selected and emphasized states.
 
 The palette does not depend on device dynamic color. Red is reserved for errors and the offline banner. Ocean, Forest, and Sunset provide distinct backgrounds, surfaces, containers, and borders while preserving the same hierarchy and contrast goals.
 

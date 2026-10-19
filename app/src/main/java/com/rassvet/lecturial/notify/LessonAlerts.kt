@@ -26,6 +26,8 @@ import com.rassvet.lecturial.model.VisibleLessonLive
 import com.rassvet.lecturial.model.displayEventType
 import com.rassvet.lecturial.model.formatCountdownMillis
 import com.rassvet.lecturial.model.formatLiveChip
+import com.rassvet.lecturial.model.lessonProgress
+import com.rassvet.lecturial.model.lessonsOutsidePause
 import com.rassvet.lecturial.model.renamedDiscipline
 import com.rassvet.lecturial.model.scheduledLessonAlarms
 import com.rassvet.lecturial.model.visibleLessonLive
@@ -56,6 +58,7 @@ object LessonAlerts {
     private const val EXTRA_CLASSROOM = "classroom"
     private const val PREFS = "lesson_alerts"
     private const val KEY_CODES = "codes"
+    private const val KEY_ALERTED = "alerted_event"
     private const val ACCENT = 0xFF8AABFF.toInt()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -147,24 +150,15 @@ object LessonAlerts {
     }
 
 
-    fun onAlarm(context: Context, intent: Intent) {
+    /**
+     * Every alarm just re-runs [refresh]: it sees the whole day, so a reminder for the next
+     * pair can't replace the countdown of the pair that is still going on.
+     */
+    fun onAlarm(context: Context, onComplete: (() -> Unit)? = null) = sync(context, onComplete)
+
+    internal suspend fun refreshNow(context: Context) {
         val app = context.applicationContext as? LecturialApplication ?: return
-        val kind = intent.alarmKind() ?: run {
-            sync(app)
-            return
-        }
-        if (kind == LessonAlarmKind.END) {
-            stopLive(app)
-            sync(app)
-            return
-        }
-        val event = intent.alarmEvent() ?: run {
-            sync(app)
-            return
-        }
-        ensureChannel(app)
-        val now = LocalDateTime.now()
-        post(app, event, alert = kind == LessonAlarmKind.REMIND, now = now)
+        mutex.withLock { runCatching { refresh(app) } }
     }
 
     private suspend fun refresh(app: LecturialApplication) {
@@ -178,17 +172,29 @@ object LessonAlerts {
         }
         val today = LocalDate.now()
         val teacher = app.preferences.languageTeacher(group).first()
+        val pausedUntil = app.preferences.lessonAlertsPausedUntil.first()
+            ?.takeIf { it > System.currentTimeMillis() }
         val events = app.repository.eventsBetween(group, today, today.plusDays(13)).filter {
             com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, teacher)
-        }
+        }.let { lessonsOutsidePause(it, pausedUntil) }
         val now = LocalDateTime.now()
         scheduleAlarms(app, events, now)
         val live = visibleLessonLive(events, now)
         if (live == null) {
             stopLive(app)
         } else {
-            post(app, live.event, alert = false, now = now, live = live)
+            post(app, live.event, alert = claimAlert(app, live), now = now, live = live)
         }
+    }
+
+    /** Alerts once per upcoming pair, however many times the live notification is refreshed. */
+    private fun claimAlert(context: Context, live: VisibleLessonLive): Boolean {
+        if (live.phase != LessonLivePhase.UPCOMING) return false
+        val key = "${live.event.date}-${live.event.id}"
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_ALERTED, null) == key) return false
+        prefs.edit().putString(KEY_ALERTED, key).apply()
+        return true
     }
 
     private fun post(
@@ -246,14 +252,18 @@ object LessonAlerts {
             if (type.isNotBlank()) append(" · ").append(type)
             if (place != null) append(" · ").append(place)
         }
-        val (elapsed, total) = ringProgress(visible, System.currentTimeMillis())
+        val progress = lessonProgress(visible, System.currentTimeMillis())
         val chipText = formatLiveChip(
             ((remainingMillis + 59_999L) / 60_000L).toInt().coerceAtLeast(1),
         )
         return if (Build.VERSION.SDK_INT >= 36) {
-            buildStatusChipNotification(context, event, visible, text, chipText, total, elapsed, alert, title)
+            buildStatusChipNotification(
+                context, event, visible, text, chipText, progress.max, progress.current, alert, title,
+            )
         } else {
-            buildCompatNotification(context, event, visible, text, chipText, total, elapsed, alert, title)
+            buildCompatNotification(
+                context, event, visible, text, chipText, progress.max, progress.current, alert, title,
+            )
         }
     }
 
@@ -286,6 +296,7 @@ object LessonAlerts {
             .setOnlyAlertOnce(!alert)
             .setCategory(Notification.CATEGORY_EVENT)
             .setColor(ACCENT)
+            .setProgress(total.coerceAtLeast(1), elapsed.coerceIn(0, total.coerceAtLeast(1)), false)
             .setStyle(style)
             // Keep a readable value available when Pixel expands the promoted chip.
             .setShortCriticalText(chipText)
@@ -327,6 +338,7 @@ object LessonAlerts {
             .setUsesChronometer(true)
             .setChronometerCountDown(true)
             .setPriority(if (alert) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setProgress(total.coerceAtLeast(1), elapsed.coerceIn(0, total.coerceAtLeast(1)), false)
             .setStyle(compatProgressStyle(total, elapsed))
         if (alert) builder.setDefaults(NotificationCompat.DEFAULT_ALL)
         return builder.build()
@@ -347,22 +359,6 @@ object LessonAlerts {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-
-    private fun ringProgress(live: VisibleLessonLive, now: Long): Pair<Int, Int> {
-        val start = when (live.phase) {
-            LessonLivePhase.UPCOMING -> live.startMillis - LessonRemindMinutes * 60_000L
-            LessonLivePhase.CURRENT -> live.startMillis
-        }
-        val end = when (live.phase) {
-            LessonLivePhase.UPCOMING -> live.startMillis
-            LessonLivePhase.CURRENT -> live.endMillis
-        }
-        val duration = (end - start).coerceAtLeast(1L)
-        val elapsedMs = (now - start).coerceIn(0L, duration)
-        val max = 360
-        val progress = ((elapsedMs * max) / duration).toInt().coerceIn(0, max)
-        return progress to max
-    }
 
     private fun compatProgressStyle(total: Int, elapsed: Int): NotificationCompat.ProgressStyle {
         val length = total.coerceAtLeast(1)
@@ -456,7 +452,7 @@ object LessonAlerts {
             val pending = PendingIntent.getBroadcast(
                 app,
                 code,
-                Intent(app, LessonAlertReceiver::class.java).setAction(ACTION_ALARM),
+                Intent(app, LessonAlertReceiver::class.java).setAction(ACTION_ALARM).setPackage(app.packageName),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             alarmManager.cancel(pending)
@@ -477,28 +473,6 @@ object LessonAlerts {
             putExtra(EXTRA_END, event.endTime)
             putExtra(EXTRA_CLASSROOM, event.classroom)
         }
-
-    private fun Intent.alarmKind(): LessonAlarmKind? =
-        getStringExtra(EXTRA_KIND)?.let { runCatching { LessonAlarmKind.valueOf(it) }.getOrNull() }
-
-    private fun Intent.alarmEvent(): ScheduleEvent? {
-        val date = getStringExtra(EXTRA_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return null
-        val id = getStringExtra(EXTRA_ID) ?: return null
-        return ScheduleEvent(
-            id = id,
-            date = date,
-            startTime = getStringExtra(EXTRA_START).orEmpty(),
-            endTime = getStringExtra(EXTRA_END).orEmpty(),
-            pairNumber = null,
-            discipline = getStringExtra(EXTRA_DISCIPLINE).orEmpty(),
-            type = getStringExtra(EXTRA_TYPE).orEmpty(),
-            classroom = getStringExtra(EXTRA_CLASSROOM),
-            address = null,
-            teachers = emptyList(),
-            comment = null,
-            onlineUrl = null,
-        )
-    }
 
     private fun requestCode(kind: LessonAlarmKind, event: ScheduleEvent): Int =
         31 * 31 * kind.name.hashCode() + 31 * event.date.toString().hashCode() + event.id.hashCode()

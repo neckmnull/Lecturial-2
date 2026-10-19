@@ -2,6 +2,7 @@
 <resources>
     <color name="widget_background">#FF303030</color>
     <color name="widget_on_background">#FFC6C6C6</color>
+    <color name="widget_surface_variant">@android:color/system_neutral2_800</color>
     <color name="widget_on_surface_variant">#FFA8A8A8</color>
     <color name="widget_primary">@android:color/system_accent1_100</color>
     <color name="widget_secondary">@android:color/system_accent2_200</color>

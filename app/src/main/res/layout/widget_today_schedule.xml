@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_background"
-    android:orientation="vertical">
+    android:background="@drawable/widget_background">
+
+    <ImageView
+        android:id="@+id/widget_wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="fitXY" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
     <LinearLayout
         android:id="@+id/widget_header"
@@ -81,10 +92,12 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <TextView
+            <ImageView
+                android:id="@+id/widget_plan_dot"
                 android:layout_width="6dp"
                 android:layout_height="6dp"
-                android:background="@drawable/widget_plan_dot" />
+                android:contentDescription="@null"
+                android:src="@drawable/widget_plan_dot" />
 
             <TextView
                 android:id="@+id/widget_nearest_plan_text"
@@ -100,6 +113,7 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/widget_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginHorizontal="14dp"
@@ -114,7 +128,7 @@
             android:id="@+id/widget_list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clickable="false"
+            android:clickable="true"
             android:clipToPadding="true"
             android:divider="@android:color/transparent"
             android:dividerHeight="0dp"
@@ -133,4 +147,5 @@
             android:textColor="@color/widget_on_surface_variant"
             android:textSize="11sp" />
     </FrameLayout>
-</LinearLayout>
+    </LinearLayout>
+</FrameLayout>

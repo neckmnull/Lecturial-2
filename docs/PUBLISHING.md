@@ -49,7 +49,7 @@ Do not change the Lecturial 2 package ID again after its first store publication
 1. Update `versionCode` and `versionName` in `app/build.gradle.kts` and the version shown in README.
 2. Run the relevant checks and build APK/AAB artifacts with the long-term release key. Verify an in-place upgrade over the previous release without deleting app data.
 3. Create a version tag such as `v1.4.4` only after confirming the corresponding build.
-4. Create a GitHub Release with English notes and attach exactly one signed `.apk` for direct installation. Use a descriptive name such as `Lecturial-2-v1.6.1.apk`. AAB files are intended for stores, not direct installation.
+4. Create a GitHub Release with English notes and attach exactly one signed `.apk` for direct installation. Use a descriptive name such as `Lecturial-2-v1.6.1.apk`. The updater selects the first trusted `.apk` asset returned by GitHub, so multiple APK assets make selection ambiguous. AAB files are intended for stores, not direct installation.
 5. Never attach the keystore, passwords, or local configuration. Review transitive dependency licenses before binary distribution.
 6. Back up the release key securely. Future updates with the same application ID must use the same key.
 7. Publish a stable, non-draft GitHub Release. The in-app updater reads the repository's
@@ -58,8 +58,11 @@ Do not change the Lecturial 2 package ID again after its first store publication
    opens the system package installer through `FileProvider`; the user must confirm the
    update. On Android 8+ the first update may also require enabling **Install unknown apps**
    for Lecturial 2. Silent installation is intentionally unsupported.
-8. Install the previous release on a physical device, update through **Settings → About →
-   Updates**, and verify that app data remains intact. Also test denial and later approval of
-   the unknown-apps permission.
+8. Install the previous release on a physical device, use the update card in
+   **Settings → About**, and verify that app data remains intact. Also test denial and later
+   approval of the unknown-apps permission.
 
-Build commands are listed in the [README](../README.md). Preparing the repository does not by itself verify UI behavior, notifications, widgets, or installation on a physical device.
+The full updater contract, state model, security boundaries, and troubleshooting guide are in
+[UPDATER.md](UPDATER.md). Build commands are listed in the [README](../README.md). Preparing
+the repository does not by itself verify UI behavior, notifications, widgets, or installation on
+a physical device.

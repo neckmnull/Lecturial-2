@@ -71,6 +71,47 @@ private val LecturialColors = darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD9),
 )
 
+// Sirius brand blue on deep navy: neutrals carry a blue tint so cards and the dynamic
+// background don't fall back to flat grey, and the accents stay in the cool family
+// (desaturated blue secondary, lavender tertiary) instead of clashing amber/teal.
+private val SiriusColors = LecturialColors.copy(
+    primary = Color(0xFF8AABFF),
+    onPrimary = Color(0xFF002D6E),
+    primaryContainer = Color(0xFF26448A),
+    onPrimaryContainer = Color(0xFFDAE2FF),
+    primaryFixed = Color(0xFFB4C6FF),
+    primaryFixedDim = Color(0xFF8AABFF),
+    onPrimaryFixed = Color(0xFF001946),
+    onPrimaryFixedVariant = Color(0xFF26448A),
+    secondary = Color(0xFFB3C3EC),
+    onSecondary = Color(0xFF1C2D4E),
+    secondaryContainer = Color(0xFF2D3D60),
+    onSecondaryContainer = Color(0xFFD9E2FF),
+    secondaryFixed = Color(0xFFD9E2FF),
+    secondaryFixedDim = Color(0xFFB3C3EC),
+    onSecondaryFixed = Color(0xFF0F1D3A),
+    tertiary = Color(0xFFD3BBF6),
+    onTertiary = Color(0xFF39255B),
+    tertiaryContainer = Color(0xFF4C3A72),
+    onTertiaryContainer = Color(0xFFEDDCFF),
+    tertiaryFixed = Color(0xFFEDDCFF),
+    tertiaryFixedDim = Color(0xFFD3BBF6),
+    onTertiaryFixed = Color(0xFF240F45),
+    background = Color(0xFF070A12),
+    onBackground = Color(0xFFE6E9F4),
+    surface = Color(0xFF070A12),
+    onSurface = Color(0xFFE6E9F4),
+    surfaceVariant = Color(0xFF1C2233),
+    onSurfaceVariant = Color(0xFFA8B0C6),
+    surfaceContainerLowest = Color(0xFF04060C),
+    surfaceContainerLow = Color(0xFF0D111C),
+    surfaceContainer = Color(0xFF111725),
+    surfaceContainerHigh = Color(0xFF1A2131),
+    surfaceContainerHighest = Color(0xFF242C3E),
+    outline = Color(0xFF465069),
+    outlineVariant = Color(0xFF2D3548),
+)
+
 private val OceanColors = LecturialColors.copy(
     primary = Color(0xFF62D5E8),
     onPrimary = Color(0xFF00363D),
@@ -330,7 +371,7 @@ private val ElectricColors = LecturialColors.copy(
 )
 
 private fun builtInDarkColors(theme: AppTheme) = when (theme) {
-    AppTheme.Sirius -> LecturialColors
+    AppTheme.Sirius -> SiriusColors
     AppTheme.Ocean -> OceanColors
     AppTheme.Forest -> ForestColors
     AppTheme.Sunset -> SunsetColors
@@ -358,7 +399,7 @@ fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
         )
     }
     return when (theme) {
-        AppTheme.Sirius -> ThemePalette(0xFF345EBC.toInt(), 0xFF00658B.toInt(), 0xFF745B00.toInt(), 0xFFF9F9FF.toInt(), 0xFFF1F3FA.toInt(), 0xFF191C20.toInt())
+        AppTheme.Sirius -> ThemePalette(0xFF345EBC.toInt(), 0xFF535F7D.toInt(), 0xFF6B5592.toInt(), 0xFFF9F9FF.toInt(), 0xFFF1F3FA.toInt(), 0xFF191C20.toInt())
         AppTheme.Ocean -> ThemePalette(0xFF006875.toInt(), 0xFF146B61.toInt(), 0xFF405B9D.toInt(), 0xFFF4FBFC.toInt(), 0xFFEBF5F6.toInt(), 0xFF161D1E.toInt())
         AppTheme.Forest -> ThemePalette(0xFF2D6A3A.toInt(), 0xFF52634F.toInt(), 0xFF6C5D2F.toInt(), 0xFFF7FBF5.toInt(), 0xFFEEF5EB.toInt(), 0xFF191D18.toInt())
         AppTheme.Sunset -> ThemePalette(0xFF9C4230.toInt(), 0xFF77574F.toInt(), 0xFF705B2E.toInt(), 0xFFFFF8F5.toInt(), 0xFFF9EFEB.toInt(), 0xFF211A18.toInt())
@@ -480,7 +521,7 @@ fun LecturialTheme(
         colorScheme = colors,
         shapes = ExpressiveShapes,
         typography = manropeTypography(),
-        motionScheme = MotionScheme.standard(),
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }

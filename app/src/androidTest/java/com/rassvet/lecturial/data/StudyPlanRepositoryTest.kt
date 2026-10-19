@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.model.StudyPlan
+import com.rassvet.lecturial.model.StudyPlanRecurrence
 import com.rassvet.lecturial.model.StudyPlanType
 import java.time.LocalDate
 import java.time.LocalTime
@@ -52,6 +53,33 @@ class StudyPlanRepositoryTest {
         repository.delete("later")
         assertEquals(listOf("earlier"), repository.plans.first().map { it.id })
         assertEquals(4, updates)
+    }
+
+    @Test
+    fun eventFieldsRoundTripThroughRoom() = runBlocking {
+        val repository = StudyPlanRepository(database)
+        val event = StudyPlan(
+            id = "event",
+            type = StudyPlanType.Event,
+            title = "Конференция",
+            note = "Главный зал",
+            dueDate = LocalDate.of(2026, 11, 12),
+            dueTime = LocalTime.of(14, 25),
+            endDate = LocalDate.of(2026, 11, 13),
+            endTime = LocalTime.of(16, 30),
+            isAllDay = false,
+            recurrence = StudyPlanRecurrence.Yearly,
+            reminderMinutesBefore = 45,
+            color = 0xFF67D391.toInt(),
+            todoistId = "todoist-42",
+            isCompleted = false,
+            createdAtMillis = 100L,
+            updatedAtMillis = 200L,
+        )
+
+        repository.save(event)
+
+        assertEquals(event, repository.plans.first().single())
     }
 
     private fun plan(id: String, dueDate: LocalDate, createdAt: Long, dueTime: LocalTime? = null) = StudyPlan(

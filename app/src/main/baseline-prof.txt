@@ -1,0 +1,4 @@
+HSPLcom/rassvet/lecturial/**->**(**)**
+Lcom/rassvet/lecturial/**;
+HSPLandroidx/compose/material3/**->**(**)**
+Landroidx/compose/material3/**;

@@ -1,6 +1,7 @@
 package com.rassvet.lecturial.data.local
 
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
@@ -58,6 +59,15 @@ class AppAppearanceSerializationTest {
             fontStyleId = "serif_bold",
             letterSpacingPercent = 7,
             titleMaxLines = 5,
+            tileCornerRadiusDp = 24,
+            tileOpacityPercent = 64,
+            backgroundStyle = AppBackgroundStyle.Classic,
+            backgroundIntensityPercent = 125,
+            backgroundSpeedPercent = 80,
+            backgroundGradientStartColor = 0xFF123456.toInt(),
+            backgroundGradientEndColor = 0xFF654321.toInt(),
+            backgroundGradientAccentColor = 0xFFABCDEF.toInt(),
+            backgroundGradientAngleDegrees = 270,
         )
 
         assertEquals(options, parseAppDisplayOptions(encodeAppDisplayOptions(options)))
@@ -66,12 +76,19 @@ class AppAppearanceSerializationTest {
     @Test
     fun appDisplayOptionsClampUnsafeValues() {
         val parsed = parseAppDisplayOptions(
-            """{"outerPaddingDp":100,"titleTextSizeSp":2,"fontStyleId":"missing","titleMaxLines":99}""",
+            """{"outerPaddingDp":100,"titleTextSizeSp":2,"fontStyleId":"missing","titleMaxLines":99,"tileCornerRadiusDp":99,"tileOpacityPercent":-1,"backgroundStyle":"missing","backgroundIntensityPercent":999,"backgroundSpeedPercent":-20,"backgroundGradientAngleDegrees":999}""",
         )
 
         assertEquals(32, parsed.outerPaddingDp)
         assertEquals(12, parsed.titleTextSizeSp)
         assertEquals("system_medium", parsed.fontStyleId)
         assertEquals(5, parsed.titleMaxLines)
+        assertEquals(32, parsed.tileCornerRadiusDp)
+        assertEquals(0, parsed.tileOpacityPercent)
+        assertEquals(AppBackgroundStyle.Classic, parsed.backgroundStyle)
+        assertEquals(150, parsed.backgroundIntensityPercent)
+        assertEquals(0, parsed.backgroundSpeedPercent)
+        assertEquals(360, parsed.backgroundGradientAngleDegrees)
+        assertEquals(null, parsed.backgroundGradientStartColor)
     }
 }
