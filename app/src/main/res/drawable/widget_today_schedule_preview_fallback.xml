@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="@color/widget_background"
+        android:pathData="M28,0 L292,0 Q320,0 320,28 L320,152 Q320,180 292,180 L28,180 Q0,180 0,152 L0,28 Q0,0 28,0 Z" />
+    <path
+        android:fillColor="@color/widget_primary"
+        android:pathData="M18,18 L116,18 Q124,18 124,26 L124,30 Q124,38 116,38 L18,38 Q14,38 14,34 L14,22 Q14,18 18,18 Z" />
+    <path
+        android:fillColor="@color/widget_surface_variant"
+        android:pathData="M34,56 L286,56 Q306,56 306,76 L306,146 Q306,166 286,166 L34,166 Q14,166 14,146 L14,76 Q14,56 34,56 Z" />
+    <path
+        android:fillColor="@color/widget_primary"
+        android:pathData="M24,70 L30,70 Q34,70 34,74 L34,148 Q34,152 30,152 L24,152 Q20,152 20,148 L20,74 Q20,70 24,70 Z" />
+    <path
+        android:fillColor="@color/widget_on_background"
+        android:pathData="M50,76 L142,76 Q148,76 148,82 L148,84 Q148,90 142,90 L50,90 Q44,90 44,84 L44,82 Q44,76 50,76 Z" />
+    <path
+        android:fillColor="@color/widget_on_background"
+        android:pathData="M50,102 L252,102 Q260,102 260,110 L260,114 Q260,122 252,122 L50,122 Q44,122 44,116 L44,108 Q44,102 50,102 Z" />
+    <path
+        android:fillColor="@color/widget_on_surface_variant"
+        android:pathData="M50,136 L168,136 Q174,136 174,142 L174,144 Q174,150 168,150 L50,150 Q44,150 44,144 L44,142 Q44,136 50,136 Z" />
+</vector>

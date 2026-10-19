@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.rassvet.lecturial.model.LessonLivePhase
@@ -18,15 +19,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class LessonLiveService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val states = MutableStateFlow<State?>(null)
     private var updateJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        running = this
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val state = intent?.toState() ?: run {
@@ -45,25 +54,39 @@ class LessonLiveService : Service() {
             initial,
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
-        updateJob?.cancel()
-        updateJob = scope.launch {
-            while (isActive) {
-                val remaining = state.live.targetMillis - System.currentTimeMillis()
-                if (remaining <= 0L) break
-                delay(minOf(UPDATE_INTERVAL_MILLIS, remaining))
-                if (isActive) LessonAlerts.refreshFromService(this@LessonLiveService, state.event, state.live)
-            }
-            if (isActive) {
-                clearTestState(applicationContext)
-                ServiceCompat.stopForeground(this@LessonLiveService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                LessonAlerts.sync(applicationContext)
-            }
-        }
+        states.value = state
+        if (updateJob?.isActive != true) updateJob = scope.launch { runUpdates() }
         return START_REDELIVER_INTENT
     }
 
+    private suspend fun CoroutineScope.runUpdates() {
+        while (isActive) {
+            val current = states.value ?: break
+            val now = System.currentTimeMillis()
+            if (now >= current.live.endMillis) {
+                // Pick the next lesson while this service is still in the foreground: a
+                // fresh foreground-service start from the background is refused on Android 12+.
+                LessonAlerts.refreshNow(applicationContext)
+                if (states.value === current) break
+                continue
+            }
+            if (current.live.phase == LessonLivePhase.UPCOMING && now >= current.live.startMillis) {
+                states.compareAndSet(current, current.copy(live = current.live.copy(phase = LessonLivePhase.CURRENT)))
+                continue
+            }
+            LessonAlerts.refreshFromService(this@LessonLiveService, current.event, current.live)
+            val wait = minOf(UPDATE_INTERVAL_MILLIS, current.live.targetMillis - now).coerceAtLeast(1L)
+            withTimeoutOrNull(wait) { states.first { it !== current } }
+        }
+        if (isActive) {
+            clearTestState(applicationContext)
+            ServiceCompat.stopForeground(this@LessonLiveService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
+        if (running === this) running = null
         updateJob?.cancel()
         scope.cancel()
         super.onDestroy()
@@ -97,6 +120,7 @@ class LessonLiveService : Service() {
     }
 
     companion object {
+        private const val TAG = "LessonLiveService"
         private const val UPDATE_INTERVAL_MILLIS = 10_000L
         private const val EXTRA_DATE = "date"
         private const val EXTRA_ID = "id"
@@ -112,6 +136,7 @@ class LessonLiveService : Service() {
         private const val KEY_TEST_TARGET = "target"
 
         @Volatile private var pendingNotification: Notification? = null
+        @Volatile private var running: LessonLiveService? = null
 
         fun start(
             context: Context,
@@ -122,9 +147,13 @@ class LessonLiveService : Service() {
         ) {
             if (isTest) {
                 context.getSharedPreferences(TEST_PREFS, Context.MODE_PRIVATE)
-                    .edit().putLong(KEY_TEST_TARGET, live.targetMillis).apply()
+                    .edit().putLong(KEY_TEST_TARGET, live.endMillis).apply()
             } else {
                 clearTestState(context)
+            }
+            running?.let { service ->
+                service.states.value = State(event, live)
+                return
             }
             pendingNotification = notification
             val intent = Intent(context, LessonLiveService::class.java).apply {
@@ -139,7 +168,14 @@ class LessonLiveService : Service() {
                 putExtra(EXTRA_START_MILLIS, live.startMillis)
                 putExtra(EXTRA_END_MILLIS, live.endMillis)
             }
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (refused: IllegalStateException) {
+                // Android 12+ refuses background starts without an exact-alarm exemption.
+                // The notification is already posted; it just won't tick until the app opens.
+                pendingNotification = null
+                Log.w(TAG, "Live lesson service start refused", refused)
+            }
         }
 
         fun stop(context: Context) {

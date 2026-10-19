@@ -4,6 +4,7 @@ import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.local.StudyPlanEntity
 import com.rassvet.lecturial.model.StudyPlan
 import com.rassvet.lecturial.model.StudyPlanType
+import com.rassvet.lecturial.model.StudyPlanRecurrence
 import java.time.LocalDate
 import java.time.LocalTime
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,14 @@ private fun StudyPlan.toEntity() = StudyPlanEntity(
     note = note.trim(),
     dueDate = dueDate?.toString(),
     dueTime = dueTime?.toString(),
+    endDate = endDate?.toString(),
+    endTime = endTime?.toString(),
+    isAllDay = isAllDay,
+    recurrence = recurrence.storageId,
+    reminderMinutesBefore = reminderMinutesBefore,
+    color = color,
+    todoistId = todoistId,
+    updatedAtMillis = updatedAtMillis,
     isCompleted = isCompleted,
     createdAtMillis = createdAtMillis,
 )
@@ -56,6 +65,14 @@ private fun StudyPlanEntity.toDomain() = StudyPlan(
     note = note,
     dueDate = dueDate?.let(LocalDate::parse),
     dueTime = dueTime?.let(LocalTime::parse),
+    endDate = endDate?.let(LocalDate::parse),
+    endTime = endTime?.let(LocalTime::parse),
+    isAllDay = isAllDay,
+    recurrence = StudyPlanRecurrence.fromStorageId(recurrence),
+    reminderMinutesBefore = reminderMinutesBefore,
+    color = color,
+    todoistId = todoistId,
+    updatedAtMillis = updatedAtMillis,
     isCompleted = isCompleted,
     createdAtMillis = createdAtMillis,
 )

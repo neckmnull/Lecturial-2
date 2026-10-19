@@ -2,15 +2,20 @@ package com.rassvet.lecturial.ui
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -18,6 +23,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.semantics.SemanticsActions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppUpdateState
@@ -38,6 +44,33 @@ import java.util.concurrent.atomic.AtomicInteger
 class LecturialAppTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComposeTestActivity>()
+
+    @Test
+    fun appUsesSharedMaterialYouBackground() {
+        render(ScheduleUiState(isStarting = false))
+
+        compose.onNodeWithTag("material-you-background").assertIsDisplayed()
+    }
+
+    @Test
+    fun classicBackgroundOmitsDynamicTonalFields() {
+        var options by mutableStateOf(
+            AppDisplayOptions(backgroundStyle = AppBackgroundStyle.Dynamic),
+        )
+        compose.setContent {
+            LecturialTheme {
+                MaterialYouBackground(options = options) {}
+            }
+        }
+
+        compose.onNodeWithTag("dynamic-tonal-fields").assertIsDisplayed()
+
+        compose.runOnIdle {
+            options = options.copy(backgroundStyle = AppBackgroundStyle.Classic)
+        }
+
+        compose.onAllNodes(hasTestTag("dynamic-tonal-fields")).assertCountEquals(0)
+    }
 
     @Test
     fun firstLaunchOffersDynamicGroups() {
@@ -179,7 +212,7 @@ class LecturialAppTest {
             )
         }
 
-        compose.onNodeWithText("На этой неделе занятий нет").assertDoesNotExist()
+        compose.onAllNodesWithText("На этой неделе занятий нет").assertCountEquals(0)
         compose.onNodeWithText("Физика").assertIsDisplayed()
     }
 
@@ -293,9 +326,7 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Напоминания о сроках").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Выбрано: за неделю, за день, в день срока")
-            .performScrollTo()
-            .assertIsDisplayed()
+        compose.onNodeWithText("За день", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("За неделю").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(setOf(1, 0), selectedDays) }
@@ -392,6 +423,8 @@ class LecturialAppTest {
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
+        compose.onNodeWithText("Telegram").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Официальный канал @lecturial_2").assertIsDisplayed()
         compose.waitUntil(timeoutMillis = 5_000) { checks.get() == 1 }
         compose.runOnIdle {
             assertEquals(1, checks.get())
@@ -468,11 +501,42 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("Оформление").performClick()
-        compose.onNodeWithText("Оформление расписания").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Живой предпросмотр расписания")
+        compose.onNodeWithText("Фон приложения").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Фон: классический").assertIsSelected()
+        compose.onNodeWithText("Однотонный фон темы без градиентов и анимации, как до появления динамического фона.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Интенсивность фона").assertIsNotDisplayed()
+        compose.onNodeWithText("Скорость фона").assertIsNotDisplayed()
+        compose.onNodeWithContentDescription("Фон: динамический").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Интенсивность фона").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Интенсивность фона: 100 %")
             .performScrollTo()
             .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(73f) }
+        compose.onNodeWithContentDescription("Интенсивность фона: 73 %").assertIsDisplayed()
+        compose.onNodeWithText("Скорость фона").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Скорость фона: 50 %")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(37f) }
+        compose.onNodeWithContentDescription("Скорость фона: 37 %").assertIsDisplayed()
+        compose.onNodeWithText("Оформление расписания").performScrollTo().assertIsDisplayed()
+        compose.onAllNodes(hasContentDescription("Живой предпросмотр расписания")).assertCountEquals(0)
         compose.onNodeWithText("Показывать аудиторию").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Показывать аудиторию").performClick()
+        compose.onNodeWithContentDescription("Живой предпросмотр расписания").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Интенсивность фона: 73 %")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(81f) }
+        compose.onAllNodes(hasContentDescription("Живой предпросмотр расписания")).assertCountEquals(0)
+        compose.onNodeWithContentDescription("Практика: Янтарный")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("Практические занятия").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Лекция: Голубой")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("Основы программирования").assertIsDisplayed()
         compose.onNodeWithText("Показывать время").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Показывать цветную полосу").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Время окончания").performScrollTo().assertIsDisplayed()
@@ -487,6 +551,11 @@ class LecturialAppTest {
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
+        compose.onNodeWithContentDescription("Название предмета: 16 sp")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(24f) }
+        compose.onNodeWithContentDescription("Живой предпросмотр расписания").assertIsDisplayed()
+        compose.onNodeWithText("Основы программирования").assertIsDisplayed()
         compose.onNodeWithText("Оформление виджета").performScrollTo().assertIsDisplayed()
     }
 
@@ -559,9 +628,9 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Лекция").assertIsDisplayed()
-        compose.onNodeWithText("Лекции").assertDoesNotExist()
+        compose.onAllNodesWithText("Лекции").assertCountEquals(0)
         compose.onNodeWithText("5.7").assertIsDisplayed()
-        compose.onNodeWithText("Основной").assertDoesNotExist()
+        compose.onAllNodesWithText("Основной").assertCountEquals(0)
     }
 
     @Test
@@ -601,7 +670,7 @@ class LecturialAppTest {
             ),
         )
 
-        compose.onNodeWithText("можно отдохнуть с 10:05 до 13:00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Перерыв 10:05 – 13:00", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -854,6 +923,46 @@ class LecturialAppTest {
     }
 
     @Test
+    fun planRequestOpensTheRequestedPlanEditor() {
+        var consumedKey: Long? = null
+        val requestedPlan = StudyPlan(
+            id = "requested-plan",
+            type = StudyPlanType.Deadline,
+            title = "Открытый из виджета план",
+            dueDate = LocalDate.now(),
+            createdAtMillis = 1L,
+        )
+        val state = ScheduleUiState(
+            selectedGroup = "ИОП-ИТ-26/1",
+            selectedDate = LocalDate.now(),
+            weekStart = LocalDate.now(),
+            isStarting = false,
+            studyPlans = listOf(requestedPlan),
+        )
+
+        compose.setContent {
+            LecturialTheme(appTheme = state.appTheme) {
+                LecturialApp(
+                    state = state,
+                    openPlanId = requestedPlan.id,
+                    openPlanRequestKey = 42L,
+                    onOpenPlanConsumed = { consumedKey = it },
+                    onGroupSelected = {},
+                    onDateSelected = {},
+                    onMoveWeek = {},
+                    onToday = {},
+                    onRefresh = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("Изменить план").assertIsDisplayed()
+        compose.onAllNodesWithText(requestedPlan.title)[0].assertIsDisplayed()
+        compose.runOnIdle { assertEquals(42L, consumedKey) }
+    }
+
+    @Test
     fun datedPlanAppearsInScheduleWithTimeAndUndatedPlanDoesNot() {
         val date = LocalDate.of(2026, 11, 10)
         var completed: Pair<String, Boolean>? = null
@@ -895,7 +1004,7 @@ class LecturialAppTest {
 
         compose.onNodeWithText("Повторить конспект").assertIsDisplayed()
         compose.onNodeWithText("14:30").assertIsDisplayed()
-        compose.onNodeWithText("План без даты").assertDoesNotExist()
+        compose.onAllNodesWithText("План без даты").assertCountEquals(0)
         compose.onNodeWithContentDescription("Отметить выполненным").performClick()
         compose.runOnIdle { assertEquals("timed-plan" to true, completed) }
     }
@@ -907,15 +1016,17 @@ class LecturialAppTest {
         onGroupsRetry: () -> Unit = {},
         onAppThemeSelected: (AppTheme) -> Unit = {},
         onDarkThemeChanged: (Boolean) -> Unit = {},
+        onAppDisplayOptionsChanged: (AppDisplayOptions) -> Unit = {},
         onAppDisplayOptionsReset: () -> Unit = {},
         onDeadlineReminderDaysChanged: (Set<Int>) -> Unit = {},
         onScheduleWeeksBackChanged: (Int) -> Unit = {},
         onScheduleWeeksForwardChanged: (Int) -> Unit = {},
     ) {
         compose.setContent {
-            LecturialTheme(appTheme = state.appTheme) {
+            var renderedState by remember { mutableStateOf(state) }
+            LecturialTheme(appTheme = renderedState.appTheme) {
                 LecturialApp(
-                    state = state,
+                    state = renderedState,
                     onGroupSelected = onGroupSelected,
                     onGroupSearchQueryChanged = onGroupSearchQueryChanged,
                     onGroupsRetry = onGroupsRetry,
@@ -926,6 +1037,10 @@ class LecturialAppTest {
                     onRetry = {},
                     onAppThemeSelected = onAppThemeSelected,
                     onDarkThemeChanged = onDarkThemeChanged,
+                    onAppDisplayOptionsChanged = { options ->
+                        renderedState = renderedState.copy(appDisplayOptions = options)
+                        onAppDisplayOptionsChanged(options)
+                    },
                     onAppDisplayOptionsReset = onAppDisplayOptionsReset,
                     onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
                     onScheduleWeeksBackChanged = onScheduleWeeksBackChanged,

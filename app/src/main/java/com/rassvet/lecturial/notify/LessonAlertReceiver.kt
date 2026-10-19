@@ -9,7 +9,10 @@ import java.util.concurrent.atomic.AtomicInteger
 class LessonAlertReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            LessonAlerts.ACTION_ALARM -> LessonAlerts.onAlarm(context, intent)
+            LessonAlerts.ACTION_ALARM -> {
+                val pendingResult = goAsync()
+                LessonAlerts.onAlarm(context) { pendingResult.finish() }
+            }
         }
     }
 }

@@ -34,6 +34,9 @@ import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+import java.time.ZoneId
+import com.rassvet.lecturial.model.LessonAlertPause
 
 data class ScheduleUiState(
     val appTheme: AppTheme = AppTheme.default,
@@ -60,6 +63,8 @@ data class ScheduleUiState(
     val isStarting: Boolean = true,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
+    /** True while a refresh the user should see is running: pull-to-refresh or entering the app. */
+    val isManualRefreshing: Boolean = false,
     val errorMessage: String? = null,
     val showingCachedData: Boolean = false,
     val lastUpdatedMillis: Long? = null,
@@ -82,6 +87,7 @@ data class ScheduleUiState(
     val lessonAliases: Map<String, String> = emptyMap(),
     val studyPlans: List<StudyPlan> = emptyList(),
     val deadlineReminderDays: Set<Int> = DeadlineReminder.default,
+    val lessonAlertsPausedUntil: Long? = null,
     val appUpdateState: AppUpdateState = AppUpdateState.Idle,
     val now: LocalDateTime = LocalDateTime.now(),
 )
@@ -101,6 +107,7 @@ class ScheduleViewModel(
     private var selectionJob: Job? = null
     private var groupsJob: Job? = null
     private var updateJob: Job? = null
+    private var entryRefreshPending = false
 
     init {
         viewModelScope.launch {
@@ -121,6 +128,7 @@ class ScheduleViewModel(
             val selectedCustomThemeId = preferences.selectedCustomThemeId.first()
             val appDisplayOptions = preferences.appDisplayOptions.first()
             val deadlineReminderDays = preferences.deadlineReminderDays.first()
+            val lessonAlertsPausedUntil = preferences.lessonAlertsPausedUntil.first()
             val scheduleWeeksBack = preferences.scheduleWeeksBack.first()
             val scheduleWeeksForward = preferences.scheduleWeeksForward.first()
             val validCustomThemeId = selectedCustomThemeId?.takeIf { id -> customThemes.any { it.id == id } }
@@ -134,6 +142,7 @@ class ScheduleViewModel(
                     selectedCustomThemeId = validCustomThemeId,
                     appDisplayOptions = appDisplayOptions,
                     deadlineReminderDays = deadlineReminderDays,
+                    lessonAlertsPausedUntil = lessonAlertsPausedUntil,
                     scheduleWeeksBack = scheduleWeeksBack,
                     scheduleWeeksForward = scheduleWeeksForward,
                     selectedGroup = group,
@@ -163,7 +172,8 @@ class ScheduleViewModel(
                 )
             }
             if (group != null) {
-                loadCurrentWeek()
+                loadCurrentWeek(showIndicator = entryRefreshPending)
+                entryRefreshPending = false
             } else {
                 requestGroups()
             }
@@ -171,7 +181,10 @@ class ScheduleViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(15_000)
-                _state.update { it.copy(now = now()) }
+                // The schedule only shows minutes; skipping same-minute ticks avoids
+                // rebuilding every row and recomposing the whole screen four times a minute.
+                val minute = now().truncatedTo(ChronoUnit.MINUTES)
+                _state.update { if (it.now.truncatedTo(ChronoUnit.MINUTES) == minute) it else it.copy(now = minute) }
             }
         }
     }
@@ -353,7 +366,9 @@ class ScheduleViewModel(
         loadCurrentWeek()
     }
 
-    fun goToToday() {
+    fun goToToday() = goToToday(showIndicator = false)
+
+    private fun goToToday(showIndicator: Boolean) {
         val date = today()
         _state.update {
             it.copy(
@@ -366,10 +381,31 @@ class ScheduleViewModel(
                 errorMessage = null,
             )
         }
-        loadCurrentWeek()
+        loadCurrentWeek(showIndicator = showIndicator)
     }
 
     fun refresh() = loadCurrentWeek(isManualRefresh = true)
+
+    /**
+     * Called every time the app comes to the foreground: refreshes the schedule with a
+     * visible indicator and jumps to the new day if the app was left open overnight.
+     */
+    fun refreshOnEntry() {
+        val current = _state.value
+        if (current.isStarting) {
+            // Preferences are still loading; the initial load picks this up.
+            entryRefreshPending = true
+            return
+        }
+        if (current.selectedGroup == null) return
+        val date = today()
+        _state.update { it.copy(now = now().truncatedTo(ChronoUnit.MINUTES)) }
+        if (current.now.toLocalDate() != date && current.selectedDate == current.now.toLocalDate()) {
+            goToToday(showIndicator = true)
+        } else {
+            loadCurrentWeek(showIndicator = true)
+        }
+    }
 
     fun retry() = loadCurrentWeek()
 
@@ -384,6 +420,13 @@ class ScheduleViewModel(
 
     fun deleteStudyPlan(id: String) {
         viewModelScope.launch { studyPlanRepository.delete(id) }
+    }
+
+    /** Mutes lesson alerts for [pause], or resumes them when it is null. */
+    fun pauseLessonAlerts(pause: LessonAlertPause?) {
+        val until = pause?.until(now(), ZoneId.systemDefault())
+        _state.update { it.copy(lessonAlertsPausedUntil = until) }
+        viewModelScope.launch { preferences.setLessonAlertsPausedUntil(until) }
     }
 
     fun setDeadlineReminderDays(days: Set<Int>) {
@@ -503,7 +546,20 @@ class ScheduleViewModel(
         viewModelScope.launch { preferences.setAppDisplayOptions(options) }
     }
 
-    fun resetAppDisplayOptions() = setAppDisplayOptions(AppDisplayOptions())
+    fun resetAppDisplayOptions() {
+        val current = _state.value.appDisplayOptions
+        setAppDisplayOptions(
+            AppDisplayOptions(
+                backgroundStyle = current.backgroundStyle,
+                backgroundIntensityPercent = current.backgroundIntensityPercent,
+                backgroundSpeedPercent = current.backgroundSpeedPercent,
+                backgroundGradientStartColor = current.backgroundGradientStartColor,
+                backgroundGradientEndColor = current.backgroundGradientEndColor,
+                backgroundGradientAccentColor = current.backgroundGradientAccentColor,
+                backgroundGradientAngleDegrees = current.backgroundGradientAngleDegrees,
+            ),
+        )
+    }
 
     fun setLectureStripeColor(color: Int) {
         if (!WidgetStripePalette.isSupported(color)) return
@@ -635,7 +691,7 @@ class ScheduleViewModel(
         viewModelScope.launch { persist(value) }
     }
 
-    private fun loadCurrentWeek(isManualRefresh: Boolean = false) {
+    private fun loadCurrentWeek(isManualRefresh: Boolean = false, showIndicator: Boolean = isManualRefresh) {
         val group = _state.value.selectedGroup ?: return
         val weekStart = _state.value.weekStart
         val weeksBack = _state.value.scheduleWeeksBack
@@ -669,6 +725,7 @@ class ScheduleViewModel(
                 if (!it.matchesRequest()) it else it.copy(
                     isLoading = cached.isEmpty() && !isManualRefresh,
                     isRefreshing = isManualRefresh || cached.isNotEmpty(),
+                    isManualRefreshing = showIndicator && (isManualRefresh || cached.isNotEmpty()),
                     errorMessage = null,
                 )
             }
@@ -704,6 +761,7 @@ class ScheduleViewModel(
                 if (!it.matchesRequest()) it else it.copy(
                     isLoading = false,
                     isRefreshing = false,
+                    isManualRefreshing = false,
                     errorMessage = firstFailure?.let { failure ->
                         failure.message ?: "Не удалось обновить часть расписания"
                     },

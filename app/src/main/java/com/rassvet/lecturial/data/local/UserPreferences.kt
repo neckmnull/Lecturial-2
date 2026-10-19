@@ -5,6 +5,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -14,6 +15,7 @@ import com.rassvet.lecturial.model.WidgetDisplayOptions
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
@@ -56,6 +58,7 @@ class UserPreferences(private val context: Context) {
     private val darkThemeKey = booleanPreferencesKey("dark_theme")
     private val builtInThemeOverridesKey = stringPreferencesKey("built_in_theme_overrides")
     private val deadlineReminderDaysKey = stringPreferencesKey("deadline_reminder_days")
+    private val lessonAlertsPausedUntilKey = longPreferencesKey("lesson_alerts_paused_until")
     private val scheduleWeeksBackKey = intPreferencesKey("schedule_weeks_back")
     private val scheduleWeeksForwardKey = intPreferencesKey("schedule_weeks_forward")
 
@@ -87,6 +90,11 @@ class UserPreferences(private val context: Context) {
 
     val appDisplayOptions: Flow<AppDisplayOptions> = safePreferences.map { preferences ->
         parseAppDisplayOptions(preferences[appDisplayOptionsKey])
+    }
+
+    /** Epoch millis until which lesson alerts are muted; may lie in the past once it expires. */
+    val lessonAlertsPausedUntil: Flow<Long?> = safePreferences.map { preferences ->
+        preferences[lessonAlertsPausedUntilKey]
     }
 
     val deadlineReminderDays: Flow<Set<Int>> = safePreferences.map { preferences ->
@@ -166,10 +174,12 @@ class UserPreferences(private val context: Context) {
                 preferences.remove(selectedCustomThemeIdKey)
             }
         }
+        TodayScheduleWidget.updateAll(context)
     }
 
     suspend fun setDarkTheme(value: Boolean) {
         context.dataStore.edit { it[darkThemeKey] = value }
+        TodayScheduleWidget.updateAll(context)
     }
 
     suspend fun setCustomThemes(themes: List<CustomAppTheme>) {
@@ -177,6 +187,7 @@ class UserPreferences(private val context: Context) {
             if (themes.isEmpty()) preferences.remove(customThemesKey)
             else preferences[customThemesKey] = encodeCustomThemes(themes)
         }
+        TodayScheduleWidget.updateAll(context)
     }
 
     suspend fun setBuiltInThemeOverrides(overrides: List<BuiltInThemeOverride>) {
@@ -184,10 +195,12 @@ class UserPreferences(private val context: Context) {
             if (overrides.isEmpty()) preferences.remove(builtInThemeOverridesKey)
             else preferences[builtInThemeOverridesKey] = encodeBuiltInThemeOverrides(overrides)
         }
+        TodayScheduleWidget.updateAll(context)
     }
 
     suspend fun setAppDisplayOptions(options: AppDisplayOptions) {
         context.dataStore.edit { it[appDisplayOptionsKey] = encodeAppDisplayOptions(options) }
+        TodayScheduleWidget.updateAll(context)
     }
 
     suspend fun setLectureStripeColor(color: Int) {
@@ -252,6 +265,14 @@ class UserPreferences(private val context: Context) {
             if (encoded == null) preferences.remove(lessonAliasesKey) else preferences[lessonAliasesKey] = encoded
         }
         TodayScheduleWidget.updateAll(context)
+    }
+
+    suspend fun setLessonAlertsPausedUntil(untilMillis: Long?) {
+        context.dataStore.edit { preferences ->
+            if (untilMillis == null) preferences.remove(lessonAlertsPausedUntilKey)
+            else preferences[lessonAlertsPausedUntilKey] = untilMillis
+        }
+        com.rassvet.lecturial.notify.LessonAlerts.sync(context)
     }
 
     suspend fun setDeadlineReminderDays(days: Set<Int>) {
@@ -426,6 +447,15 @@ internal fun encodeAppDisplayOptions(options: AppDisplayOptions): String = org.j
     .put("fontStyleId", options.fontStyleId)
     .put("letterSpacingPercent", options.letterSpacingPercent)
     .put("titleMaxLines", options.titleMaxLines)
+    .put("tileCornerRadiusDp", options.tileCornerRadiusDp)
+    .put("tileOpacityPercent", options.tileOpacityPercent)
+    .put("backgroundStyle", options.backgroundStyle.storageId)
+    .put("backgroundIntensityPercent", options.backgroundIntensityPercent)
+    .put("backgroundSpeedPercent", options.backgroundSpeedPercent)
+    .put("backgroundGradientStartColor", options.backgroundGradientStartColor)
+    .put("backgroundGradientEndColor", options.backgroundGradientEndColor)
+    .put("backgroundGradientAccentColor", options.backgroundGradientAccentColor)
+    .put("backgroundGradientAngleDegrees", options.backgroundGradientAngleDegrees)
     .toString()
 
 internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
@@ -455,6 +485,18 @@ internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
                 ?: WidgetFontStyles.defaultId,
             letterSpacingPercent = item.optInt("letterSpacingPercent", 0).coerceIn(-5, 10),
             titleMaxLines = item.optInt("titleMaxLines", 3).coerceIn(1, 5),
+            tileCornerRadiusDp = item.optInt("tileCornerRadiusDp", 24).coerceIn(0, 32),
+            tileOpacityPercent = item.optInt("tileOpacityPercent", 78).coerceIn(0, 100),
+            backgroundStyle = AppBackgroundStyle.fromStorageId(item.optString("backgroundStyle")),
+            backgroundIntensityPercent = item.optInt("backgroundIntensityPercent", 100).coerceIn(25, 150),
+            backgroundSpeedPercent = item.optInt("backgroundSpeedPercent", 50).coerceIn(0, 100),
+            backgroundGradientStartColor = item.optNullableInt("backgroundGradientStartColor"),
+            backgroundGradientEndColor = item.optNullableInt("backgroundGradientEndColor"),
+            backgroundGradientAccentColor = item.optNullableInt("backgroundGradientAccentColor"),
+            backgroundGradientAngleDegrees = item.optInt("backgroundGradientAngleDegrees", 135).coerceIn(0, 360),
         )
     }.getOrDefault(AppDisplayOptions())
 }
+
+private fun org.json.JSONObject.optNullableInt(key: String): Int? =
+    (opt(key) as? Number)?.toInt()

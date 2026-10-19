@@ -3,6 +3,7 @@ package com.rassvet.lecturial
 import android.Manifest
 import android.animation.ValueAnimator
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -14,8 +15,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rassvet.lecturial.notify.LessonAlerts
@@ -29,6 +33,8 @@ class MainActivity : ComponentActivity() {
     private val splashStartedAt = SystemClock.elapsedRealtime()
     private var pendingUpdate: AppUpdateState.ReadyToInstall? = null
     private var installationErrorHandler: ((AppUpdateState.ReadyToInstall, String) -> Unit)? = null
+    private var openPlanRequest by mutableStateOf<OpenPlanRequest?>(null)
+    private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { LessonAlerts.sync(this) }
@@ -45,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleNavigationIntent(intent)
         if (Build.VERSION.SDK_INT >= 31 && ValueAnimator.areAnimatorsEnabled()) {
             window.decorView.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
                 override fun onPreDraw(): Boolean {
@@ -67,6 +74,11 @@ class MainActivity : ComponentActivity() {
                 ),
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
+            // Every return to the app pulls a fresh schedule.
+            LifecycleStartEffect(viewModel) {
+                viewModel.refreshOnEntry()
+                onStopOrDispose { }
+            }
             LecturialTheme(
                 appTheme = state.appTheme,
                 customTheme = state.customThemes.firstOrNull { it.id == state.selectedCustomThemeId },
@@ -77,6 +89,11 @@ class MainActivity : ComponentActivity() {
             ) {
                 LecturialApp(
                     state = state,
+                    openPlanId = openPlanRequest?.planId,
+                    openPlanRequestKey = openPlanRequest?.key ?: 0L,
+                    onOpenPlanConsumed = { key ->
+                        if (openPlanRequest?.key == key) openPlanRequest = null
+                    },
                     onGroupSelected = viewModel::selectGroup,
                     onGroupSearchQueryChanged = viewModel::setGroupSearchQuery,
                     onGroupsRetry = { viewModel.requestGroups() },
@@ -116,6 +133,7 @@ class MainActivity : ComponentActivity() {
                     onStudyPlanCompletedChanged = viewModel::setStudyPlanCompleted,
                     onStudyPlanDeleted = viewModel::deleteStudyPlan,
                     onDeadlineReminderDaysChanged = viewModel::setDeadlineReminderDays,
+                    onLessonAlertsPause = viewModel::pauseLessonAlerts,
                     onScheduleWeeksBackChanged = viewModel::setScheduleWeeksBack,
                     onScheduleWeeksForwardChanged = viewModel::setScheduleWeeksForward,
                     onCheckForUpdates = viewModel::checkForUpdates,
@@ -126,6 +144,19 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNavigationIntent(intent)
+    }
+
+    private fun handleNavigationIntent(intent: Intent?) {
+        val planId = intent?.getStringExtra(EXTRA_PLAN_ID)?.takeIf(String::isNotBlank) ?: return
+        openPlanSequence += 1
+        openPlanRequest = OpenPlanRequest(openPlanSequence, planId)
+        intent.removeExtra(EXTRA_PLAN_ID)
     }
 
     override fun onStart() {
@@ -191,5 +222,16 @@ class MainActivity : ComponentActivity() {
     private fun reportInstallationError(update: AppUpdateState.ReadyToInstall, message: String) {
         pendingUpdate = null
         installationErrorHandler?.invoke(update, message)
+    }
+
+    private data class OpenPlanRequest(val key: Long, val planId: String)
+
+    companion object {
+        const val EXTRA_PLAN_ID = "com.rassvet.lecturial.extra.PLAN_ID"
+
+        fun openPlanIntent(context: Context, planId: String): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction("com.rassvet.lecturial.action.OPEN_PLAN")
+                .putExtra(EXTRA_PLAN_ID, planId)
     }
 }

@@ -1,5 +1,21 @@
 package com.rassvet.lecturial.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material3.MediumFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.width
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -46,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,9 +80,13 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rassvet.lecturial.model.StudyPlan
+import com.rassvet.lecturial.model.AppDisplayOptions
+import com.rassvet.lecturial.model.StudyPlanColors
+import com.rassvet.lecturial.model.StudyPlanRecurrence
 import com.rassvet.lecturial.model.StudyPlanType
 import com.rassvet.lecturial.model.StudyPlanUrgency
 import com.rassvet.lecturial.model.dueLabel
+import com.rassvet.lecturial.model.occursOn
 import com.rassvet.lecturial.model.urgency
 import java.time.Instant
 import java.time.LocalDate
@@ -81,6 +103,10 @@ private enum class PlansFilter(val title: String) {
 @Composable
 internal fun StudyPlansScreen(
     plans: List<StudyPlan>,
+    displayOptions: AppDisplayOptions = AppDisplayOptions(),
+    requestedPlanId: String? = null,
+    requestedPlanKey: Long = 0L,
+    onRequestedPlanOpened: (Long) -> Unit = {},
     onSave: (StudyPlan) -> Unit,
     onCompletedChanged: (String, Boolean) -> Unit,
     onDelete: (String) -> Unit,
@@ -90,22 +116,25 @@ internal fun StudyPlansScreen(
     var creatingPlan by remember { mutableStateOf(false) }
     val today = LocalDate.now()
     val active = plans.count { !it.isCompleted }
-    val todayCount = plans.count { !it.isCompleted && it.dueDate == today }
+    val todayCount = plans.count { !it.isCompleted && it.occursOn(today) }
     val overdue = plans.count { it.urgency(today) == StudyPlanUrgency.Overdue }
 
+    LaunchedEffect(requestedPlanId, requestedPlanKey, plans) {
+        val requested = requestedPlanId?.let { id -> plans.firstOrNull { it.id == id } }
+        if (requested != null) {
+            filter = if (requested.isCompleted) PlansFilter.Completed else PlansFilter.Active
+            editingPlan = requested
+            onRequestedPlanOpened(requestedPlanKey)
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = filter,
-            transitionSpec = {
-                (fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 16 }) togetherWith
-                    (fadeOut(tween(120)) + slideOutVertically(tween(180)) { -it / 20 })
-            },
-            label = "plans-filter",
-        ) { selectedFilter ->
+        run {
+            val selectedFilter = filter
             val visiblePlans = plans.filter { plan ->
                 when (selectedFilter) {
                     PlansFilter.Active -> !plan.isCompleted
-                    PlansFilter.Today -> !plan.isCompleted && plan.dueDate == today
+                    PlansFilter.Today -> !plan.isCompleted && plan.occursOn(today)
                     PlansFilter.Completed -> plan.isCompleted
                 }
             }
@@ -124,29 +153,22 @@ internal fun StudyPlansScreen(
                 }
                 item(key = "summary") { PlansSummary(active, todayCount, overdue) }
                 item(key = "filters") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PlansFilter.entries.forEach { option ->
-                            FilterChip(
-                                selected = selectedFilter == option,
-                                onClick = { filter = option },
-                                label = { Text(option.title) },
-                            )
-                        }
-                    }
+                    PlansFilterButtons(selected = selectedFilter, onSelected = { filter = it })
                 }
                 if (visiblePlans.isEmpty()) {
                     item(key = "empty-${selectedFilter.name}") {
-                        EmptyPlans(selectedFilter)
+                        EmptyPlans(selectedFilter, Modifier.animateItem())
                     }
                 } else {
                     items(visiblePlans, key = { it.id }) { plan ->
                         StudyPlanCard(
                             plan = plan,
                             today = today,
+                            displayOptions = displayOptions,
                             modifier = Modifier.animateItem(
-                                fadeInSpec = tween(260),
-                                placementSpec = tween(260),
-                                fadeOutSpec = tween(180),
+                                fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
                             ),
                             onToggle = { onCompletedChanged(plan.id, !plan.isCompleted) },
                             onEdit = { editingPlan = plan },
@@ -155,12 +177,21 @@ internal fun StudyPlansScreen(
                 }
             }
         }
-        FloatingActionButton(
+        MediumFloatingActionButton(
             onClick = { creatingPlan = true },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .semantics { contentDescription = "Добавить план" },
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ) { Text("+", style = MaterialTheme.typography.headlineMedium) }
+        ) {
+            Icon(
+                Icons.Rounded.Add,
+                contentDescription = null,
+                modifier = Modifier.size(FloatingActionButtonDefaults.MediumIconSize),
+            )
+        }
     }
 
     if (creatingPlan || editingPlan != null) {
@@ -185,6 +216,39 @@ internal fun StudyPlansScreen(
     }
 }
 
+/** Single-choice filter as an Expressive connected button group. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PlansFilterButtons(selected: PlansFilter, onSelected: (PlansFilter) -> Unit) {
+    val options = PlansFilter.entries
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        options.forEachIndexed { index, option ->
+            val checked = selected == option
+            ToggleButton(
+                checked = checked,
+                onCheckedChange = { onSelected(option) },
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { role = Role.RadioButton },
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
+            ) {
+                if (checked) {
+                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ToggleButtonDefaults.IconSpacing))
+                }
+                Text(option.title, maxLines = 1)
+            }
+        }
+    }
+}
+
 @Composable
 private fun PlansSummary(active: Int, today: Int, overdue: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -205,18 +269,25 @@ private fun SummaryCell(value: String, label: String, accent: Color, modifier: M
 }
 
 @Composable
-private fun EmptyPlans(filter: PlansFilter) {
+private fun EmptyPlans(filter: PlansFilter, modifier: Modifier = Modifier) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                if (filter == PlansFilter.Completed) Icons.Rounded.CheckCircle else Icons.Rounded.DateRange,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp).padding(bottom = 4.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(8.dp))
             Text(if (filter == PlansFilter.Completed) "Пока ничего не завершено" else "Здесь пока свободно",
                 style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
-                if (filter == PlansFilter.Today) "На сегодня планов нет" else "Нажмите +, чтобы добавить первый пункт",
+                if (filter == PlansFilter.Today) "На сегодня планов нет" else "Нажмите кнопку «Добавить», чтобы создать первый план",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -228,6 +299,7 @@ private fun EmptyPlans(filter: PlansFilter) {
 private fun StudyPlanCard(
     plan: StudyPlan,
     today: LocalDate,
+    displayOptions: AppDisplayOptions,
     modifier: Modifier = Modifier,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
@@ -245,34 +317,37 @@ private fun StudyPlanCard(
     val cardAlpha by animateFloatAsState(if (plan.isCompleted) 0.66f else 1f, tween(220), label = "plan-alpha")
     val checkAlpha by animateFloatAsState(if (plan.isCompleted) 1f else 0f, tween(180), label = "plan-check")
     Surface(
+        onClick = { expanded = !expanded },
         modifier = modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded }
             .alpha(cardAlpha)
             .semantics {
                 contentDescription = if (expanded) "Свернуть план: ${plan.title}" else "Развернуть план: ${plan.title}"
             },
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(displayOptions.tileCornerRadiusDp.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(
+            alpha = displayOptions.tileOpacityPercent / 100f,
+        ),
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
             Surface(
+                onClick = onToggle,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
                     .size(30.dp)
                     .semantics {
                         contentDescription = if (plan.isCompleted) "Вернуть в активные" else "Отметить выполненным"
-                    }
-                    .clickable(onClick = onToggle),
+                    },
                 shape = CircleShape,
                 color = if (plan.isCompleted) accent else Color.Transparent,
                 border = androidx.compose.foundation.BorderStroke(2.dp, accent),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        "✓",
-                        modifier = Modifier.alpha(checkAlpha),
-                        color = MaterialTheme.colorScheme.surface,
-                        fontWeight = FontWeight.Bold,
+                    Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp).alpha(checkAlpha),
+                        tint = MaterialTheme.colorScheme.surface,
                     )
                 }
             }
@@ -300,8 +375,10 @@ private fun StudyPlanCard(
                 )
                 AnimatedVisibility(
                     visible = expanded,
-                    enter = expandVertically(tween(220)) + fadeIn(tween(180)),
-                    exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                        fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
                 ) {
                     Column(Modifier.padding(top = 8.dp)) {
                         Text(
@@ -349,8 +426,24 @@ internal fun StudyPlanEditor(
     var note by remember(plan) { mutableStateOf(plan?.note.orEmpty()) }
     var dueDate by remember(plan) { mutableStateOf(plan?.dueDate) }
     var dueTime by remember(plan) { mutableStateOf(plan?.dueTime) }
+    var endDate by remember(plan) { mutableStateOf(plan?.endDate) }
+    var endTime by remember(plan) { mutableStateOf(plan?.endTime) }
+    var isAllDay by remember(plan) { mutableStateOf(plan?.isAllDay ?: false) }
+    var recurrence by remember(plan) { mutableStateOf(plan?.recurrence ?: StudyPlanRecurrence.None) }
+    var reminderMinutes by remember(plan) { mutableStateOf(plan?.reminderMinutesBefore) }
+    var color by remember(plan) { mutableStateOf(plan?.color ?: StudyPlanColors.default) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+    val isEvent = type == StudyPlanType.Event
+    val effectiveEndDate = endDate ?: dueDate
+    val validRange = dueDate == null || effectiveEndDate == null || when {
+        effectiveEndDate < dueDate!! -> false
+        effectiveEndDate > dueDate!! || isAllDay -> true
+        dueTime == null || endTime == null -> true
+        else -> endTime!! >= dueTime!!
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -393,9 +486,73 @@ internal fun StudyPlanEditor(
                     maxLines = 4,
                 )
                 OutlinedButton(onClick = { showDatePicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(dueDate?.let { "Срок: ${planDateLabel(it)}" } ?: "Добавить срок")
+                    Text(dueDate?.let { "${if (isEvent) "Начало" else "Срок"}: ${planDateLabel(it)}" } ?: "Добавить дату")
                 }
-                if (dueDate != null) {
+                if (dueDate != null && isEvent) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = isAllDay,
+                            onClick = {
+                                isAllDay = !isAllDay
+                                if (isAllDay) { dueTime = null; endTime = null }
+                            },
+                            label = { Text("Весь день") },
+                        )
+                        StudyPlanRecurrence.entries.forEach { option ->
+                            FilterChip(
+                                selected = recurrence == option,
+                                onClick = { recurrence = option },
+                                label = { Text(option.title) },
+                            )
+                        }
+                    }
+                    if (!isAllDay) {
+                        OutlinedButton(onClick = { showTimePicker = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(dueTime?.let { "Начало: ${it.format(planTimeFormatter)}" } ?: "Добавить время начала")
+                        }
+                    }
+                    OutlinedButton(onClick = { showEndDatePicker = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(endDate?.let { "Окончание: ${planDateLabel(it)}" } ?: "Добавить дату окончания")
+                    }
+                    if (!isAllDay) {
+                        OutlinedButton(onClick = { showEndTimePicker = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(endTime?.let { "Время окончания: ${it.format(planTimeFormatter)}" } ?: "Добавить время окончания")
+                        }
+                    }
+                    Text("Локальное уведомление", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            null to "Нет", 0 to "В момент", 10 to "За 10 мин.",
+                            30 to "За 30 мин.", 60 to "За час", 1440 to "За день",
+                        ).forEach { (minutes, label) ->
+                            FilterChip(
+                                selected = reminderMinutes == minutes,
+                                onClick = { reminderMinutes = minutes },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Text("Цвет", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StudyPlanColors.values.forEach { option ->
+                            Surface(
+                                modifier = Modifier.size(if (color == option) 34.dp else 30.dp)
+                                    .semantics { contentDescription = "Выбрать цвет события" },
+                                shape = CircleShape,
+                                color = Color(option),
+                                border = if (color == option) androidx.compose.foundation.BorderStroke(
+                                    3.dp, MaterialTheme.colorScheme.onSurface,
+                                ) else null,
+                                onClick = { color = option },
+                            ) {}
+                        }
+                    }
+                    if (!validRange) Text(
+                        "Окончание не может быть раньше начала",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else if (dueDate != null) {
                     OutlinedButton(onClick = { showTimePicker = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(dueTime?.let { "Время: ${it.format(planTimeFormatter)}" } ?: "Добавить время")
                     }
@@ -409,7 +566,7 @@ internal fun StudyPlanEditor(
         },
         confirmButton = {
             Button(
-                enabled = title.isNotBlank(),
+                enabled = title.isNotBlank() && (!isEvent || dueDate != null) && validRange,
                 onClick = {
                     onSave(
                         StudyPlan(
@@ -418,9 +575,17 @@ internal fun StudyPlanEditor(
                             title = title.trim(),
                             note = note.trim(),
                             dueDate = dueDate,
-                            dueTime = dueTime.takeIf { dueDate != null },
+                            dueTime = dueTime.takeIf { dueDate != null && !isAllDay },
+                            endDate = endDate.takeIf { isEvent },
+                            endTime = endTime.takeIf { isEvent && !isAllDay },
+                            isAllDay = isEvent && isAllDay,
+                            recurrence = recurrence.takeIf { isEvent } ?: StudyPlanRecurrence.None,
+                            reminderMinutesBefore = reminderMinutes.takeIf { isEvent },
+                            color = color,
+                            todoistId = plan?.todoistId,
                             isCompleted = plan?.isCompleted ?: false,
                             createdAtMillis = plan?.createdAtMillis ?: System.currentTimeMillis(),
+                            updatedAtMillis = System.currentTimeMillis(),
                         ),
                     )
                 },
@@ -465,6 +630,45 @@ internal fun StudyPlanEditor(
                 }) { Text("Готово") }
             },
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Отмена") } },
+        )
+    }
+
+    if (showEndDatePicker) {
+        val pickerState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = (endDate ?: dueDate)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showEndDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    endDate = pickerState.selectedDateMillis?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showEndDatePicker = false
+                }) { Text("Готово") }
+            },
+            dismissButton = { TextButton(onClick = { showEndDatePicker = false }) { Text("Отмена") } },
+        ) { DatePicker(pickerState) }
+    }
+
+    if (showEndTimePicker) {
+        val initialTime = endTime ?: dueTime?.plusHours(1) ?: LocalTime.of(10, 0)
+        val timePickerState = rememberTimePickerState(
+            initialHour = initialTime.hour,
+            initialMinute = initialTime.minute,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showEndTimePicker = false },
+            title = { Text("Время окончания") },
+            text = { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TimePicker(timePickerState) } },
+            confirmButton = {
+                TextButton(onClick = {
+                    endTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    showEndTimePicker = false
+                }) { Text("Готово") }
+            },
+            dismissButton = { TextButton(onClick = { showEndTimePicker = false }) { Text("Отмена") } },
         )
     }
 }

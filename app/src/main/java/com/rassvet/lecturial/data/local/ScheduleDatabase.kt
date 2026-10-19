@@ -59,7 +59,7 @@ interface ScheduleDao {
 
 @Database(
     entities = [ScheduleEventEntity::class, WeekCacheEntity::class, StudyPlanEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class LecturialDatabase : RoomDatabase() {
@@ -92,10 +92,24 @@ abstract class LecturialDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `endDate` TEXT")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `endTime` TEXT")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `isAllDay` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `recurrence` TEXT NOT NULL DEFAULT 'none'")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `reminderMinutesBefore` INTEGER")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `color` INTEGER NOT NULL DEFAULT -7689217")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `todoistId` TEXT")
+                db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `updatedAtMillis` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE `study_plans` SET `updatedAtMillis` = `createdAtMillis` WHERE `updatedAtMillis` = 0")
+            }
+        }
+
         fun create(context: Context): LecturialDatabase = Room.databaseBuilder(
             context,
             LecturialDatabase::class.java,
             "lecturial.db",
-        ).addMigrations(migration1To2, migration2To3).build()
+        ).addMigrations(migration1To2, migration2To3, MIGRATION_3_4).build()
     }
 }
