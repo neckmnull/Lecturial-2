@@ -58,6 +58,29 @@ class WallpaperPatternsTest {
     }
 
     @Test
+    fun `the labyrinth fills the whole tile at every density`() {
+        // Production sizes: a region the growth never reached stays an empty black patch.
+        for ((density, seed) in listOf(0.5f to 11, 1f to 2026, 1.5f to 77)) {
+            val field = WallpaperPatterns.maze(density = density, seed = seed)
+            val size = 240
+            val mask = WallpaperPatterns.render(field, size, lineWidthPx = 2f)
+            dump("Maze_full_${(density * 100).toInt()}", mask, size)
+            val blocks = 6
+            val block = size / blocks
+            for (by in 0 until blocks) for (bx in 0 until blocks) {
+                var lines = 0
+                for (y in by * block until (by + 1) * block) for (x in bx * block until (bx + 1) * block) {
+                    if ((mask[y * size + x].toInt() and 0xFF) > 128) lines++
+                }
+                assertTrue(
+                    "density $density block $bx,$by has ${lines.toFloat() / (block * block)} lines",
+                    lines > block * block * 0.03f,
+                )
+            }
+        }
+    }
+
+    @Test
     fun `the same seed gives the same pattern`() {
         val first = WallpaperPatterns.render(WallpaperPatterns.field(LinePattern.Fingerprint, 1f, seed = 11), 64, 2f)
         val second = WallpaperPatterns.render(WallpaperPatterns.field(LinePattern.Fingerprint, 1f, seed = 11), 64, 2f)
@@ -80,11 +103,11 @@ class WallpaperPatternsTest {
     }
 
     /** Set LECTURIAL_PATTERN_DUMP to a folder to look at the generated tiles. */
-    private fun dump(name: String, mask: ByteArray) {
+    private fun dump(name: String, mask: ByteArray, size: Int = tile) {
         val dir = System.getenv("LECTURIAL_PATTERN_DUMP") ?: return
-        val image = BufferedImage(tile, tile, BufferedImage.TYPE_INT_RGB)
-        for (y in 0 until tile) for (x in 0 until tile) {
-            val shade = 255 - (mask[y * tile + x].toInt() and 0xFF)
+        val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+        for (y in 0 until size) for (x in 0 until size) {
+            val shade = 255 - (mask[y * size + x].toInt() and 0xFF)
             image.setRGB(x, y, (shade shl 16) or (shade shl 8) or shade)
         }
         ImageIO.write(image, "png", File(dir, "$name.png"))

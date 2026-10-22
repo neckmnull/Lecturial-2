@@ -7,7 +7,9 @@
     android:focusable="false"
     android:orientation="vertical">
 
-    <FrameLayout
+    <!-- The tile image is pinned to the row's top and bottom: in a list a plain
+         match_parent image is measured by its own bitmap and could make the row taller. -->
+    <RelativeLayout
         android:id="@+id/widget_item_tile"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
@@ -15,12 +17,15 @@
         <ImageView
             android:id="@+id/widget_item_background"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_alignTop="@+id/widget_item_row"
+            android:layout_alignBottom="@+id/widget_item_row"
             android:contentDescription="@null"
             android:scaleType="fitXY"
             android:src="@drawable/widget_tile_background" />
 
         <LinearLayout
+            android:id="@+id/widget_item_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -77,5 +82,5 @@
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
-    </FrameLayout>
+    </RelativeLayout>
 </LinearLayout>

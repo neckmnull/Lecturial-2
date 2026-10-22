@@ -118,9 +118,10 @@ internal fun drawDurationMillis(speedPercent: Int): Int {
 
 /** Line mask and growth order of one tile, ready for the GPU. */
 private class PatternTile(lineMask: Bitmap, orderMask: Bitmap, val sizePx: Int) {
-    // Mirrored tiling joins seamlessly and hides the repetition better than a plain repeat.
-    val lines: Shader = BitmapShader(lineMask, Shader.TileMode.MIRROR, Shader.TileMode.MIRROR)
-    val order: Shader = BitmapShader(orderMask, Shader.TileMode.MIRROR, Shader.TileMode.MIRROR)
+    // Every pattern wraps around its tile, so a plain repeat joins without a seam; mirroring
+    // folded the lines back at each edge into a visible fold.
+    val lines: Shader = BitmapShader(lineMask, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    val order: Shader = BitmapShader(orderMask, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
 }
 
 private fun growShader(tile: PatternTile): Shader? =

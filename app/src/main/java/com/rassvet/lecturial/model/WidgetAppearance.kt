@@ -1,5 +1,6 @@
 package com.rassvet.lecturial.model
 
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 data class WidgetStripeColors(
@@ -27,6 +28,37 @@ data class WidgetDisplayOptions(
     /** How much the widget background covers the home screen wallpaper, 0–100 %. */
     val backgroundOpacityPercent: Int = 100,
 )
+
+/**
+ * The widget's size in dp as it is shown now. Launchers report the narrowest width and
+ * tallest height for portrait and the opposite for landscape; mixing them (the widest width
+ * with the tallest height) gave the wallpaper the wrong shape, so it came out stretched.
+ * Android 12+ reports the exact sizes, one per orientation.
+ */
+fun widgetSizeDp(
+    portrait: Boolean,
+    exactSizes: List<Pair<Float, Float>>,
+    minWidth: Int,
+    maxWidth: Int,
+    minHeight: Int,
+    maxHeight: Int,
+): Pair<Int, Int> {
+    val exact = exactSizes.filter { (width, height) -> width > 0f && height > 0f }
+    if (exact.isNotEmpty()) {
+        val (width, height) = if (portrait) {
+            exact.maxBy { (width, height) -> height / width }
+        } else {
+            exact.maxBy { (width, height) -> width / height }
+        }
+        return width.roundToInt() to height.roundToInt()
+    }
+    val width = (if (portrait) minWidth else maxWidth).takeIf { it > 0 } ?: max(minWidth, maxWidth)
+    val height = (if (portrait) maxHeight else minHeight).takeIf { it > 0 } ?: max(minHeight, maxHeight)
+    return (width.takeIf { it > 0 } ?: DEFAULT_WIDGET_WIDTH_DP) to (height.takeIf { it > 0 } ?: DEFAULT_WIDGET_HEIGHT_DP)
+}
+
+private const val DEFAULT_WIDGET_WIDTH_DP = 180
+private const val DEFAULT_WIDGET_HEIGHT_DP = 110
 
 /** What the widget rows actually use, resolved from the widget's own or the app's settings. */
 data class WidgetLook(

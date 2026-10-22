@@ -2,6 +2,7 @@ package com.rassvet.lecturial.model
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
@@ -129,10 +130,12 @@ object WallpaperPatterns {
         var nextU = FloatArray(size)
         var nextV = FloatArray(size)
         val random = Random(seed)
-        // A few seeds, so the labyrinth visibly grows out of them like coral.
-        repeat(MAZE_SEEDS) {
-            val cx = random.nextInt(n)
-            val cy = random.nextInt(n)
+        // Seeds the labyrinth grows out of like coral: one jittered seed per cell of a coarse
+        // grid, so no part of a large tile is far from every seed and left empty.
+        val cells = ceil(n / MAZE_SEED_SPACING).toInt().coerceAtLeast(2)
+        for (gy in 0 until cells) for (gx in 0 until cells) {
+            val cx = ((gx + 0.2f + random.nextFloat() * 0.6f) * n / cells).toInt()
+            val cy = ((gy + 0.2f + random.nextFloat() * 0.6f) * n / cells).toInt()
             for (dy in -2..2) for (dx in -2..2) {
                 val i = ((cy + dy + n) % n) * n + (cx + dx + n) % n
                 u[i] = 0.5f
@@ -142,7 +145,15 @@ object WallpaperPatterns {
         val arrival = FloatArray(size) { -1f }
         val left = IntArray(n) { (it - 1 + n) % n }
         val right = IntArray(n) { (it + 1) % n }
-        repeat(steps) { step ->
+        // Runs at least [steps], and on until the growth has reached every part of the tile
+        // and settled there; a region left untouched would stay an empty patch.
+        var step = 0
+        var settleUntil = -1
+        while (step < steps * MAZE_MAX_STEPS_FACTOR) {
+            if (step >= steps && step % MAZE_COVERAGE_CHECK == 0) {
+                if (settleUntil < 0 && v.none { it < MAZE_UNTOUCHED }) settleUntil = step + MAZE_SETTLE_STEPS
+                if (settleUntil in 0..step) break
+            }
             for (y in 0 until n) {
                 val row = y * n
                 val up = left[y] * n
@@ -161,6 +172,7 @@ object WallpaperPatterns {
             }
             val swapU = u; u = nextU; nextU = swapU
             val swapV = v; v = nextV; nextV = swapV
+            step++
         }
         var low = Float.MAX_VALUE
         var high = -Float.MAX_VALUE
@@ -188,25 +200,61 @@ object WallpaperPatterns {
     }
 
     /**
-     * Zero contour of a random monochromatic wave: closed, gently bending lines like a
-     * fingerprint. Wave vectors are integers, so the tile is seamless.
+     * Sets of concentric circles, like the whorls of a fingerprint, packed across the tile:
+     * the biggest sets first, smaller ones into the gaps. Every line is a true circle.
+     *
+     * Inside a set the field is -cos(pi * d / step), whose zero crossings are circles one
+     * step apart; a set ends where the field reaches its top, 1, which is also its value
+     * outside every set. So the field stays smooth across set edges and between sets, and
+     * sets that touch continue each other's spacing. Distances wrap around the tile.
      */
     private fun fingerprint(density: Float, seed: Int): PatternField {
-        val k = (FINGERPRINT_WAVES * density).coerceIn(6f, 30f)
-        val random = Random(seed)
-        val ring = ringVectors(k)
-        val waves = List(min(ring.size, 28)) { ring[random.nextInt(ring.size)] to random.nextFloat() * 2f * PI.toFloat() }
-        // Blooms out of a few centres.
-        val centres = List(4) { random.nextFloat() to random.nextFloat() }
+        val step = 1f / (FINGERPRINT_RINGS * density).coerceIn(6f, 30f)
+        val whorls = packWhorls(Random(seed), step)
+        fun whorlAt(x: Float, y: Float): Pair<Whorl, Float>? {
+            for (whorl in whorls) {
+                val d = hypot(wrapped(x - whorl.x), wrapped(y - whorl.y))
+                if (d < whorl.radius) return whorl to d
+            }
+            return null
+        }
+        // Sixteen cells per step keep even the smallest circles round.
         return sampled(
-            gridFor(k),
+            (16f / step).roundToInt().coerceIn(128, 320),
             level = 0f,
             spacing = null,
-            arrival = { x, y -> centres.minOf { (cx, cy) -> torusDistance(x, y, cx, cy) } / MAX_TORUS_DISTANCE },
+            // Each set blooms from its centre outwards, the sets starting a little apart.
+            arrival = { x, y ->
+                whorlAt(x, y)?.let { (whorl, d) -> whorl.delay + (1f - FINGERPRINT_MAX_DELAY) * d / whorl.radius } ?: 1f
+            },
         ) { x, y ->
-            waves.sumOf { (vector, phase) -> cos(2.0 * PI * (vector.first * x + vector.second * y) + phase) }.toFloat()
+            whorlAt(x, y)?.let { (_, d) -> -cos(PI * d / step).toFloat() } ?: 1f
         }
     }
+
+    private class Whorl(val x: Float, val y: Float, val radius: Float, val delay: Float)
+
+    /**
+     * Places sets of 2j+1 circles (radius (2j+1) steps) from the largest down: each size
+     * gets a number of random tries and keeps the spots where it doesn't overlap a placed set.
+     */
+    private fun packWhorls(random: Random, step: Float): List<Whorl> {
+        val whorls = mutableListOf<Whorl>()
+        val largest = ((FINGERPRINT_MAX_RADIUS / step - 1f) / 2f).toInt().coerceAtLeast(0)
+        for (j in largest downTo 0) {
+            val radius = step * (2 * j + 1)
+            repeat(FINGERPRINT_TRIES * (largest - j + 1)) {
+                val x = random.nextFloat()
+                val y = random.nextFloat()
+                val fits = whorls.all { hypot(wrapped(x - it.x), wrapped(y - it.y)) >= it.radius + radius }
+                if (fits) whorls += Whorl(x, y, radius, random.nextFloat() * FINGERPRINT_MAX_DELAY)
+            }
+        }
+        return whorls
+    }
+
+    /** [value] moved by whole tiles into -0.5..0.5. */
+    private fun wrapped(value: Float): Float = value - floor(value + 0.5f)
 
     /** Several contour levels of smooth hills: a topographic map. */
     private fun topography(density: Float, seed: Int): PatternField {
@@ -258,17 +306,6 @@ object WallpaperPatterns {
     private fun evaluate(waves: List<Wave>, x: Float, y: Float): Float =
         waves.sumOf { it.amplitude * cos(2.0 * PI * (it.fx * x + it.fy * y) + it.phase) }.toFloat()
 
-    /** Integer wave vectors of length about [k], one per direction pair. */
-    private fun ringVectors(k: Float): List<Pair<Int, Int>> {
-        val radius = k.roundToInt()
-        return buildList {
-            for (fx in -radius - 1..radius + 1) for (fy in 0..radius + 1) {
-                if (fy == 0 && fx <= 0) continue
-                if (abs(hypot(fx.toFloat(), fy.toFloat()) - k) <= 0.6f) add(fx to fy)
-            }
-        }.ifEmpty { listOf(radius to 0) }
-    }
-
     /** Enough cells to resolve [features] lines across the tile. */
     private fun gridFor(features: Float): Int = (features * 8f).roundToInt().coerceIn(64, 256)
 
@@ -290,25 +327,32 @@ object WallpaperPatterns {
         return PatternField(n, values, level, spacing, order)
     }
 
-    /** Distance on the unit torus, so blooms near an edge continue across it. */
-    private fun torusDistance(x: Float, y: Float, cx: Float, cy: Float): Float {
-        val dx = abs(x - cx).let { min(it, 1f - it) }
-        val dy = abs(y - cy).let { min(it, 1f - it) }
-        return hypot(dx, dy)
-    }
-
     private const val DU = 0.2097f
     private const val DV = 0.105f
     private const val FEED = 0.0545f
     private const val KILL = 0.062f
     private const val MAZE_BASE_CELLS = 150f
     internal const val MAZE_STEPS = 5000
-    private const val MAZE_SEEDS = 5
+    /** Distance between neighbouring seeds, in cells; a stripe is about ten cells wide. */
+    private const val MAZE_SEED_SPACING = 70f
+    /** The simulation runs at most this many times the requested steps. */
+    private const val MAZE_MAX_STEPS_FACTOR = 4
+    private const val MAZE_COVERAGE_CHECK = 250
+    /** Steps after full coverage for the newest stripes to take their final shape. */
+    private const val MAZE_SETTLE_STEPS = 1500
+    /** Inhibitor level of a cell the growth hasn't reached at all. */
+    private const val MAZE_UNTOUCHED = 1e-4f
     private const val MAZE_SPREAD_PASSES = 8
     /** Inhibitor level that marks a cell as part of a stripe. */
     private const val MAZE_ON = 0.12f
-    private const val MAX_TORUS_DISTANCE = 0.7072f
-    private const val FINGERPRINT_WAVES = 13f
+    /** Circle steps per tile width at 100 % density. */
+    private const val FINGERPRINT_RINGS = 18f
+    /** The largest set of circles, in tiles; under half a tile so a set can't meet itself. */
+    private const val FINGERPRINT_MAX_RADIUS = 0.29f
+    /** Random spots tried for the largest sets; smaller sizes get proportionally more. */
+    private const val FINGERPRINT_TRIES = 400
+    /** The latest a set starts drawing, as a share of the whole drawing time. */
+    private const val FINGERPRINT_MAX_DELAY = 0.35f
     private const val TOPOGRAPHY_LEVELS = 9f
     private const val WAVE_LINES = 14f
 }
