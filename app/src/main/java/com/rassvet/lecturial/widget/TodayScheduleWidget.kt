@@ -20,7 +20,11 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.SizeF
+import android.content.res.Configuration
+import com.rassvet.lecturial.model.widgetSizeDp
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StyleSpan
@@ -188,6 +192,15 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 .filterNot(StudyPlanEntity::isCompleted)
             val today = LocalDate.now()
             val todayPlanCount = activePlans.count { it.widgetOccursOn(today) }
+            // The row of the current (or next) lesson, in the factory's time order, so the
+            // list opens on it instead of on lessons that are already over.
+            val nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
+            val currentRow = (
+                lessons.map { "$today-${it.startTime}" to (parseEventMinutes(it.endTime) ?: Int.MAX_VALUE) } +
+                    activePlans.filter { it.widgetOccursOn(today) }.map { "$today-${it.dueTime ?: "23:59"}" to Int.MAX_VALUE }
+                )
+                .sortedBy { it.first }
+                .indexOfFirst { (_, end) -> end > nowMinutes }
             val nearestPlan = activePlans.minWithOrNull(
                 compareBy<StudyPlanEntity> { it.widgetOccurrenceDate(today) ?: LocalDate.MAX }
                     .thenBy { it.dueTime ?: "23:59" }
@@ -208,7 +221,9 @@ class TodayScheduleWidget : AppWidgetProvider() {
                         nearestPlan = nearestPlanLabel,
                         nearestPlanId = nearestPlan?.id,
                         appearance = appearance,
-                    )
+                    ).apply {
+                        if (currentRow > 0) setScrollPosition(R.id.widget_list, currentRow)
+                    }
                 }
                 runCatching {
                     val views = commonViews().apply {
@@ -221,8 +236,9 @@ class TodayScheduleWidget : AppWidgetProvider() {
                             ),
                         )
                         // The rendered wallpaper replaces the XML background, which would
-                        // otherwise show through a translucent widget.
-                        setInt(R.id.widget_root, "setBackgroundColor", Color.TRANSPARENT)
+                        // otherwise show through a translucent widget; the clear shape keeps
+                        // the rounded outline the widget is clipped to.
+                        setInt(R.id.widget_root, "setBackgroundResource", R.drawable.widget_outline)
                     }
                     manager.updateAppWidget(id, views)
                 }.onFailure { error ->
@@ -491,18 +507,27 @@ private fun widgetBitmapSize(
     appWidgetId: Int,
 ): WidgetBitmapSize {
     val options = manager.getAppWidgetOptions(appWidgetId)
-    val widthDp = max(
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180),
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 180),
-    ).coerceAtLeast(1)
-    val heightDp = max(
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110),
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 110),
-    ).coerceAtLeast(1)
+    val exactSizes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        @Suppress("DEPRECATION")
+        options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+            ?.map { it.width to it.height }
+            .orEmpty()
+    } else {
+        emptyList()
+    }
+    val (widthDp, heightDp) = widgetSizeDp(
+        portrait = context.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE,
+        exactSizes = exactSizes,
+        minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0),
+        maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0),
+        minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0),
+        maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
+    )
     val density = context.resources.displayMetrics.density
     val requestedWidth = max(1, (widthDp * density).roundToInt())
     val requestedHeight = max(1, (heightDp * density).roundToInt())
-    val pixelBudget = 120_000f
+    // Sharp enough for thin lines; well under the launcher's limit for widget bitmaps.
+    val pixelBudget = WALLPAPER_PIXEL_BUDGET
     val downscale = min(1f, sqrt(pixelBudget / (requestedWidth.toFloat() * requestedHeight)))
     return WidgetBitmapSize(
         width = max(1, (requestedWidth * downscale).roundToInt()),
@@ -613,7 +638,8 @@ private fun drawLineWallpaper(canvas: Canvas, context: Context, appearance: Widg
     val height = size.height.toFloat()
     val lines = canvas.saveLayer(0f, 0f, width, height, null)
     canvas.drawRect(0f, 0f, width, height, Paint().apply {
-        shader = BitmapShader(mask, Shader.TileMode.MIRROR, Shader.TileMode.MIRROR)
+        // The pattern wraps around its tile, so a plain repeat has no seam.
+        shader = BitmapShader(mask, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
     })
     canvas.drawRect(0f, 0f, width, height, Paint(Paint.ANTI_ALIAS_FLAG).apply {
         shader = linearGradient(size, options.backgroundGradientAngleDegrees, appearance.gradientColors())
@@ -1010,6 +1036,9 @@ private fun StudyPlanEntity.widgetOccursOn(date: LocalDate): Boolean {
 }
 
 private fun Context.dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).roundToInt()
+
+/** About 600×1000 px: thin lines stay crisp; a bitmap this size is far below launcher limits. */
+private const val WALLPAPER_PIXEL_BUDGET = 600_000f
 
 /** Height of the header area that gets a veil over the wallpaper. */
 private const val HEADER_SCRIM_DP = 96f
