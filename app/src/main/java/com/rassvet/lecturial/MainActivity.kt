@@ -27,7 +27,9 @@ import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.ui.LecturialApp
 import com.rassvet.lecturial.ui.ScheduleViewModel
 import com.rassvet.lecturial.ui.theme.LecturialTheme
+import com.rassvet.lecturial.ui.OpenLessonRequest
 import java.io.File
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     private val splashStartedAt = SystemClock.elapsedRealtime()
@@ -35,6 +37,7 @@ class MainActivity : ComponentActivity() {
     private var installationErrorHandler: ((AppUpdateState.ReadyToInstall, String) -> Unit)? = null
     private var openPlanRequest by mutableStateOf<OpenPlanRequest?>(null)
     private var openUpdatesKey by mutableStateOf(0L)
+    private var openLessonRequest by mutableStateOf<OpenLessonRequest?>(null)
     private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -95,6 +98,10 @@ class MainActivity : ComponentActivity() {
                     openUpdatesKey = openUpdatesKey,
                     onOpenPlanConsumed = { key ->
                         if (openPlanRequest?.key == key) openPlanRequest = null
+                    },
+                    openLesson = openLessonRequest,
+                    onOpenLessonConsumed = { key ->
+                        if (openLessonRequest?.key == key) openLessonRequest = null
                     },
                     onGroupSelected = viewModel::selectGroup,
                     onTeacherSelected = viewModel::selectTeacher,
@@ -163,6 +170,16 @@ class MainActivity : ComponentActivity() {
             openPlanSequence += 1
             openUpdatesKey = openPlanSequence
             intent.action = null
+            return
+        }
+        // A lesson tapped in the widget: open the schedule on it.
+        val lessonId = intent?.getStringExtra(EXTRA_LESSON_ID)?.takeIf(String::isNotBlank)
+        val lessonDate = intent?.getStringExtra(EXTRA_LESSON_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (lessonId != null && lessonDate != null) {
+            openPlanSequence += 1
+            openLessonRequest = OpenLessonRequest(openPlanSequence, lessonDate, lessonId)
+            intent.removeExtra(EXTRA_LESSON_ID)
+            intent.removeExtra(EXTRA_LESSON_DATE)
             return
         }
         val planId = intent?.getStringExtra(EXTRA_PLAN_ID)?.takeIf(String::isNotBlank) ?: return
@@ -240,6 +257,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_PLAN_ID = "com.rassvet.lecturial.extra.PLAN_ID"
+        const val EXTRA_LESSON_DATE = "com.rassvet.lecturial.extra.LESSON_DATE"
+        const val EXTRA_LESSON_ID = "com.rassvet.lecturial.extra.LESSON_ID"
         private const val ACTION_OPEN_UPDATES = "com.rassvet.lecturial.action.OPEN_UPDATES"
 
         /** Opens Settings → About, where the update can be downloaded. */

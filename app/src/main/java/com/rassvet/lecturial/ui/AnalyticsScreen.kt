@@ -59,6 +59,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.rotate
+import com.rassvet.lecturial.model.RoomCategories
+import com.rassvet.lecturial.model.RoomKind
+import com.rassvet.lecturial.model.intradayRoomLoad
+import com.rassvet.lecturial.model.naturalRoomKey
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
@@ -100,6 +107,7 @@ import kotlin.math.roundToInt
 private val ru = Locale.forLanguageTag("ru")
 private val dayFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", ru)
 private val shortDateFormatter = DateTimeFormatter.ofPattern("d MMM", ru)
+private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 @Composable
 internal fun AnalyticsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
@@ -319,7 +327,7 @@ private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
             "Преподаватели находятся автоматически: берутся все, кто ведёт пары у групп курса, и загружается их полное расписание.",
             "Пары и часы — все занятия преподавателя за период; одна пара — два академических часа. «В курсе» — сколько из них у ваших групп.",
             "«≈ в неделю» — среднее по неделям, в которых есть занятия. Нагрузка высокая — от 10 пар в неделю, средняя — от 4, низкая — меньше 4.",
-            "Нажмите на карточку, чтобы увидеть нагрузку по неделям, дням недели и типам занятий.",
+            "Нажмите на карточку, чтобы увидеть нагрузку по группам курса (и другим группам), дисциплинам, времени начала пар, неделям, дням недели и типам занятий.",
             "Расписание сохраняется в телефоне: повторный расчёт быстрее, прошедшие недели заново не загружаются.",
         ),
     )
@@ -391,7 +399,7 @@ private fun CourseResults(state: AnalyticsUiState, viewModel: AnalyticsViewModel
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Преподаватели", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     }
-    ConnectedChoice(LoadSort.entries, state.loadSort, { it.title }, viewModel::setLoadSort)
+    ConnectedChoice(LoadSort.entries, state.loadSort, { sortTitle(it, byName = "А–Я") }, viewModel::setLoadSort)
     val teachers = state.sorted(result.teachers)
     val maxPairs = teachers.maxOfOrNull { it.stats.pairs }?.coerceAtLeast(1) ?: 1
     teachers.forEachIndexed { index, row ->
@@ -524,6 +532,45 @@ private fun LoadDetailSheet(row: LoadRow, range: ClosedRange<LocalDate>, onDismi
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+            val breakdown = row.breakdown
+            val total = stats.pairs.coerceAtLeast(1)
+            if (row.isTeacher && (breakdown.byCourseGroup.isNotEmpty() || breakdown.outsideCourse > 0)) {
+                SectionTitle("По группам")
+                breakdown.byCourseGroup.forEach { (group, count) ->
+                    BarRow(group, count.toFloat() / total, "$count")
+                }
+                if (breakdown.outsideCourse > 0) {
+                    BarRow("Другие группы", breakdown.outsideCourse.toFloat() / total, "${breakdown.outsideCourse}")
+                }
+                Caption("Лекция для нескольких групп курса считается у каждой из них.")
+            }
+            if (breakdown.byDiscipline.isNotEmpty()) {
+                SectionTitle("По дисциплинам")
+                val maxDiscipline = breakdown.byDiscipline.maxOf { it.pairs }.coerceAtLeast(1)
+                breakdown.byDiscipline.forEach { discipline ->
+                    NamedBarRow(
+                        label = discipline.discipline,
+                        fraction = discipline.pairs.toFloat() / maxDiscipline,
+                        value = "${discipline.pairs}",
+                        caption = when {
+                            !row.isTeacher -> null
+                            discipline.coursePairs == discipline.pairs -> "все в группах курса"
+                            discipline.coursePairs == 0 -> "вне групп курса"
+                            else -> "${discipline.coursePairs} из ${discipline.pairs} в группах курса"
+                        },
+                    )
+                }
+            }
+            if (stats.pairs > 0) {
+                SectionTitle("По времени начала")
+                val maxSlot = breakdown.bySlot.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
+                breakdown.bySlot.forEach { (slot, count) ->
+                    BarRow("${slot.number} пара · ${slot.start.format(timeFormatter)}", count.toFloat() / maxSlot, "$count")
+                }
+                if (breakdown.offGrid > 0) {
+                    BarRow("Другое время", breakdown.offGrid.toFloat() / maxSlot, "${breakdown.offGrid}")
+                }
+            }
             if (row.weekly.size > 1) {
                 SectionTitle("По неделям")
                 val maxWeek = row.weekly.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
@@ -539,7 +586,7 @@ private fun LoadDetailSheet(row: LoadRow, range: ClosedRange<LocalDate>, onDismi
             if (stats.pairsByType.isNotEmpty()) {
                 SectionTitle("По типам занятий")
                 stats.pairsByType.forEach { (type, count) ->
-                    BarRow(type, count.toFloat() / stats.pairs.coerceAtLeast(1), "$count")
+                    NamedBarRow(type, count.toFloat() / stats.pairs.coerceAtLeast(1), "$count")
                 }
             }
         }
@@ -585,6 +632,7 @@ private fun RoomsTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
             "Приложение находит все аудитории на сайте расписания и загружает их занятия за период: неделя — около минуты, семестр — 10–20 минут. Данные сохраняются.",
             "Процент — доля пар (1–7 пары, пн–сб), в которые в аудитории идёт занятие.",
             "«Самые свободные» — среди аудиторий, где за период было хотя бы одно занятие; аудитории совсем без занятий посчитаны отдельно.",
+            "Названия приведены к одному виду: «Альфа 4.1», «К_9, ауд. 1.26». Под названием — только то, что указано на сайте расписания: пометка «комп», примечания и код аудитории. Одна аудитория, записанная на сайте дважды, считается один раз.",
             "«Загрузка в течение дня» — какая доля используемых аудиторий занята в каждую пару: видно самые загруженные часы.",
         ),
     )
@@ -596,32 +644,130 @@ private fun RoomsTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     ) { Text("Собрать статистику") }
 
     val result = state.roomsResult ?: return
-    key(result) { RoomsResults(result) }
+    key(result) { RoomsResults(result, state.roomSort, viewModel::setRoomSort) }
 }
 
 @Composable
-private fun RoomsResults(result: RoomsResult) {
+private fun RoomsResults(result: RoomsResult, sort: LoadSort, onSort: (LoadSort) -> Unit) {
+    // Meeting rooms, halls and polygons would skew the rankings, so only teaching rooms by default.
+    var teachingOnly by rememberSaveable { mutableStateOf(true) }
+    val shown = remember(result, teachingOnly) { result.rooms.filter { !teachingOnly || it.info.isTeaching } }
+    val used = remember(shown) { shown.filter { it.load.busySlots > 0 } }
+    val intraday = remember(used) { intradayRoomLoad(used.map { it.load }) }
     var order = 0
-    val used = result.loads.filter { it.busySlots > 0 }
-    SectionTitle("${rangeText(result.range)} · ${result.loads.size} аудиторий", Modifier.revealOnAppear(order++))
+    SectionTitle("${rangeText(result.range)} · ${shown.size} ${roomsWord(shown.size)}", Modifier.revealOnAppear(order++))
+    FilterChip(
+        selected = teachingOnly,
+        onClick = { teachingOnly = !teachingOnly },
+        label = { Text("Только учебные аудитории") },
+        leadingIcon = if (teachingOnly) {
+            { Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(FilterChipDefaults.IconSize)) }
+        } else {
+            null
+        },
+    )
+    Caption(
+        if (teachingOnly) {
+            "Аудитории корпусов и «К_» — без переговорных, залов и других помещений."
+        } else {
+            "Все помещения из расписания." + if (result.notRooms > 0) " Ссылки и «Дистанционно» не считаются: ${result.notRooms}." else ""
+        },
+    )
     SectionTitle("Самые загруженные", Modifier.revealOnAppear(order++))
-    used.take(TOP).forEach { BarRow(it.room, it.utilization.toFloat(), percent(it.utilization), Modifier.revealOnAppear(order++)) }
+    used.take(TOP).forEach { RoomBar(it, Modifier.revealOnAppear(order++)) }
     SectionTitle("Самые свободные", Modifier.revealOnAppear(order++))
-    used.takeLast(TOP).reversed().forEach {
-        BarRow(it.room, it.utilization.toFloat(), percent(it.utilization), Modifier.revealOnAppear(order++))
-    }
-    val empty = result.loads.size - used.size
+    used.takeLast(TOP).reversed().forEach { RoomBar(it, Modifier.revealOnAppear(order++)) }
+    val empty = shown.size - used.size
     if (empty > 0) {
         Text("Без занятий за период: $empty", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    SectionTitle("Все аудитории по корпусам", Modifier.revealOnAppear(order++))
+    ConnectedChoice(LoadSort.entries, sort, { sortTitle(it, byName = "По номеру") }, onSort)
+    // Buildings are ordered like the rooms inside them: by their share of busy pairs.
+    val categories = remember(shown, sort) {
+        val groups = shown.groupBy { it.info.category }
+        fun share(rooms: List<RoomStat>) = rooms.sumOf { it.load.busySlots }.toDouble() / rooms.sumOf { it.load.totalSlots }.coerceAtLeast(1)
+        val ordered = when (sort) {
+            LoadSort.Busiest -> groups.entries.sortedByDescending { share(it.value) }
+            LoadSort.Freest -> groups.entries.sortedBy { share(it.value) }
+            LoadSort.ByName -> groups.entries.sortedBy { RoomCategories.order.indexOf(it.key) }
+        }
+        ordered.map { (category, rooms) -> category to sortedRooms(rooms, sort) }
+    }
+    categories.forEach { (category, rooms) -> RoomCategorySection(category, rooms, Modifier.revealOnAppear(order++)) }
     SectionTitle("Загрузка в течение дня", Modifier.revealOnAppear(order++))
-    Text(
-        "Доля используемых аудиторий, занятых в каждую пару",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    result.intraday.forEach { (slot, share) ->
+    Caption("Доля используемых аудиторий, занятых в каждую пару")
+    intraday.forEach { (slot, share) ->
         BarRow("${slot.number} · ${slot.start}", share.toFloat(), percent(share), Modifier.revealOnAppear(order++))
+    }
+}
+
+/**
+ * A room's load under its tidy name. Below it only what the schedule site itself says about
+ * the room — its "(комп)" mark, its notes and its code — nothing guessed from the name.
+ */
+@Composable
+private fun RoomBar(stat: RoomStat, modifier: Modifier = Modifier) {
+    val info = stat.info
+    NamedBarRow(
+        label = info.name,
+        fraction = stat.load.utilization.toFloat(),
+        value = percent(stat.load.utilization),
+        caption = listOfNotNull(
+            "компьютерный класс".takeIf { info.kind == RoomKind.Computer },
+            info.note,
+            info.code?.let { "код $it" },
+        ).joinToString(" · ").ifEmpty { null },
+        modifier = modifier,
+    )
+}
+
+/** One building or group of rooms, folded until tapped. */
+@Composable
+private fun RoomCategorySection(title: String, rooms: List<RoomStat>, modifier: Modifier = Modifier) {
+    var expanded by rememberSaveable(title) { mutableStateOf(false) }
+    val arrow by animateFloatAsState(if (expanded) 180f else 0f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "room-category")
+    Surface(
+        onClick = { expanded = !expanded },
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Text("${rooms.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.rotate(arrow))
+            }
+            AnimatedVisibility(expanded) {
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rooms.forEach { RoomBar(it) }
+                }
+            }
+        }
+    }
+}
+
+private fun sortTitle(sort: LoadSort, byName: String): String = when (sort) {
+    LoadSort.Busiest -> "Загруженные"
+    LoadSort.Freest -> "Свободные"
+    LoadSort.ByName -> byName
+}
+
+private fun sortedRooms(rooms: List<RoomStat>, sort: LoadSort): List<RoomStat> = when (sort) {
+    LoadSort.Busiest -> rooms.sortedWith(compareByDescending<RoomStat> { it.load.utilization }.thenBy { naturalRoomKey(it.info.name) })
+    LoadSort.Freest -> rooms.sortedWith(compareBy<RoomStat> { it.load.utilization }.thenBy { naturalRoomKey(it.info.name) })
+    LoadSort.ByName -> rooms.sortedBy { naturalRoomKey(it.info.name) }
+}
+
+private fun roomsWord(count: Int): String {
+    val n100 = count % 100
+    val n10 = count % 10
+    return when {
+        n100 in 11..14 -> "аудиторий"
+        n10 == 1 -> "аудитория"
+        n10 in 2..4 -> "аудитории"
+        else -> "аудиторий"
     }
 }
 
@@ -762,6 +908,29 @@ private fun BarRow(label: String, fraction: Float, value: String, modifier: Modi
         )
         Text(value, Modifier.width(48.dp), style = MaterialTheme.typography.labelLarge)
     }
+}
+
+/** A bar with its name above it, for names too long for [BarRow]'s label column. */
+@Composable
+private fun NamedBarRow(label: String, fraction: Float, value: String, caption: String? = null, modifier: Modifier = Modifier) {
+    val grown = growingFraction(fraction.coerceIn(0f, 1f))
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LinearProgressIndicator(
+                progress = grown,
+                modifier = Modifier.weight(1f).height(10.dp),
+                drawStopIndicator = {},
+            )
+            Text(value, style = MaterialTheme.typography.labelLarge)
+        }
+        caption?.let { Caption(it) }
+    }
+}
+
+@Composable
+private fun Caption(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private fun percent(value: Double): String = "${(value * 100).roundToInt()} %"

@@ -13,10 +13,15 @@ import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.SlotAvailability
 import com.rassvet.lecturial.model.TeacherInfo
+import com.rassvet.lecturial.model.LoadBreakdown
 import com.rassvet.lecturial.model.LoadLevel
+import com.rassvet.lecturial.model.loadBreakdown
 import com.rassvet.lecturial.model.coursePairs
 import com.rassvet.lecturial.model.courseTeacherNames
-import com.rassvet.lecturial.model.intradayRoomLoad
+import com.rassvet.lecturial.model.RoomInfo
+import com.rassvet.lecturial.model.RoomKind
+import com.rassvet.lecturial.model.mergedRooms
+import com.rassvet.lecturial.model.normalizeRoom
 import com.rassvet.lecturial.model.loadLevel
 import com.rassvet.lecturial.model.studentGroups
 import com.rassvet.lecturial.model.surnameWithInitials
@@ -48,7 +53,8 @@ import kotlinx.coroutines.sync.withLock
 
 enum class AnalyticsTab(val title: String) { Load("Нагрузка"), FreeTime("Общее время"), Rooms("Аудитории") }
 
-enum class LoadSort(val title: String) { ByLoad("По нагрузке"), ByName("По алфавиту") }
+/** Order of teacher, group and room lists: the busiest first unless asked otherwise. */
+enum class LoadSort { Busiest, Freest, ByName }
 
 enum class FreeTimeRange(val title: String) { ThisWeek("Эта неделя"), NextWeek("Следующая"), TwoWeeks("2 недели") }
 
@@ -79,6 +85,8 @@ data class LoadRow(
     /** Pairs held for the course groups; null for group rows. */
     val coursePairs: Int?,
     val weekly: List<Pair<LocalDate, Int>>,
+    /** Pairs by course group, discipline and start time, for the detail sheet. */
+    val breakdown: LoadBreakdown,
 ) {
     val level: LoadLevel get() = loadLevel(pairsPerWeek)
     val isTeacher: Boolean get() = ScheduleTarget.isTeacher(participant.key)
@@ -93,10 +101,15 @@ data class CourseLoadResult(
     val unresolved: List<String>,
 )
 
+/** A room's load under its tidy name and kind. */
+data class RoomStat(val info: RoomInfo, val load: RoomLoad)
+
 data class RoomsResult(
     val range: ClosedRange<LocalDate>,
-    val loads: List<RoomLoad>,
-    val intraday: List<Pair<PairSlot, Double>>,
+    /** Busiest first. */
+    val rooms: List<RoomStat>,
+    /** Site entries that aren't rooms ("Дистанционно", conference links), left out. */
+    val notRooms: Int,
 )
 
 data class AnalyticsProgress(val text: String, val done: Int, val total: Int) {
@@ -125,7 +138,8 @@ data class AnalyticsUiState(
     val excludedCourse: Set<String> = emptySet(),
     val editingCourse: Boolean = false,
     val loadPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
-    val loadSort: LoadSort = LoadSort.ByLoad,
+    val loadSort: LoadSort = LoadSort.Busiest,
+    val roomSort: LoadSort = LoadSort.Busiest,
     val courseResult: CourseLoadResult? = null,
     val detail: LoadRow? = null,
     val roomPeriod: AnalyticsPeriod = AnalyticsPeriod.Week,
@@ -144,7 +158,8 @@ data class AnalyticsUiState(
         get() = extraTeachers.filterNot { it.key in excludedCourse }
 
     fun sorted(rows: List<LoadRow>): List<LoadRow> = when (loadSort) {
-        LoadSort.ByLoad -> rows.sortedWith(compareByDescending<LoadRow> { it.stats.pairs }.thenBy { it.shortName })
+        LoadSort.Busiest -> rows.sortedWith(compareByDescending<LoadRow> { it.stats.pairs }.thenBy { it.shortName })
+        LoadSort.Freest -> rows.sortedWith(compareBy<LoadRow> { it.stats.pairs }.thenBy { it.shortName })
         LoadSort.ByName -> rows.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.shortName })
     }
 
@@ -301,6 +316,8 @@ class AnalyticsViewModel(
 
     fun setLoadSort(sort: LoadSort) = _state.update { it.copy(loadSort = sort) }
 
+    fun setRoomSort(sort: LoadSort) = _state.update { it.copy(roomSort = sort) }
+
     fun openDetail(row: LoadRow?) = _state.update { it.copy(detail = row) }
 
     fun setFreeRange(range: FreeTimeRange) = _state.update { it.copy(freeRange = range, freeResult = null) }
@@ -438,6 +455,7 @@ class AnalyticsViewModel(
                     pairsPerWeek = stats.pairs.toDouble() / activeWeeks,
                     coursePairs = if (course) coursePairs(lessons, groups, range) else null,
                     weekly = weeklyPairs(lessons, range),
+                    breakdown = loadBreakdown(lessons, if (course) groups else emptyList(), range),
                 )
             }
             val result = CourseLoadResult(
@@ -455,9 +473,14 @@ class AnalyticsViewModel(
         val range = _state.value.roomPeriod.range(today())
         runWork { report ->
             report(AnalyticsProgress("Ищем аудитории", 0, 0))
-            val rooms = repository.allClassrooms { found ->
+            val listed = repository.allClassrooms { found ->
                 report(AnalyticsProgress("Найдено аудиторий: $found", 0, 0))
             }
+            // One spelling per room; the site's links and "Дистанционно" aren't rooms.
+            val infos = listed.associateWith(::normalizeRoom)
+            val rooms = listed.filter { infos.getValue(it).kind != RoomKind.Online }
+            // Spellings of one room ("К_10" and "К_10, ауд. 1.25") are counted as that room.
+            val merged = mergedRooms(infos.values)
             val weeks = com.rassvet.lecturial.model.weekStartsOf(range).size
             val total = rooms.size * weeks
             val done = AtomicInteger(0)
@@ -480,16 +503,16 @@ class AnalyticsViewModel(
                                 if (failure is CancellationException) throw failure
                                 emptyList()
                             }
-                            val label = ScheduleTarget.classroomLabel(room)
-                            lock.withLock { schedules[label] = schedules[label].orEmpty() + lessons }
+                            // A room the site lists twice (both campuses) is merged into one.
+                            val key = merged.getValue(infos.getValue(room).key).key
+                            lock.withLock { schedules[key] = schedules[key].orEmpty() + lessons }
                         }
                     }
                 }.awaitAll()
             }
-            val loads = roomLoads(schedules, range)
-            // Rooms with no lessons at all (meeting rooms, guest rooms) would only dilute the daily curve.
-            val used = loads.filter { it.busySlots > 0 }
-            _state.update { it.copy(roomsResult = RoomsResult(range, loads, intradayRoomLoad(used))) }
+            val byKey = merged.values.associateBy { it.key }
+            val stats = roomLoads(schedules, range).map { load -> RoomStat(byKey.getValue(load.room), load) }
+            _state.update { it.copy(roomsResult = RoomsResult(range, stats, notRooms = listed.size - rooms.size)) }
         }
     }
 

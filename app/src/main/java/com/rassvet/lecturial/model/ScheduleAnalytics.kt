@@ -238,6 +238,57 @@ fun coursePairs(events: List<ScheduleEvent>, courseGroups: Collection<String>, r
         .size
 }
 
+/** A discipline's pairs, and how many of them are for the course groups. */
+data class DisciplineLoad(val discipline: String, val pairs: Int, val coursePairs: Int)
+
+/** Where someone's pairs go: to which groups, in which disciplines, at which times. */
+data class LoadBreakdown(
+    /** Pairs with each course group, busiest first; a pair for several of them counts for each. */
+    val byCourseGroup: List<Pair<String, Int>>,
+    /** Pairs with none of the course groups. */
+    val outsideCourse: Int,
+    /** Pairs of each discipline, most first. */
+    val byDiscipline: List<DisciplineLoad>,
+    /** Pairs starting at each pair of the grid: "1 пара · 08:45" and so on. */
+    val bySlot: List<Pair<PairSlot, Int>>,
+    /** Pairs that start off the grid times. */
+    val offGrid: Int,
+)
+
+/**
+ * Splits the pairs of [events] within [range] by course group, discipline and start time.
+ * As everywhere in the statistics, parallel subgroups and merged groups are one pair.
+ */
+fun loadBreakdown(
+    events: List<ScheduleEvent>,
+    courseGroups: Collection<String>,
+    range: ClosedRange<LocalDate>,
+    slots: List<PairSlot> = SiriusPairSlots,
+): LoadBreakdown {
+    val pairs = events.filter { it.date in range }
+        .groupBy { Triple(it.date, it.startTime.trim(), it.endTime.trim()) }
+        .values
+        .map { lessons -> lessons to lessons.flatMap { it.studentGroups() }.map { it.lowercase() }.toSet() }
+    val course = courseGroups.map { it.trim().lowercase() }.toSet()
+    fun inCourse(groups: Set<String>) = groups.any { it in course }
+    val bySlot = slots.map { slot ->
+        val start = slot.start.hour * 60 + slot.start.minute
+        slot to pairs.count { (lessons, _) -> parseEventMinutes(lessons.first().startTime) == start }
+    }
+    return LoadBreakdown(
+        byCourseGroup = courseGroups
+            .map { group -> group to pairs.count { (_, groups) -> group.trim().lowercase() in groups } }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second },
+        outsideCourse = pairs.count { (_, groups) -> !inCourse(groups) },
+        byDiscipline = pairs.groupBy { (lessons, _) -> lessons.first().discipline.trim() }
+            .map { (discipline, list) -> DisciplineLoad(discipline, list.size, list.count { (_, groups) -> inCourse(groups) }) }
+            .sortedWith(compareByDescending<DisciplineLoad> { it.pairs }.thenBy { it.discipline }),
+        bySlot = bySlot,
+        offGrid = pairs.size - bySlot.sumOf { it.second },
+    )
+}
+
 /** Everyone teaching the course: teacher names found in the course groups' lessons. */
 fun courseTeacherNames(groupLessons: List<ScheduleEvent>): List<String> =
     groupLessons.flatMap { it.teachers }
