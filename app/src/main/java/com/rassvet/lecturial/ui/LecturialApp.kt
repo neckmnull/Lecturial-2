@@ -20,6 +20,8 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.selection.toggleable
 import com.rassvet.lecturial.model.LessonAlertPause
 import java.time.ZoneId
 import androidx.compose.material.icons.rounded.Close
@@ -1495,90 +1497,87 @@ private fun AppearanceSettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         AppThemePreview(options = appDisplayOptions)
-        WidgetSettingSwitch(
-            title = "Тёмный режим",
-            description = if (darkTheme) "Тёмная палитра включена" else "Используется светлая палитра",
-            checked = darkTheme,
-            onCheckedChange = onDarkThemeChanged,
-        )
-        Text("Тема приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        val selectedCustomTheme = customThemes.firstOrNull {
-            selectedTheme == AppTheme.Custom && it.id == selectedCustomThemeId
-        }
-        val context = LocalContext.current
-        val builtInThemes = AppTheme.entries.filter { theme ->
-            theme != AppTheme.Custom && (theme != AppTheme.Dynamic || supportsDynamicTheme)
-        }
-        val swatches = builtInThemes.map { theme ->
-            val palette = (if (theme == AppTheme.Dynamic) dynamicThemePalette(context, darkTheme) else null)
-                ?: builtInThemeOverrides.firstOrNull { it.theme == theme && it.isDark == darkTheme }?.palette
-                ?: defaultThemePalette(theme, darkTheme)
-            ThemeSwatch(
-                key = theme.storageId,
-                name = appThemeTitle(theme),
-                primary = Color(palette.primary),
-                secondary = Color(palette.secondary),
-                tertiary = Color(palette.tertiary),
-                selected = selectedTheme == theme,
-                onClick = { onThemeSelected(theme) },
+        SettingsSection("Тема приложения") {
+            WidgetSettingSwitch(
+                title = "Тёмный режим",
+                description = if (darkTheme) "Тёмная палитра включена" else "Используется светлая палитра",
+                checked = darkTheme,
+                onCheckedChange = onDarkThemeChanged,
             )
-        } + customThemes.map { theme ->
-            ThemeSwatch(
-                key = theme.id,
-                name = theme.name,
-                primary = Color(theme.primary),
-                secondary = Color(theme.secondary),
-                tertiary = Color(theme.tertiary),
-                selected = theme == selectedCustomTheme,
-                onClick = { onCustomThemeSelected(theme.id) },
+            val selectedCustomTheme = customThemes.firstOrNull {
+                selectedTheme == AppTheme.Custom && it.id == selectedCustomThemeId
+            }
+            val context = LocalContext.current
+            val builtInThemes = AppTheme.entries.filter { theme ->
+                theme != AppTheme.Custom && (theme != AppTheme.Dynamic || supportsDynamicTheme)
+            }
+            val swatches = builtInThemes.map { theme ->
+                val palette = (if (theme == AppTheme.Dynamic) dynamicThemePalette(context, darkTheme) else null)
+                    ?: builtInThemeOverrides.firstOrNull { it.theme == theme && it.isDark == darkTheme }?.palette
+                    ?: defaultThemePalette(theme, darkTheme)
+                ThemeSwatch(
+                    key = theme.storageId,
+                    name = appThemeTitle(theme),
+                    primary = Color(palette.primary),
+                    secondary = Color(palette.secondary),
+                    tertiary = Color(palette.tertiary),
+                    selected = selectedTheme == theme,
+                    onClick = { onThemeSelected(theme) },
+                )
+            } + customThemes.map { theme ->
+                ThemeSwatch(
+                    key = theme.id,
+                    name = theme.name,
+                    primary = Color(theme.primary),
+                    secondary = Color(theme.secondary),
+                    tertiary = Color(theme.tertiary),
+                    selected = theme == selectedCustomTheme,
+                    onClick = { onCustomThemeSelected(theme.id) },
+                )
+            }
+            ThemeSwatchRow(swatches, onCreate = { creatingTheme = true })
+            Text(
+                selectedCustomTheme?.let { "Своя тема «${it.name}»" } ?: appThemeDescription(selectedTheme),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Wallpaper colours come from the system, so there is nothing to edit there.
+            if (selectedTheme != AppTheme.Dynamic) FilledTonalButton(
+                onClick = {
+                    if (selectedCustomTheme != null) editedTheme = selectedCustomTheme
+                    else editedBuiltInTheme = selectedTheme.takeUnless { it == AppTheme.Custom } ?: AppTheme.default
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.Create, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text("Изменить цвета")
+            }
         }
-        ThemeSwatchRow(swatches, onCreate = { creatingTheme = true })
-        Text(
-            selectedCustomTheme?.let { "Своя тема «${it.name}»" } ?: appThemeDescription(selectedTheme),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        // Wallpaper colours come from the system, so there is nothing to edit there.
-        if (selectedTheme != AppTheme.Dynamic) FilledTonalButton(
-            onClick = {
-                if (selectedCustomTheme != null) editedTheme = selectedCustomTheme
-                else editedBuiltInTheme = selectedTheme.takeUnless { it == AppTheme.Custom } ?: AppTheme.default
-            },
-            modifier = Modifier.fillMaxWidth(),
+        SettingsSection(
+            "Фон приложения",
+            description = "Однотонный фон, плавные цветовые поля или живые линии — лабиринт, отпечаток, топография и волны.",
         ) {
-            Icon(Icons.Rounded.Create, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-            Text("Изменить цвета")
+            AppBackgroundSettings(
+                options = appDisplayOptions,
+                onOptionsChanged = ::updateBackgroundOptions,
+            )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        AppBackgroundSettings(
-            options = appDisplayOptions,
-            onOptionsChanged = ::updateBackgroundOptions,
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Оформление расписания", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(
-            "Настройте карточки занятий и сразу оцените результат.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val defaultScheduleOptions = appDisplayOptions.withDefaultCards()
         AppDisplaySettings(
             options = appDisplayOptions,
             onOptionsChanged = ::updateDisplayOptions,
-        )
-        val defaultScheduleOptions = appDisplayOptions.withDefaultCards()
-        OutlinedButton(
-            onClick = {
-                previewOptions = defaultScheduleOptions
-                previewRequestKey++
-                onAppDisplayOptionsReset()
-            },
-            enabled = appDisplayOptions != defaultScheduleOptions,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Сбросить настройки расписания") }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Виджет", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        ) {
+            OutlinedButton(
+                onClick = {
+                    previewOptions = defaultScheduleOptions
+                    previewRequestKey++
+                    onAppDisplayOptionsReset()
+                },
+                enabled = appDisplayOptions != defaultScheduleOptions,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Сбросить настройки расписания") }
+        }
         SettingsNavigationRow(
             title = "Оформление виджета",
             subtitle = "Цвета, содержимое, шрифт, размеры и отступы",
@@ -1631,12 +1630,6 @@ private fun AppBackgroundSettings(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Фон приложения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(
-            "Однотонный фон, плавные цветовые поля или живые линии — лабиринт, отпечаток, топография и волны.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1755,9 +1748,9 @@ private fun AppBackgroundSettings(
             range = 25..150,
         ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
         BackgroundMotionSlider(
-            title = if (style.linePattern != null) "Скорость рисования" else "Скорость фона",
+            title = if (style.linePattern != null) "Скорость линий" else "Скорость фона",
             description = if (style.linePattern != null) {
-                "Как быстро прорисовываются линии; 0 % — сразу готовый узор"
+                "Как быстро линии прорисовываются и переливаются; 0 % — готовый неподвижный узор"
             } else {
                 "0 % полностью останавливает движение"
             },
@@ -1898,7 +1891,7 @@ private fun BackgroundStyleCard(
             this.selected = selected
         },
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(
             width = if (selected) 2.dp else 1.dp,
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
@@ -2003,23 +1996,25 @@ private fun CustomThemeEditor(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (allowRename) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it.take(40) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Название темы") },
-                singleLine = true,
-            )
-        } else {
-            Text(name, style = MaterialTheme.typography.titleLarge)
+        SettingsSection(null) {
+            if (allowRename) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Название темы") },
+                    singleLine = true,
+                )
+            } else {
+                Text(name, style = MaterialTheme.typography.titleLarge)
+            }
+            ThemeColorField("Основной цвет", primary, { primary = it }, parsed[0], AccentThemeColors)
+            ThemeColorField("Дополнительный цвет", secondary, { secondary = it }, parsed[1], AccentThemeColors)
+            ThemeColorField("Третичный цвет", tertiary, { tertiary = it }, parsed[2], AccentThemeColors)
+            ThemeColorField("Фон", background, { background = it }, parsed[3], BackgroundThemeColors)
+            ThemeColorField("Поверхности", surface, { surface = it }, parsed[4], SurfaceThemeColors)
+            ThemeColorField("Текст", onSurface, { onSurface = it }, parsed[5], TextThemeColors)
         }
-        ThemeColorField("Основной цвет", primary, { primary = it }, parsed[0], AccentThemeColors)
-        ThemeColorField("Дополнительный цвет", secondary, { secondary = it }, parsed[1], AccentThemeColors)
-        ThemeColorField("Третичный цвет", tertiary, { tertiary = it }, parsed[2], AccentThemeColors)
-        ThemeColorField("Фон", background, { background = it }, parsed[3], BackgroundThemeColors)
-        ThemeColorField("Поверхности", surface, { surface = it }, parsed[4], SurfaceThemeColors)
-        ThemeColorField("Текст", onSurface, { onSurface = it }, parsed[5], TextThemeColors)
         if (previewTheme != null) {
             LecturialTheme(
                 appTheme = previewAppTheme,
@@ -2780,26 +2775,46 @@ private fun LessonNamesScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            names.forEach { original ->
-                val alias = aliases[original]
-                var value by remember(original, alias) { mutableStateOf(alias ?: original) }
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { next ->
-                        value = next
-                        onAliasChanged(original, next)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(original, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                )
-                if (alias != null) {
-                    TextButton(onClick = {
-                        value = original
-                        onAliasChanged(original, original)
-                    }) {
-                        Text("Сбросить")
+            // Each subject on its own opaque tile, its full name in large type above the field.
+            // As the field's floating label the name shrank to a cut-off caption, and the
+            // transparent outlined fields let the wallpaper lines run through the text.
+            Column(verticalArrangement = Arrangement.spacedBy(SettingsGroupGap)) {
+                names.forEachIndexed { index, original ->
+                    val alias = aliases[original]
+                    var value by remember(original, alias) { mutableStateOf(alias ?: original) }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = settingsGroupShape(index, names.size),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = if (alias != null) 4.dp else 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(original, style = MaterialTheme.typography.titleMedium)
+                            OutlinedTextField(
+                                value = value,
+                                onValueChange = { next ->
+                                    value = next
+                                    onAliasChanged(original, next)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Короткое имя") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            )
+                            if (alias != null) {
+                                TextButton(
+                                    onClick = {
+                                        value = original
+                                        onAliasChanged(original, original)
+                                    },
+                                    modifier = Modifier.align(Alignment.End),
+                                ) {
+                                    Text("Сбросить")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2812,6 +2827,7 @@ private fun LessonNamesScreen(
 private fun AppDisplaySettings(
     options: AppDisplayOptions,
     onOptionsChanged: (AppDisplayOptions) -> Unit,
+    footer: @Composable ColumnScope.() -> Unit = {},
 ) {
     var fineTuning by rememberSaveable { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(
@@ -2823,101 +2839,105 @@ private fun AppDisplaySettings(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        PresetChoice("Плотность", CardDensity.entries, CardDensity.of(options), { it.title }) {
-            onOptionsChanged(it.applyTo(options))
+        SettingsSection("Карточки расписания", description = "Настройте карточки занятий и сразу оцените результат.") {
+            PresetChoice("Плотность", CardDensity.entries, CardDensity.of(options), { it.title }) {
+                onOptionsChanged(it.applyTo(options))
+            }
+            PresetChoice("Размер текста", CardTextSize.entries, CardTextSize.of(options), { it.title }) {
+                onOptionsChanged(it.applyTo(options))
+            }
+            PresetChoice("Углы карточек", CardCorners.entries, CardCorners.of(options), { it.title }) {
+                onOptionsChanged(it.applyTo(options))
+            }
+            WidgetDimensionSlider("Прозрачность", "Насколько карточки закрывают фон", options.tileOpacityPercent, 0..100, "%") {
+                onOptionsChanged(options.copy(tileOpacityPercent = it))
+            }
+            FontStylePicker(options.fontStyleId) { onOptionsChanged(options.copy(fontStyleId = it)) }
         }
-        PresetChoice("Размер текста", CardTextSize.entries, CardTextSize.of(options), { it.title }) {
-            onOptionsChanged(it.applyTo(options))
+        SettingsSection("Цветные полосы") {
+            StripeColorPicker("Лекция", options.lectureStripeColor) {
+                onOptionsChanged(options.copy(lectureStripeColor = it))
+            }
+            StripeColorPicker("Практика", options.practiceStripeColor) {
+                onOptionsChanged(options.copy(practiceStripeColor = it))
+            }
         }
-        PresetChoice("Углы карточек", CardCorners.entries, CardCorners.of(options), { it.title }) {
-            onOptionsChanged(it.applyTo(options))
+        SettingsSection("Что показывать") {
+            WidgetSettingSwitch("Показывать аудиторию", "Аудитория и адрес занятия", options.showClassroom) {
+                onOptionsChanged(options.copy(showClassroom = it))
+            }
+            WidgetSettingSwitch("Показывать время", "Время слева от названия предмета", options.showTime) {
+                onOptionsChanged(options.copy(showTime = it))
+            }
+            WidgetSettingSwitch("Время окончания", "Окончание пары под временем начала", options.showEndTime) {
+                onOptionsChanged(options.copy(showEndTime = it))
+            }
+            WidgetSettingSwitch("Показывать цветную полосу", "Полоса цвета лекции или практики слева у каждой пары", options.showStripe) {
+                onOptionsChanged(options.copy(showStripe = it))
+            }
+            WidgetSettingSwitch("Переносить название", "Длинное название предмета в несколько строк", options.wrapTitle) {
+                onOptionsChanged(options.copy(wrapTitle = it))
+            }
         }
-        WidgetDimensionSlider("Прозрачность", "Насколько карточки закрывают фон", options.tileOpacityPercent, 0..100, "%") {
-            onOptionsChanged(options.copy(tileOpacityPercent = it))
-        }
-        FontStylePicker(options.fontStyleId) { onOptionsChanged(options.copy(fontStyleId = it)) }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Цветные полосы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        StripeColorPicker("Лекция", options.lectureStripeColor) {
-            onOptionsChanged(options.copy(lectureStripeColor = it))
-        }
-        StripeColorPicker("Практика", options.practiceStripeColor) {
-            onOptionsChanged(options.copy(practiceStripeColor = it))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Что показывать", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        WidgetSettingSwitch("Показывать аудиторию", "Аудитория и адрес занятия", options.showClassroom) {
-            onOptionsChanged(options.copy(showClassroom = it))
-        }
-        WidgetSettingSwitch("Показывать время", "Время слева от названия предмета", options.showTime) {
-            onOptionsChanged(options.copy(showTime = it))
-        }
-        WidgetSettingSwitch("Время окончания", "Окончание пары под временем начала", options.showEndTime) {
-            onOptionsChanged(options.copy(showEndTime = it))
-        }
-        WidgetSettingSwitch("Показывать цветную полосу", "Полоса цвета лекции или практики слева у каждой пары", options.showStripe) {
-            onOptionsChanged(options.copy(showStripe = it))
-        }
-        WidgetSettingSwitch("Переносить название", "Длинное название предмета в несколько строк", options.wrapTitle) {
-            onOptionsChanged(options.copy(wrapTitle = it))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Surface(
-            onClick = { fineTuning = !fineTuning },
-            shape = MaterialTheme.shapes.largeIncreased,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Тонкая настройка", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Точные размеры текста, отступы и скругление",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        SettingsSection(null) {
+            Surface(
+                onClick = { fineTuning = !fineTuning },
+                shape = MaterialTheme.shapes.largeIncreased,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Тонкая настройка", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Точные размеры текста, отступы и скругление",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = if (fineTuning) "Свернуть" else "Развернуть",
+                        modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
                     )
                 }
-                Icon(
-                    Icons.Rounded.KeyboardArrowDown,
-                    contentDescription = if (fineTuning) "Свернуть" else "Развернуть",
-                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
-                )
             }
-        }
-        AnimatedVisibility(
-            visible = fineTuning,
-            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                WidgetDimensionSlider("Название предмета", "Размер основного текста", options.titleTextSizeSp, 12..24, "") {
-                    onOptionsChanged(options.copy(titleTextSizeSp = it))
-                }
-                WidgetDimensionSlider("Время и детали", "Размер вспомогательного текста", options.secondaryTextSizeSp, 10..20, "") {
-                    onOptionsChanged(options.copy(secondaryTextSizeSp = it))
-                }
-                WidgetDimensionSlider("Максимум строк названия", "Когда включён перенос", options.titleMaxLines, 1..5, "") {
-                    onOptionsChanged(options.copy(titleMaxLines = it))
-                }
-                WidgetDimensionSlider("Скругление", "Радиус углов карточки", options.tileCornerRadiusDp, 0..32, "") {
-                    onOptionsChanged(options.copy(tileCornerRadiusDp = it))
-                }
-                WidgetDimensionSlider("Отступ от краёв", "Поля слева и справа от расписания", options.outerPaddingDp, 0..32, "") {
-                    onOptionsChanged(options.copy(outerPaddingDp = it))
-                }
-                WidgetDimensionSlider("Отступ текста", "Между временем и предметом", options.horizontalPaddingDp, 0..24, "") {
-                    onOptionsChanged(options.copy(horizontalPaddingDp = it))
-                }
-                WidgetDimensionSlider("Высота карточки", "Свободное место внутри пары", options.verticalPaddingDp, 0..16, "") {
-                    onOptionsChanged(options.copy(verticalPaddingDp = it))
-                }
-                WidgetDimensionSlider("Расстояние между парами", "Пустое место между карточками", options.itemSpacingDp, 0..24, "") {
-                    onOptionsChanged(options.copy(itemSpacingDp = it))
-                }
-                WidgetDimensionSlider("Межбуквенный интервал", "Плотность букв", options.letterSpacingPercent, -5..10, "%") {
-                    onOptionsChanged(options.copy(letterSpacingPercent = it))
+            AnimatedVisibility(
+                visible = fineTuning,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    WidgetDimensionSlider("Название предмета", "Размер основного текста", options.titleTextSizeSp, 12..24, "") {
+                        onOptionsChanged(options.copy(titleTextSizeSp = it))
+                    }
+                    WidgetDimensionSlider("Время и детали", "Размер вспомогательного текста", options.secondaryTextSizeSp, 10..20, "") {
+                        onOptionsChanged(options.copy(secondaryTextSizeSp = it))
+                    }
+                    WidgetDimensionSlider("Максимум строк названия", "Когда включён перенос", options.titleMaxLines, 1..5, "") {
+                        onOptionsChanged(options.copy(titleMaxLines = it))
+                    }
+                    WidgetDimensionSlider("Скругление", "Радиус углов карточки", options.tileCornerRadiusDp, 0..32, "") {
+                        onOptionsChanged(options.copy(tileCornerRadiusDp = it))
+                    }
+                    WidgetDimensionSlider("Отступ от краёв", "Поля слева и справа от расписания", options.outerPaddingDp, 0..32, "") {
+                        onOptionsChanged(options.copy(outerPaddingDp = it))
+                    }
+                    WidgetDimensionSlider("Отступ текста", "Между временем и предметом", options.horizontalPaddingDp, 0..24, "") {
+                        onOptionsChanged(options.copy(horizontalPaddingDp = it))
+                    }
+                    WidgetDimensionSlider("Высота карточки", "Свободное место внутри пары", options.verticalPaddingDp, 0..16, "") {
+                        onOptionsChanged(options.copy(verticalPaddingDp = it))
+                    }
+                    WidgetDimensionSlider("Расстояние между парами", "Пустое место между карточками", options.itemSpacingDp, 0..24, "") {
+                        onOptionsChanged(options.copy(itemSpacingDp = it))
+                    }
+                    WidgetDimensionSlider("Межбуквенный интервал", "Плотность букв", options.letterSpacingPercent, -5..10, "%") {
+                        onOptionsChanged(options.copy(letterSpacingPercent = it))
+                    }
                 }
             }
+            footer()
         }
     }
 }
@@ -3060,33 +3080,34 @@ private fun WidgetSettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            WidgetSettingSwitch(
-                title = "Как в приложении",
-                description = "Цветные полосы, шрифт, размер текста, отступы и что показывать — как в расписании",
-                checked = state.widgetMatchApp,
-                onCheckedChange = onMatchAppChanged,
-            )
-            WidgetDimensionSlider(
-                title = "Фон виджета",
-                description = "Насколько фон закрывает обои рабочего стола",
-                value = state.widgetBackgroundOpacityPercent,
-                range = 0..100,
-                unit = "%",
-                showSteps = false,
-                onValueChanged = onBackgroundOpacityChanged,
-            )
-            AnimatedVisibility(
-                visible = state.widgetMatchApp,
-                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-                exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-            ) {
-                Text(
-                    "Меняйте оформление карточек в разделе «Оформление» — виджет подстроится сам. " +
-                        "Выключите «Как в приложении», чтобы настроить виджет отдельно.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SettingsSection(null) {
+                WidgetSettingSwitch(
+                    title = "Как в приложении",
+                    description = "Цветные полосы, шрифт, размер текста, отступы и что показывать — как в расписании",
+                    checked = state.widgetMatchApp,
+                    onCheckedChange = onMatchAppChanged,
                 )
+                WidgetDimensionSlider(
+                    title = "Фон виджета",
+                    description = "Насколько фон закрывает обои рабочего стола",
+                    value = state.widgetBackgroundOpacityPercent,
+                    range = 0..100,
+                    unit = "%",
+                    showSteps = false,
+                    onValueChanged = onBackgroundOpacityChanged,
+                )
+                AnimatedVisibility(
+                    visible = state.widgetMatchApp,
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+                ) {
+                    Text(
+                        "Меняйте оформление карточек в разделе «Оформление» — виджет подстроится сам. " +
+                            "Выключите «Как в приложении», чтобы настроить виджет отдельно.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             AnimatedVisibility(
                 visible = !state.widgetMatchApp,
@@ -3094,126 +3115,110 @@ private fun WidgetSettingsScreen(
                 exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Text(
-                        "Цветовые полосы",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    StripeColorPicker("Лекция", state.lectureStripeColor, onLectureColorSelected)
-                    StripeColorPicker("Практика", state.practiceStripeColor, onPracticeColorSelected)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Text(
-                        "Содержимое",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    WidgetSettingSwitch(
-                        title = "Показывать аудиторию",
-                        description = "Номер аудитории под названием предмета",
-                        checked = state.widgetShowClassroom,
-                        onCheckedChange = onShowClassroomChanged,
-                    )
-                    WidgetSettingSwitch(
-                        title = "Показывать время",
-                        description = "Время начала или полный диапазон занятия",
-                        checked = state.widgetShowTime,
-                        onCheckedChange = onShowTimeChanged,
-                    )
-                    WidgetSettingSwitch(
-                        title = "Показывать цветную полосу",
-                        description = "Акцент слева для различения лекций и практик",
-                        checked = state.widgetShowStripe,
-                        onCheckedChange = onShowStripeChanged,
-                    )
-                    WidgetSettingSwitch(
-                        title = "Время окончания",
-                        description = "Полный диапазон, например 08:45–10:05",
-                        checked = state.widgetShowEndTime,
-                        onCheckedChange = onShowEndTimeChanged,
-                    )
-                    WidgetSettingSwitch(
-                        title = "Переносить название",
-                        description = "До двух строк для длинного названия предмета",
-                        checked = state.widgetWrapTitle,
-                        onCheckedChange = onWrapTitleChanged,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Text(
-                        "Размер текста",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    FontStylePicker(
-                        selectedId = state.widgetFontStyleId,
-                        onSelected = onFontStyleChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Название предмета",
-                        description = "Размер основного текста в виджете",
-                        value = state.widgetTitleTextSizeSp,
-                        range = 9..18,
-                        unit = "sp",
-                        onValueChanged = onTitleTextSizeChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Время и аудитория",
-                        description = "Размер вспомогательного текста",
-                        value = state.widgetSecondaryTextSizeSp,
-                        range = 7..14,
-                        unit = "sp",
-                        onValueChanged = onSecondaryTextSizeChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Межбуквенный интервал",
-                        description = "От плотного текста до более разреженного",
-                        value = state.widgetLetterSpacingPercent,
-                        range = -5..10,
-                        unit = "%",
-                        onValueChanged = onLetterSpacingChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Максимум строк названия",
-                        description = "Используется, когда включён перенос названия",
-                        value = state.widgetTitleMaxLines,
-                        range = 1..4,
-                        unit = "стр.",
-                        onValueChanged = onTitleMaxLinesChanged,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Text(
-                        "Отступы и плотность",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Отступ от краёв виджета",
-                        description = "Не даёт строкам заходить на скруглённые края",
-                        value = state.widgetOuterPaddingDp,
-                        range = 0..24,
-                        onValueChanged = onOuterPaddingChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Отступ текста слева и справа",
-                        description = "Расстояние от цветной полосы и правого края",
-                        value = state.widgetHorizontalPaddingDp,
-                        range = 0..24,
-                        onValueChanged = onHorizontalPaddingChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Вертикальный отступ строки",
-                        description = "Высота свободного места внутри каждого занятия",
-                        value = state.widgetVerticalPaddingDp,
-                        range = 0..16,
-                        onValueChanged = onVerticalPaddingChanged,
-                    )
-                    WidgetDimensionSlider(
-                        title = "Расстояние между занятиями",
-                        description = "Пустое место между соседними строками",
-                        value = state.widgetItemSpacingDp,
-                        range = 0..12,
-                        onValueChanged = onItemSpacingChanged,
-                    )
+                    SettingsSection("Цветовые полосы") {
+                        StripeColorPicker("Лекция", state.lectureStripeColor, onLectureColorSelected)
+                        StripeColorPicker("Практика", state.practiceStripeColor, onPracticeColorSelected)
+                    }
+                    SettingsSection("Содержимое") {
+                        WidgetSettingSwitch(
+                            title = "Показывать аудиторию",
+                            description = "Номер аудитории под названием предмета",
+                            checked = state.widgetShowClassroom,
+                            onCheckedChange = onShowClassroomChanged,
+                        )
+                        WidgetSettingSwitch(
+                            title = "Показывать время",
+                            description = "Время начала или полный диапазон занятия",
+                            checked = state.widgetShowTime,
+                            onCheckedChange = onShowTimeChanged,
+                        )
+                        WidgetSettingSwitch(
+                            title = "Показывать цветную полосу",
+                            description = "Акцент слева для различения лекций и практик",
+                            checked = state.widgetShowStripe,
+                            onCheckedChange = onShowStripeChanged,
+                        )
+                        WidgetSettingSwitch(
+                            title = "Время окончания",
+                            description = "Полный диапазон, например 08:45–10:05",
+                            checked = state.widgetShowEndTime,
+                            onCheckedChange = onShowEndTimeChanged,
+                        )
+                        WidgetSettingSwitch(
+                            title = "Переносить название",
+                            description = "До двух строк для длинного названия предмета",
+                            checked = state.widgetWrapTitle,
+                            onCheckedChange = onWrapTitleChanged,
+                        )
+                    }
+                    SettingsSection("Размер текста") {
+                        FontStylePicker(
+                            selectedId = state.widgetFontStyleId,
+                            onSelected = onFontStyleChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Название предмета",
+                            description = "Размер основного текста в виджете",
+                            value = state.widgetTitleTextSizeSp,
+                            range = 9..18,
+                            unit = "sp",
+                            onValueChanged = onTitleTextSizeChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Время и аудитория",
+                            description = "Размер вспомогательного текста",
+                            value = state.widgetSecondaryTextSizeSp,
+                            range = 7..14,
+                            unit = "sp",
+                            onValueChanged = onSecondaryTextSizeChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Межбуквенный интервал",
+                            description = "От плотного текста до более разреженного",
+                            value = state.widgetLetterSpacingPercent,
+                            range = -5..10,
+                            unit = "%",
+                            onValueChanged = onLetterSpacingChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Максимум строк названия",
+                            description = "Используется, когда включён перенос названия",
+                            value = state.widgetTitleMaxLines,
+                            range = 1..4,
+                            unit = "стр.",
+                            onValueChanged = onTitleMaxLinesChanged,
+                        )
+                    }
+                    SettingsSection("Отступы и плотность") {
+                        WidgetDimensionSlider(
+                            title = "Отступ от краёв виджета",
+                            description = "Не даёт строкам заходить на скруглённые края",
+                            value = state.widgetOuterPaddingDp,
+                            range = 0..24,
+                            onValueChanged = onOuterPaddingChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Отступ текста слева и справа",
+                            description = "Расстояние от цветной полосы и правого края",
+                            value = state.widgetHorizontalPaddingDp,
+                            range = 0..24,
+                            onValueChanged = onHorizontalPaddingChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Вертикальный отступ строки",
+                            description = "Высота свободного места внутри каждого занятия",
+                            value = state.widgetVerticalPaddingDp,
+                            range = 0..16,
+                            onValueChanged = onVerticalPaddingChanged,
+                        )
+                        WidgetDimensionSlider(
+                            title = "Расстояние между занятиями",
+                            description = "Пустое место между соседними строками",
+                            value = state.widgetItemSpacingDp,
+                            range = 0..12,
+                            onValueChanged = onItemSpacingChanged,
+                        )
+                    }
                 }
             }
             Text(
@@ -3345,7 +3350,8 @@ private fun WidgetSettingSwitch(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            // One touch target announced as a switch, like an M3 list item with a switch.
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -3359,7 +3365,7 @@ private fun WidgetSettingSwitch(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
         )
     }
 }

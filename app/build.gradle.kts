@@ -23,8 +23,8 @@ android {
         applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 34
-        versionName = "1.10.1"
+        versionCode = 35
+        versionName = "1.10.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

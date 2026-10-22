@@ -52,6 +52,12 @@ class UserPreferences(private val context: Context) {
     private val letterSpacingKey = intPreferencesKey("widget_letter_spacing_percent")
     private val titleMaxLinesKey = intPreferencesKey("widget_title_max_lines")
     private val widgetMatchAppKey = booleanPreferencesKey("widget_match_app")
+    // What a widget tuned before 1.9.0 saved, when it had only its own look.
+    private val ownWidgetKeys = listOf(
+        lectureStripeColorKey, practiceStripeColorKey, showClassroomKey, showTimeKey, showStripeKey,
+        showEndTimeKey, wrapTitleKey, outerPaddingKey, horizontalPaddingKey, verticalPaddingKey,
+        itemSpacingKey, titleTextSizeKey, secondaryTextSizeKey, fontStyleKey, letterSpacingKey, titleMaxLinesKey,
+    )
     private val widgetBackgroundOpacityKey = intPreferencesKey("widget_background_opacity_percent")
     private val lessonAliasesKey = stringPreferencesKey("lesson_aliases")
     private val appThemeKey = stringPreferencesKey("app_theme")
@@ -171,7 +177,7 @@ class UserPreferences(private val context: Context) {
                 ?: WidgetFontStyles.defaultId,
             letterSpacingPercent = (preferences[letterSpacingKey] ?: 0).coerceIn(-5, 10),
             titleMaxLines = (preferences[titleMaxLinesKey] ?: 2).coerceIn(1, 4),
-            matchApp = preferences[widgetMatchAppKey] ?: true,
+            matchApp = widgetMatchesApp(preferences[widgetMatchAppKey], ownWidgetKeys.any { it in preferences }),
             backgroundOpacityPercent = (preferences[widgetBackgroundOpacityKey] ?: 100).coerceIn(0, 100),
         )
     }
@@ -492,6 +498,13 @@ internal fun encodeAppDisplayOptions(options: AppDisplayOptions): String = org.j
     .put("backgroundLineDensityPercent", options.backgroundLineDensityPercent)
     .put("backgroundLineWeight", options.backgroundLineWeight)
     .toString()
+
+/**
+ * Whether the widget copies the app's card look. The switch came in 1.9.0 turned on for
+ * everyone, so a widget tuned before then dropped its own settings after the update; with
+ * settings of its own saved it keeps them until the switch is turned on by hand.
+ */
+internal fun widgetMatchesApp(stored: Boolean?, hasOwnSettings: Boolean): Boolean = stored ?: !hasOwnSettings
 
 internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
     if (raw.isNullOrBlank()) return AppDisplayOptions()

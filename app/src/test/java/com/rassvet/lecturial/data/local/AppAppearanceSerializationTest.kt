@@ -106,4 +106,15 @@ class AppAppearanceSerializationTest {
         assertEquals(360, parsed.backgroundGradientAngleDegrees)
         assertEquals(null, parsed.backgroundGradientStartColor)
     }
+
+    @Test
+    fun widgetTunedBeforeTheAppSwitchKeepsItsOwnLook() {
+        // Nothing saved: a new widget follows the app.
+        assertTrue(widgetMatchesApp(stored = null, hasOwnSettings = false))
+        // Tuned before 1.9.0: its own settings stay in use after the update.
+        assertEquals(false, widgetMatchesApp(stored = null, hasOwnSettings = true))
+        // The switch turned by hand always wins.
+        assertTrue(widgetMatchesApp(stored = true, hasOwnSettings = true))
+        assertEquals(false, widgetMatchesApp(stored = false, hasOwnSettings = false))
+    }
 }

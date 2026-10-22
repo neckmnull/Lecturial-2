@@ -66,6 +66,8 @@ import com.rassvet.lecturial.model.RoomCategories
 import com.rassvet.lecturial.model.RoomKind
 import com.rassvet.lecturial.model.intradayRoomLoad
 import com.rassvet.lecturial.model.naturalRoomKey
+import com.rassvet.lecturial.model.RoomInfo
+import com.rassvet.lecturial.model.SiriusPairSlots
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
@@ -184,7 +186,7 @@ private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) 
     TabIntro(
         "Подбор пары, когда свободны все выбранные преподаватели и группы, — например, для встречи, консультации или пересдачи.",
         listOf(
-            "Добавьте участников: преподавателей по фамилии или группы по названию. Группы специалитета (ИОП-ИТ) вашего курса добавляются сразу; фильтр «Только специалитет» оставляет в поиске только их.",
+            "Добавьте участников: преподавателей по фамилии или группы по названию. Группы ИТ-специалитета (ИОП-ИТ) вашего курса добавляются сразу; фильтр «ИТ-специалитет» оставляет в поиске только их.",
             "Нажатие на участника в списке временно исключает его из подбора — он остаётся в списке, повторное нажатие возвращает. Крестик убирает участника совсем.",
             "Сравниваются пары с понедельника по субботу: с 1 пары (08:45) по 7 пару (18:15).",
             "Пара занята, если у кого-то из участников в это время есть любое занятие, даже не совпадающее с сеткой пар.",
@@ -634,8 +636,11 @@ private fun RoomsTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
             "«Самые свободные» — среди аудиторий, где за период было хотя бы одно занятие; аудитории совсем без занятий посчитаны отдельно.",
             "Названия приведены к одному виду: «Альфа 4.1», «К_9, ауд. 1.26». Под названием — только то, что указано на сайте расписания: пометка «комп», примечания и код аудитории. Одна аудитория, записанная на сайте дважды, считается один раз.",
             "«Загрузка в течение дня» — какая доля используемых аудиторий занята в каждую пару: видно самые загруженные часы.",
+            "«Свободные аудитории» — выберите день и пару: приложение загрузит неделю расписания всех аудиторий и покажет, где в это время нет занятий и до какого времени аудитория остаётся свободной. Другие пары той же недели после этого показываются сразу.",
         ),
     )
+    FreeRoomsLookup(state, viewModel)
+    SectionTitle("Загруженность за период")
     ConnectedChoice(AnalyticsPeriod.entries, state.roomPeriod, { it.title }, viewModel::setRoomPeriod)
     Button(
         onClick = viewModel::computeRooms,
@@ -674,9 +679,9 @@ private fun RoomsResults(result: RoomsResult, sort: LoadSort, onSort: (LoadSort)
         },
     )
     SectionTitle("Самые загруженные", Modifier.revealOnAppear(order++))
-    used.take(TOP).forEach { RoomBar(it, Modifier.revealOnAppear(order++)) }
+    BarCard { used.take(TOP).forEach { RoomBar(it, Modifier.revealOnAppear(order++)) } }
     SectionTitle("Самые свободные", Modifier.revealOnAppear(order++))
-    used.takeLast(TOP).reversed().forEach { RoomBar(it, Modifier.revealOnAppear(order++)) }
+    BarCard { used.takeLast(TOP).reversed().forEach { RoomBar(it, Modifier.revealOnAppear(order++)) } }
     val empty = shown.size - used.size
     if (empty > 0) {
         Text("Без занятий за период: $empty", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -697,27 +702,128 @@ private fun RoomsResults(result: RoomsResult, sort: LoadSort, onSort: (LoadSort)
     categories.forEach { (category, rooms) -> RoomCategorySection(category, rooms, Modifier.revealOnAppear(order++)) }
     SectionTitle("Загрузка в течение дня", Modifier.revealOnAppear(order++))
     Caption("Доля используемых аудиторий, занятых в каждую пару")
-    intraday.forEach { (slot, share) ->
-        BarRow("${slot.number} · ${slot.start}", share.toFloat(), percent(share), Modifier.revealOnAppear(order++))
+    BarCard {
+        intraday.forEach { (slot, share) ->
+            BarRow("${slot.number} · ${slot.start}", share.toFloat(), percent(share), Modifier.revealOnAppear(order++))
+        }
     }
 }
 
+/** Pick a day and a pair, then see which rooms have nothing on then. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FreeRoomsLookup(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
+    SectionTitle("Свободные аудитории")
+    val today = state.freeRoomDays.firstOrNull()
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.freeRoomDays.forEach { date ->
+            FilterChip(
+                selected = date == state.freeRoomDate,
+                onClick = { viewModel.setFreeRoomDate(date) },
+                label = { Text(dayChipLabel(date, today)) },
+            )
+        }
+    }
+    ConnectedChoice(SiriusPairSlots.map { it.number }, state.freeRoomPair, { "$it" }, viewModel::setFreeRoomPair)
+    SiriusPairSlots.firstOrNull { it.number == state.freeRoomPair }?.let { Caption(it.label) }
+    val result = state.freeRoomsResult
+    if (result == null) {
+        Button(
+            onClick = viewModel::findFreeRooms,
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+        ) { Text("Найти свободные аудитории") }
+    } else {
+        // No key(): unfolded buildings and the filter stay as they are while pairs are switched.
+        FreeRoomsResults(result)
+    }
+}
+
+@Composable
+private fun FreeRoomsResults(result: FreeRoomsResult) {
+    var teachingOnly by rememberSaveable { mutableStateOf(true) }
+    val shown = remember(result, teachingOnly) { result.rooms.filter { !teachingOnly || it.info.isTeaching } }
+    // Rooms without a single lesson all week may be closed or not for classes: listed apart.
+    val (used, idle) = remember(shown) { shown.partition { it.usedThisWeek } }
+    val categories = remember(used) {
+        used.groupBy { it.info.category }.entries
+            .sortedBy { RoomCategories.order.indexOf(it.key).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+            .map { (category, rooms) -> category to rooms.sortedBy { naturalRoomKey(it.info.name) } }
+    }
+    var order = 0
+    Text(
+        "Свободно ${used.size} ${roomsWord(used.size)}",
+        Modifier.revealOnAppear(order++),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    FilterChip(
+        selected = teachingOnly,
+        onClick = { teachingOnly = !teachingOnly },
+        label = { Text("Только учебные аудитории") },
+        leadingIcon = if (teachingOnly) {
+            { Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(FilterChipDefaults.IconSize)) }
+        } else {
+            null
+        },
+    )
+    if (result.unchecked > 0) {
+        Caption("Не удалось загрузить расписание ${result.unchecked} ${roomsWord(result.unchecked)} — их здесь нет.")
+    }
+    categories.forEach { (category, rooms) ->
+        key(category) {
+            FoldableRoomSection(category, rooms.size, Modifier.revealOnAppear(order++)) {
+                rooms.forEach { FreeRoomRow(it) }
+            }
+        }
+    }
+    if (idle.isNotEmpty()) {
+        FoldableRoomSection("Без занятий всю неделю", idle.size, Modifier.revealOnAppear(order++)) {
+            idle.sortedBy { naturalRoomKey(it.info.name) }.forEach { FreeRoomRow(it) }
+        }
+    }
+}
+
+@Composable
+private fun FreeRoomRow(room: FreeRoomStat) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(room.info.name, style = MaterialTheme.typography.bodyLarge)
+            roomCaption(room.info)?.let { Caption(it) }
+        }
+        Text(
+            room.freeUntil?.let { "до ${it.format(timeFormatter)}" } ?: "до конца дня",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+private val weekdayFormatter = DateTimeFormatter.ofPattern("EE, d MMM", ru)
+
+private fun dayChipLabel(date: LocalDate, today: LocalDate?): String = when (date) {
+    today -> "Сегодня"
+    today?.plusDays(1) -> "Завтра"
+    else -> date.format(weekdayFormatter)
+}
+
 /**
- * A room's load under its tidy name. Below it only what the schedule site itself says about
- * the room — its "(комп)" mark, its notes and its code — nothing guessed from the name.
+ * What the schedule site itself says about a room — its "(комп)" mark, its notes and its
+ * code — nothing guessed from the name.
  */
+private fun roomCaption(info: RoomInfo): String? = listOfNotNull(
+    "компьютерный класс".takeIf { info.kind == RoomKind.Computer },
+    info.note,
+    info.code?.let { "код $it" },
+).joinToString(" · ").ifEmpty { null }
+
+/** A room's load under its tidy name, with [roomCaption] below it. */
 @Composable
 private fun RoomBar(stat: RoomStat, modifier: Modifier = Modifier) {
-    val info = stat.info
     NamedBarRow(
-        label = info.name,
+        label = stat.info.name,
         fraction = stat.load.utilization.toFloat(),
         value = percent(stat.load.utilization),
-        caption = listOfNotNull(
-            "компьютерный класс".takeIf { info.kind == RoomKind.Computer },
-            info.note,
-            info.code?.let { "код $it" },
-        ).joinToString(" · ").ifEmpty { null },
+        caption = roomCaption(stat.info),
         modifier = modifier,
     )
 }
@@ -725,6 +831,14 @@ private fun RoomBar(stat: RoomStat, modifier: Modifier = Modifier) {
 /** One building or group of rooms, folded until tapped. */
 @Composable
 private fun RoomCategorySection(title: String, rooms: List<RoomStat>, modifier: Modifier = Modifier) {
+    FoldableRoomSection(title, rooms.size, modifier) {
+        rooms.forEach { RoomBar(it) }
+    }
+}
+
+/** A titled card with a count that unfolds its rooms when tapped. */
+@Composable
+private fun FoldableRoomSection(title: String, count: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     val arrow by animateFloatAsState(if (expanded) 180f else 0f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "room-category")
     Surface(
@@ -736,12 +850,12 @@ private fun RoomCategorySection(title: String, rooms: List<RoomStat>, modifier: 
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                Text("${rooms.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.rotate(arrow))
             }
             AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    rooms.forEach { RoomBar(it) }
+                    content()
                 }
             }
         }
@@ -800,7 +914,7 @@ private fun ParticipantPicker(
         FilterChip(
             selected = state.specialistOnly,
             onClick = { viewModel.setSpecialistOnly(!state.specialistOnly) },
-            label = { Text("Только специалитет") },
+            label = { Text("ИТ-специалитет") },
         )
     }
     when {
@@ -883,6 +997,14 @@ private fun ProgressCard(progress: AnalyticsProgress, onCancel: () -> Unit) {
 private fun ResultCard(shape: Shape, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
+    }
+}
+
+/** Bars on a tonal card, so their labels don't lie on the wallpaper. */
+@Composable
+private fun BarCard(content: @Composable () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
     }
 }
 

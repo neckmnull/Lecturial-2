@@ -26,6 +26,12 @@ class PatternField(
     val spacing: Float?,
     /** When each cell's line is drawn during the intro, 0 (first) to 1 (last). */
     val arrival: FloatArray,
+    /**
+     * How much the field grows from the bottom edge of the tile to the top edge of the next
+     * one. Waves rise by a whole number of lines down the tile; reading across the edge
+     * without it, the jump crossed every level at once and drew a straight line there.
+     */
+    val yWrapStep: Float = 0f,
 ) {
     internal val gradX = FloatArray(n * n)
     internal val gradY = FloatArray(n * n)
@@ -34,7 +40,9 @@ class PatternField(
         for (y in 0 until n) for (x in 0 until n) {
             val i = y * n + x
             gradX[i] = (values[y * n + (x + 1) % n] - values[y * n + (x - 1 + n) % n]) / 2f
-            gradY[i] = (values[((y + 1) % n) * n + x] - values[((y - 1 + n) % n) * n + x]) / 2f
+            val below = values[((y + 1) % n) * n + x] + if (y == n - 1) yWrapStep else 0f
+            val above = values[((y - 1 + n) % n) * n + x] - if (y == 0) yWrapStep else 0f
+            gradY[i] = (below - above) / 2f
         }
     }
 }
@@ -73,7 +81,11 @@ object WallpaperPatterns {
                 val tx = gx - x0
                 val c0 = x0 % n
                 val c1 = (x0 + 1) % n
-                val value = bilinear(field.values, r0, r1, c0, c1, tx, ty)
+                // The last row reads the first one of the next tile, continued by its step.
+                val wrap = if (y0 + 1 >= n) field.yWrapStep else 0f
+                val top = field.values[r0 + c0] + (field.values[r0 + c1] - field.values[r0 + c0]) * tx
+                val bottom = field.values[r1 + c0] + wrap + (field.values[r1 + c1] - field.values[r1 + c0]) * tx
+                val value = top + (bottom - top) * ty
                 val dx = bilinear(field.gradX, r0, r1, c0, c1, tx, ty)
                 val dy = bilinear(field.gradY, r0, r1, c0, c1, tx, ty)
                 // Field change per pixel, to turn a value difference into a distance.
@@ -91,7 +103,10 @@ object WallpaperPatterns {
         return out
     }
 
-    /** Growth order of a [sizePx]×[sizePx] tile: 0 draws first, 255 last. */
+    /**
+     * Growth order of a [sizePx]×[sizePx] tile: 0 draws first, 255 last. For [LinePattern.Waves]
+     * it is when each line starts; the drawing adds [WAVE_SWEEP] times the screen position.
+     */
     fun renderArrival(field: PatternField, sizePx: Int): ByteArray {
         val out = ByteArray(sizePx * sizePx)
         val n = field.n
@@ -276,16 +291,20 @@ object WallpaperPatterns {
         val bends = smoothWaves(random, maxFrequency = 3)
         val lines = (WAVE_LINES * density).roundToInt().coerceAtLeast(4).toFloat()
         // y·lines grows by a whole number across the tile, so the stripes wrap seamlessly.
-        // Each line is drawn left to right like a pen stroke, lines starting a little apart.
+        // Each line is drawn left to right like a pen stroke across the whole screen. The tile
+        // holds only when each line starts, a little apart; the sweep is added per screen
+        // position when drawing (WAVE_SWEEP), since a tile-sized sweep restarted at every tile.
+        // The line number wraps with the tile, so a line crossing its top edge keeps its start.
         return sampled(
             gridFor(lines),
             level = 0f,
             spacing = 1f,
             arrival = { x, y ->
                 val line = floor(y * lines + 0.9f * evaluate(bends, x, y) + 0.5f)
-                val start = ((line * 0.618f) % 1f + 1f) % 1f * 0.3f
-                (x * 0.7f + start).coerceIn(0f, 1f)
+                val index = ((line % lines) + lines) % lines
+                ((index * 0.618f) % 1f) * WAVE_START_SPREAD
             },
+            yWrapStep = lines,
         ) { x, y -> y * lines + 0.9f * evaluate(bends, x, y) }
     }
 
@@ -314,6 +333,7 @@ object WallpaperPatterns {
         level: Float,
         spacing: Float?,
         arrival: (Float, Float) -> Float,
+        yWrapStep: Float = 0f,
         f: (Float, Float) -> Float,
     ): PatternField {
         val values = FloatArray(n * n)
@@ -324,7 +344,7 @@ object WallpaperPatterns {
             values[y * n + x] = f(fx, fy)
             order[y * n + x] = arrival(fx, fy).coerceIn(0f, 1f)
         }
-        return PatternField(n, values, level, spacing, order)
+        return PatternField(n, values, level, spacing, order, yWrapStep)
     }
 
     private const val DU = 0.2097f
@@ -355,4 +375,8 @@ object WallpaperPatterns {
     private const val FINGERPRINT_MAX_DELAY = 0.35f
     private const val TOPOGRAPHY_LEVELS = 9f
     private const val WAVE_LINES = 14f
+    /** How much later the last wave starts than the first, as a share of the drawing. */
+    private const val WAVE_START_SPREAD = 0.3f
+    /** Share of the drawing a wave takes to cross the screen; with the spread it ends at 1. */
+    const val WAVE_SWEEP = 1f - WAVE_START_SPREAD
 }

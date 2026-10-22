@@ -22,7 +22,7 @@ class WallpaperPatternsTest {
             val covered = mask.count { (it.toInt() and 0xFF) > 128 }.toFloat() / mask.size
             assertTrue("$pattern covers $covered", covered in 0.03f..0.6f)
             dump(pattern.name, mask)
-            dumpGrowth(pattern.name, mask, WallpaperPatterns.renderArrival(field, tile))
+            dumpGrowth(pattern, mask, WallpaperPatterns.renderArrival(field, tile))
         }
     }
 
@@ -49,12 +49,52 @@ class WallpaperPatternsTest {
             val mask = WallpaperPatterns.render(field, tile, lineWidthPx = 2f)
             val order = WallpaperPatterns.renderArrival(field, tile)
             fun drawnAt(progress: Float) = mask.indices.count { i ->
-                (mask[i].toInt() and 0xFF) > 128 && (order[i].toInt() and 0xFF) <= progress * 255
+                (mask[i].toInt() and 0xFF) > 128 && arrival(pattern, order, i) <= progress
             }
             val total = drawnAt(1f).toFloat()
             assertTrue("$pattern draws early", drawnAt(0.15f) / total < 0.45f)
             assertTrue("$pattern draws by the middle", drawnAt(0.6f) / total > 0.25f)
         }
+    }
+
+    @Test
+    fun `a wave starts at the same moment on both sides of a tile edge`() {
+        val field = WallpaperPatterns.field(LinePattern.Waves, density = 1f, seed = 7)
+        val mask = WallpaperPatterns.render(field, tile, lineWidthPx = 2f)
+        val order = WallpaperPatterns.renderArrival(field, tile)
+        // Where a line crosses the left and right edges, its start is the same, so the
+        // screen-wide sweep draws it as one stroke through the tiles.
+        var checked = 0
+        for (y in 0 until tile) {
+            val left = y * tile
+            val right = y * tile + tile - 1
+            if ((mask[left].toInt() and 0xFF) > 200 && (mask[right].toInt() and 0xFF) > 200) {
+                val difference = kotlin.math.abs((order[left].toInt() and 0xFF) - (order[right].toInt() and 0xFF))
+                assertTrue("row $y: $difference", difference <= 4)
+                checked++
+            }
+        }
+        assertTrue(checked > 0)
+    }
+
+    @Test
+    fun `waves draw no straight line along the top and bottom of a tile`() {
+        // The waves field rises down the tile and starts over at the top of the next one;
+        // reading straight across that edge used to draw a line along it.
+        for (seed in listOf(3, 7, 2026)) {
+            val mask = WallpaperPatterns.render(WallpaperPatterns.field(LinePattern.Waves, 1f, seed), tile, 2f)
+            for (y in listOf(0, tile - 1)) {
+                val inked = (0 until tile).count { x -> (mask[y * tile + x].toInt() and 0xFF) > 128 }
+                assertTrue("seed $seed row $y inked $inked", inked < tile / 2)
+            }
+        }
+    }
+
+    /** When pixel [i] is drawn, 0..1; waves add the sweep the shader adds per screen position. */
+    private fun arrival(pattern: LinePattern, order: ByteArray, i: Int): Float {
+        val start = (order[i].toInt() and 0xFF) / 255f
+        if (pattern != LinePattern.Waves) return start
+        return (start + (i % tile).toFloat() / tile * WallpaperPatterns.WAVE_SWEEP).coerceAtMost(1f)
     }
 
     @Test
@@ -87,14 +127,15 @@ class WallpaperPatternsTest {
         assertArrayEquals(first, second)
     }
 
-    private fun dumpGrowth(name: String, mask: ByteArray, order: ByteArray) {
+    private fun dumpGrowth(pattern: LinePattern, mask: ByteArray, order: ByteArray) {
+        val name = pattern.name
         val dir = System.getenv("LECTURIAL_PATTERN_DUMP") ?: return
         val frames = listOf(0.25f, 0.5f, 0.75f)
         val image = BufferedImage(tile * frames.size, tile, BufferedImage.TYPE_INT_RGB)
         frames.forEachIndexed { frame, progress ->
             for (y in 0 until tile) for (x in 0 until tile) {
                 val i = y * tile + x
-                val shown = (order[i].toInt() and 0xFF) <= progress * 255
+                val shown = arrival(pattern, order, i) <= progress
                 val shade = if (shown) 255 - (mask[i].toInt() and 0xFF) else 255
                 image.setRGB(frame * tile + x, y, (shade shl 16) or (shade shl 8) or shade)
             }
