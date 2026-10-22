@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.0/Lecturial-2-v1.10.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.10.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.10.0 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.1/Lecturial-2-v1.10.1.apk"><img src="https://img.shields.io/badge/Download_APK-v1.10.1-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.10.1 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -63,7 +63,7 @@ keep common actions one tap away.
 | **At a glance** | Resizable Today widget that mirrors the app’s background and cards, marks the current class, and can be tuned separately |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.10.0` (`versionCode 33`) · minimum Android version:
+> **Current release:** `1.10.1` (`versionCode 34`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,12 +94,12 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.10.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.0/Lecturial-2-v1.10.0.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.10.1.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.1/Lecturial-2-v1.10.1.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  6c83f8e4e6e48079f970c0cb8cf8b74c5500744cfaa4ae43b9e4bbf76243ad12
+SHA-256  76b02194c410dd502dc7fe79855ba0a0d746b02b11b04895449591d8340f0c14
 Package  com.rassvet.lecturial2
 ```
 
@@ -117,6 +117,20 @@ installed app was signed with a different key. See all builds and release notes 
 > Lecturial 2 is an independent project and is **not** an official Sirius University
 > application. Schedule availability depends on the university website and its current
 > Livewire contract.
+
+### Required updates
+
+A release can make older versions update before they can be used again. Add a hidden
+line to the release notes on GitHub:
+
+```html
+<!-- lecturial-min-version: 1.11.0 -->
+```
+
+Installed versions older than that show only an update screen with a download button,
+on the next start (the app checks about every four hours) or from the update
+notification. Keep the line in later releases while the requirement matters: the app
+reads the latest release only. Without the line, updates stay optional.
 
 ## `05. Build and verify`
 

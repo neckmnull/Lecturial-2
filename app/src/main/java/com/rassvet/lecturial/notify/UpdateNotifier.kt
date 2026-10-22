@@ -35,6 +35,8 @@ object UpdateNotifier {
     private const val KEY_LAST_CHECK = "last_check"
     private const val KEY_NOTIFIED_VERSION = "notified_version"
     private const val MIN_INTERVAL = 12 * 60 * 60 * 1000L
+    /** On app start a little more often, so a required update takes effect within hours. */
+    const val START_INTERVAL = 4 * 60 * 60 * 1000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -50,26 +52,37 @@ object UpdateNotifier {
         )
     }
 
-    fun check(context: Context, force: Boolean = false, onComplete: (() -> Unit)? = null) {
+    fun check(
+        context: Context,
+        force: Boolean = false,
+        minInterval: Long = MIN_INTERVAL,
+        onComplete: (() -> Unit)? = null,
+    ) {
         val app = context.applicationContext as? LecturialApplication ?: run {
             onComplete?.invoke()
             return
         }
         scope.launch {
             try {
-                mutex.withLock { runCatching { checkNow(app, force) } }
+                mutex.withLock { runCatching { checkNow(app, force, minInterval) } }
             } finally {
                 onComplete?.invoke()
             }
         }
     }
 
-    private suspend fun checkNow(app: LecturialApplication, force: Boolean) {
+    private suspend fun checkNow(app: LecturialApplication, force: Boolean, minInterval: Long) {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        if (!force && now - prefs.getLong(KEY_LAST_CHECK, 0L) < MIN_INTERVAL) return
+        if (!force && now - prefs.getLong(KEY_LAST_CHECK, 0L) < minInterval) return
         val result = app.updateChecker.check(BuildConfig.VERSION_NAME)
         prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
+        // Remember a required update, so the app stays blocked even without internet.
+        when (result) {
+            is AppUpdateState.Available -> if (result.required) app.preferences.setRequiredUpdateVersion(result.version)
+            is AppUpdateState.UpToDate -> app.preferences.setRequiredUpdateVersion(null)
+            else -> Unit
+        }
         val update = result as? AppUpdateState.Available ?: return
         if (prefs.getString(KEY_NOTIFIED_VERSION, null) == update.version) return
         if (notify(app, update)) prefs.edit().putString(KEY_NOTIFIED_VERSION, update.version).apply()
@@ -89,8 +102,11 @@ object UpdateNotifier {
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_lecturial)
-            .setContentTitle("Доступно обновление ${update.version}")
-            .setContentText("Нажмите, чтобы посмотреть, что нового, и установить")
+            .setContentTitle(if (update.required) "Обязательное обновление ${update.version}" else "Доступно обновление ${update.version}")
+            .setContentText(
+                if (update.required) "Без него приложение не откроется. Нажмите, чтобы установить"
+                else "Нажмите, чтобы посмотреть, что нового, и установить",
+            )
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)

@@ -148,6 +148,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import android.content.Intent
 import android.app.AlarmManager
 import android.net.Uri
@@ -358,6 +359,17 @@ fun LecturialApp(
         modifier = Modifier.fillMaxSize(),
         options = state.appDisplayOptions,
     ) {
+        // A required update closes the app off until it is installed; Back still leaves the app.
+        state.requiredUpdateVersion?.let { version ->
+            RequiredUpdateScreen(
+                version = version,
+                updateState = state.appUpdateState,
+                onCheck = onCheckForUpdates,
+                onDownload = onDownloadUpdate,
+                onInstall = onInstallUpdate,
+            )
+            return@MaterialYouBackground
+        }
         AnimatedContent(
             modifier = Modifier.fillMaxSize().clipToBounds(),
             targetState = stage,
@@ -2561,6 +2573,56 @@ private fun AboutScreen(
         }
         SettingsNavigationRow("Политика конфиденциальности", "Данные и их хранение", onOpenPrivacy)
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+/**
+ * Shown instead of the app while the installed version is older than the releases allow.
+ * Only updating gets past it; the download and install work like in Settings → About.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun RequiredUpdateScreen(
+    version: String,
+    updateState: AppUpdateState,
+    onCheck: () -> Unit,
+    onDownload: () -> Unit,
+    onInstall: (AppUpdateState.ReadyToInstall) -> Unit,
+) {
+    val uriHandler = LocalUriHandler.current
+    // Fetch the release straight away, so the download button is there without a tap.
+    LaunchedEffect(updateState) {
+        if (updateState == AppUpdateState.Idle) onCheck()
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(
+            Icons.Rounded.Warning,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(48.dp),
+        )
+        Text("Нужно обновить приложение", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Версия $version обязательна: без неё Lecturial 2 может работать неправильно, поэтому " +
+                "эта версия больше не открывается. Обновление займёт минуту, настройки и планы сохранятся.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        UpdateStatus(
+            state = updateState,
+            onCheck = onCheck,
+            onDownload = onDownload,
+            onInstall = onInstall,
+            onOpenRelease = { uriHandler.openUri(it) },
+        )
     }
 }
 

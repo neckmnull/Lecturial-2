@@ -64,6 +64,7 @@ class UserPreferences(private val context: Context) {
     private val lessonAlertsPausedUntilKey = longPreferencesKey("lesson_alerts_paused_until")
     private val scheduleWeeksBackKey = intPreferencesKey("schedule_weeks_back")
     private val scheduleWeeksForwardKey = intPreferencesKey("schedule_weeks_forward")
+    private val requiredUpdateKey = stringPreferencesKey("required_update_version")
 
     private val safePreferences = context.dataStore.data
         .catch { failure ->
@@ -118,6 +119,17 @@ class UserPreferences(private val context: Context) {
 
     val scheduleWeeksForward: Flow<Int> = safePreferences.map { preferences ->
         (preferences[scheduleWeeksForwardKey] ?: DEFAULT_SCHEDULE_WEEKS_FORWARD).coerceIn(SCHEDULE_WEEKS_RANGE)
+    }
+
+    /** A newer version the latest release requires; kept so the block also holds offline. */
+    val requiredUpdateVersion: Flow<String?> = safePreferences.map { preferences ->
+        preferences[requiredUpdateKey]?.takeIf { it.isNotBlank() }
+    }
+
+    suspend fun setRequiredUpdateVersion(version: String?) {
+        context.dataStore.edit { preferences ->
+            if (version == null) preferences.remove(requiredUpdateKey) else preferences[requiredUpdateKey] = version
+        }
     }
 
     fun languageTeacher(group: String): Flow<String?> = safePreferences.map {

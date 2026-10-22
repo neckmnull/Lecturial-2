@@ -56,11 +56,13 @@ class GitHubUpdateChecker(
         if (compareVersions(latestVersion, currentVersion) > 0) {
             val apk = findApkAsset(release.optJSONArray("assets") ?: JSONArray())
                 ?: throw IOException("В релизе $tag не найден APK-файл")
+            val minVersion = requiredMinVersion(release.optString("body"))
             AppUpdateState.Available(
                 version = latestVersion,
                 releaseUrl = releaseUrl,
                 apkUrl = apk.second,
                 apkName = apk.first,
+                required = minVersion != null && compareVersions(currentVersion, minVersion) < 0,
             )
         } else {
             AppUpdateState.UpToDate(latestVersion)
@@ -180,6 +182,13 @@ class GitHubUpdateChecker(
 private fun File.hasZipHeader(): Boolean = inputStream().use { input ->
     input.read() == 'P'.code && input.read() == 'K'.code && input.read() == 3 && input.read() == 4
 }
+
+/**
+ * The oldest version still allowed to run, if the release notes set one with a hidden line
+ * `<!-- lecturial-min-version: 1.11.0 -->`. Anything older must update before it can be used.
+ */
+internal fun requiredMinVersion(releaseNotes: String): String? =
+    Regex("""lecturial-min-version:\s*v?(\d+(?:\.\d+)*)""").find(releaseNotes)?.groupValues?.get(1)
 
 internal fun compareVersions(first: String, second: String): Int {
     val firstParts = versionParts(first)

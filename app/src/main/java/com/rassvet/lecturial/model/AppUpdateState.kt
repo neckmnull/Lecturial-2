@@ -9,6 +9,8 @@ sealed interface AppUpdateState {
         val releaseUrl: String,
         val apkUrl: String,
         val apkName: String,
+        /** The release marks the installed version as too old: the app can't be used until it updates. */
+        val required: Boolean = false,
     ) : AppUpdateState
     data class Downloading(
         val update: Available,
