@@ -32,9 +32,14 @@ import com.rassvet.lecturial.model.occupancyStats
 import com.rassvet.lecturial.model.recommendMeetingSlots
 import com.rassvet.lecturial.model.roomLoads
 import com.rassvet.lecturial.model.slotAvailability
+import com.rassvet.lecturial.model.SiriusPairSlots
+import com.rassvet.lecturial.model.freeRooms
+import com.rassvet.lecturial.model.studyDays
+import com.rassvet.lecturial.model.upcomingPair
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -112,6 +117,23 @@ data class RoomsResult(
     val notRooms: Int,
 )
 
+/** A room free in the chosen pair, under its tidy name. */
+data class FreeRoomStat(
+    val info: RoomInfo,
+    /** When its next lesson that day starts; null when it stays free till the evening. */
+    val freeUntil: LocalTime?,
+    /** Whether the room has any lesson that week: rooms without one may not be in use. */
+    val usedThisWeek: Boolean,
+)
+
+data class FreeRoomsResult(
+    val date: LocalDate,
+    val slot: PairSlot,
+    val rooms: List<FreeRoomStat>,
+    /** Rooms whose schedule couldn't be loaded, so whether they are free is unknown. */
+    val unchecked: Int,
+)
+
 data class AnalyticsProgress(val text: String, val done: Int, val total: Int) {
     val fraction: Float get() = if (total <= 0) 0f else done.toFloat() / total
 }
@@ -144,6 +166,11 @@ data class AnalyticsUiState(
     val detail: LoadRow? = null,
     val roomPeriod: AnalyticsPeriod = AnalyticsPeriod.Week,
     val roomsResult: RoomsResult? = null,
+    /** Study days to pick for the free-room lookup, today first. */
+    val freeRoomDays: List<LocalDate> = emptyList(),
+    val freeRoomDate: LocalDate = LocalDate.now(),
+    val freeRoomPair: Int = 1,
+    val freeRoomsResult: FreeRoomsResult? = null,
     val progress: AnalyticsProgress? = null,
     val error: String? = null,
 ) {
@@ -174,10 +201,20 @@ class AnalyticsViewModel(
     private val today: () -> LocalDate = LocalDate::now,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(AnalyticsUiState())
+    private val _state = MutableStateFlow(
+        upcomingPair(now()).let { (date, slot) ->
+            AnalyticsUiState(
+                freeRoomDays = studyDays(today()..today().plusDays(7)).take(FREE_ROOM_DAYS),
+                freeRoomDate = date,
+                freeRoomPair = slot.number,
+            )
+        },
+    )
     val state: StateFlow<AnalyticsUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
     private var workJob: Job? = null
+    /** Room schedules of the last week looked up, so other pairs that week show at once. */
+    private var roomWeek: Pair<ClosedRange<LocalDate>, RoomSchedules>? = null
 
     init {
         viewModelScope.launch {
@@ -326,6 +363,44 @@ class AnalyticsViewModel(
 
     fun setRoomPeriod(period: AnalyticsPeriod) = _state.update { it.copy(roomPeriod = period, roomsResult = null) }
 
+    fun setFreeRoomDate(date: LocalDate) {
+        _state.update { it.copy(freeRoomDate = date) }
+        showFreeRoomsFromLoadedWeek()
+    }
+
+    fun setFreeRoomPair(pair: Int) {
+        _state.update { it.copy(freeRoomPair = pair) }
+        showFreeRoomsFromLoadedWeek()
+    }
+
+    /** Requirement 4: rooms with nothing on in the chosen pair, and until when each is free. */
+    fun findFreeRooms() {
+        val date = _state.value.freeRoomDate
+        val week = date.with(DayOfWeek.MONDAY).let { it..it.plusDays(6) }
+        runWork { report ->
+            val loaded = loadRoomSchedules(week, report)
+            roomWeek = week to loaded
+            showFreeRoomsFromLoadedWeek()
+        }
+    }
+
+    /** Answers from the week already loaded, or clears the answer when the day is in another week. */
+    private fun showFreeRoomsFromLoadedWeek() {
+        val state = _state.value
+        val (week, loaded) = roomWeek?.takeIf { state.freeRoomDate in it.first }
+            ?: return _state.update { it.copy(freeRoomsResult = null) }
+        val slot = SiriusPairSlots.first { it.number == state.freeRoomPair }
+        val checked = loaded.schedules.filterKeys { it !in loaded.failed }
+        val rooms = freeRooms(checked, state.freeRoomDate, slot).map { free ->
+            FreeRoomStat(
+                info = loaded.rooms.getValue(free.room),
+                freeUntil = free.freeUntil,
+                usedThisWeek = checked[free.room].orEmpty().any { it.date in week },
+            )
+        }
+        _state.update { it.copy(freeRoomsResult = FreeRoomsResult(state.freeRoomDate, slot, rooms, loaded.failed.size)) }
+    }
+
     /** Opens a recommended slot: the day's schedules and, once found, a free room. */
     fun toggleSlot(slot: SlotAvailability) {
         val key = slot.key
@@ -472,48 +547,58 @@ class AnalyticsViewModel(
     fun computeRooms() {
         val range = _state.value.roomPeriod.range(today())
         runWork { report ->
-            report(AnalyticsProgress("Ищем аудитории", 0, 0))
-            val listed = repository.allClassrooms { found ->
-                report(AnalyticsProgress("Найдено аудиторий: $found", 0, 0))
-            }
-            // One spelling per room; the site's links and "Дистанционно" aren't rooms.
-            val infos = listed.associateWith(::normalizeRoom)
-            val rooms = listed.filter { infos.getValue(it).kind != RoomKind.Online }
-            // Spellings of one room ("К_10" and "К_10, ауд. 1.25") are counted as that room.
-            val merged = mergedRooms(infos.values)
-            val weeks = com.rassvet.lecturial.model.weekStartsOf(range).size
-            val total = rooms.size * weeks
-            val done = AtomicInteger(0)
-            val schedules = mutableMapOf<String, List<ScheduleEvent>>()
-            val lock = Mutex()
-            // Two sessions in parallel: noticeably faster without hammering the site.
-            val queues = rooms.withIndex().groupBy({ it.index % WORKERS }, { it.value })
-            coroutineScope {
-                queues.values.map { batch ->
-                    async {
-                        val remote = repository.newRemote()
-                        batch.forEach { room ->
-                            val lessons = runCatching {
-                                repository.lessons(
-                                    ScheduleTarget.classroomKey(room), range.start, range.endInclusive, today(), remote,
-                                ) {
-                                    report(AnalyticsProgress("Загружаем аудитории", done.incrementAndGet(), total))
-                                }
-                            }.getOrElse { failure ->
-                                if (failure is CancellationException) throw failure
-                                emptyList()
-                            }
-                            // A room the site lists twice (both campuses) is merged into one.
-                            val key = merged.getValue(infos.getValue(room).key).key
-                            lock.withLock { schedules[key] = schedules[key].orEmpty() + lessons }
-                        }
-                    }
-                }.awaitAll()
-            }
-            val byKey = merged.values.associateBy { it.key }
-            val stats = roomLoads(schedules, range).map { load -> RoomStat(byKey.getValue(load.room), load) }
-            _state.update { it.copy(roomsResult = RoomsResult(range, stats, notRooms = listed.size - rooms.size)) }
+            val loaded = loadRoomSchedules(range, report)
+            val stats = roomLoads(loaded.schedules, range).map { load -> RoomStat(loaded.rooms.getValue(load.room), load) }
+            _state.update { it.copy(roomsResult = RoomsResult(range, stats, notRooms = loaded.notRooms)) }
         }
+    }
+
+    /** Lessons of every room the site lists over [range], one entry per room. */
+    private suspend fun loadRoomSchedules(
+        range: ClosedRange<LocalDate>,
+        report: (AnalyticsProgress) -> Unit,
+    ): RoomSchedules {
+        report(AnalyticsProgress("Ищем аудитории", 0, 0))
+        val listed = repository.allClassrooms { found ->
+            report(AnalyticsProgress("Найдено аудиторий: $found", 0, 0))
+        }
+        // One spelling per room; the site's links and "Дистанционно" aren't rooms.
+        val infos = listed.associateWith(::normalizeRoom)
+        val rooms = listed.filter { infos.getValue(it).kind != RoomKind.Online }
+        // Spellings of one room ("К_10" and "К_10, ауд. 1.25") are counted as that room.
+        val merged = mergedRooms(infos.values)
+        val weeks = com.rassvet.lecturial.model.weekStartsOf(range).size
+        val total = rooms.size * weeks
+        val done = AtomicInteger(0)
+        val schedules = mutableMapOf<String, List<ScheduleEvent>>()
+        val failed = mutableSetOf<String>()
+        val lock = Mutex()
+        // Two sessions in parallel: noticeably faster without hammering the site.
+        val queues = rooms.withIndex().groupBy({ it.index % WORKERS }, { it.value })
+        coroutineScope {
+            queues.values.map { batch ->
+                async {
+                    val remote = repository.newRemote()
+                    batch.forEach { room ->
+                        // A room the site lists twice (both campuses) is merged into one.
+                        val key = merged.getValue(infos.getValue(room).key).key
+                        val lessons = runCatching {
+                            repository.lessons(
+                                ScheduleTarget.classroomKey(room), range.start, range.endInclusive, today(), remote,
+                            ) {
+                                report(AnalyticsProgress("Загружаем аудитории", done.incrementAndGet(), total))
+                            }
+                        }.getOrElse { failure ->
+                            if (failure is CancellationException) throw failure
+                            lock.withLock { failed += key }
+                            emptyList()
+                        }
+                        lock.withLock { schedules[key] = schedules[key].orEmpty() + lessons }
+                    }
+                }
+            }.awaitAll()
+        }
+        return RoomSchedules(merged.values.associateBy { it.key }, schedules, failed, notRooms = listed.size - rooms.size)
     }
 
     private fun freeTimeRange(range: FreeTimeRange): ClosedRange<LocalDate> {
@@ -550,8 +635,17 @@ class AnalyticsViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T = AnalyticsViewModel(repository, preferences) as T
     }
 
+    /** Lessons by room key, with each room's tidy name and the rooms that failed to load. */
+    private class RoomSchedules(
+        val rooms: Map<String, RoomInfo>,
+        val schedules: Map<String, List<ScheduleEvent>>,
+        val failed: Set<String>,
+        val notRooms: Int,
+    )
+
     private companion object {
         const val WORKERS = 2
         const val ROOM_CANDIDATES = 6
+        const val FREE_ROOM_DAYS = 6
     }
 }

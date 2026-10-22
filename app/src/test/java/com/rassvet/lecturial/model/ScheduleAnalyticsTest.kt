@@ -141,4 +141,40 @@ class ScheduleAnalyticsTest {
         assertEquals("1.35К_0 (стартап-лаборатория ИНТЦ)", ScheduleTarget.classroomLabel("1.35К_0 (стартап-лаборатория ИНТЦ) (Основной)"))
         assertEquals("Альфа 5.8", ScheduleTarget.label(ScheduleTarget.classroomKey("Альфа 5.8Альфа 5.8 (Основной)"), null))
     }
+
+    @Test
+    fun `free rooms in a pair and until when they stay free`() {
+        val third = SiriusPairSlots[2] // 11:55–13:15
+        val schedules = mapOf(
+            "Альфа 4.1" to listOf(lesson(monday, "11:55", "13:15")),
+            // Ends right as the pair starts, then has a lesson at 15:05.
+            "Альфа 4.2" to listOf(lesson(monday, "10:20", "11:55"), lesson(monday, "15:05", "16:25")),
+            // Busy only on another day.
+            "К_9" to listOf(lesson(monday.plusDays(1), "11:55", "13:15")),
+            // Overlaps the pair partly.
+            "Бета 2.3" to listOf(lesson(monday, "13:00", "14:00")),
+        )
+
+        val free = freeRooms(schedules, monday, third).associate { it.room to it.freeUntil }
+
+        assertEquals(setOf("Альфа 4.2", "К_9"), free.keys)
+        assertEquals(java.time.LocalTime.of(15, 5), free["Альфа 4.2"])
+        assertEquals(null, free["К_9"])
+    }
+
+    @Test
+    fun `the pair looked up first is the current or next one`() {
+        fun at(date: LocalDate, hour: Int, minute: Int) = upcomingPair(LocalDateTime.of(date, java.time.LocalTime.of(hour, minute)))
+
+        // During the third pair: still the third pair today.
+        assertEquals(monday to 3, at(monday, 12, 30).let { it.first to it.second.number })
+        // Between pairs: the next one.
+        assertEquals(monday to 4, at(monday, 13, 20).let { it.first to it.second.number })
+        // After the last pair: the first pair tomorrow.
+        assertEquals(monday.plusDays(1) to 1, at(monday, 20, 0).let { it.first to it.second.number })
+        // Saturday evening and Sunday: Monday morning.
+        val saturday = monday.with(DayOfWeek.SATURDAY)
+        assertEquals(monday.plusWeeks(1) to 1, at(saturday, 21, 0).let { it.first to it.second.number })
+        assertEquals(monday.plusWeeks(1) to 1, at(saturday.plusDays(1), 10, 0).let { it.first to it.second.number })
+    }
 }

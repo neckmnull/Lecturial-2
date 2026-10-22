@@ -36,7 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -108,6 +113,37 @@ internal fun SettingsGroup(
             )
         }
         scope.items.forEachIndexed { index, item -> item(settingsGroupShape(index, scope.items.size)) }
+    }
+}
+
+/**
+ * One block of a settings page on its own tonal surface. Material 3 Expressive groups
+ * controls on containers rather than laying them on the background between dividers, and
+ * on line and colour wallpapers the text stays readable.
+ */
+@Composable
+internal fun SettingsSection(
+    title: String?,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (title != null || description != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    title?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+                    description?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            content()
+        }
     }
 }
 
@@ -216,7 +252,8 @@ internal val StatisticsIconOutlined: ImageVector by lazy { statisticsIcon("Stati
 
 /**
  * A settings sub-screen: a Material 3 top app bar with the back arrow, whose large title
- * collapses into the bar as the content scrolls. Transparent, so the app background shows.
+ * collapses into the bar as the content scrolls. The bar stays transparent so the app
+ * background runs on up to the status bar; scrolled content fades out under it instead.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -229,6 +266,7 @@ internal fun SettingsPage(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = rememberScrollState()
     Scaffold(
         modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = Color.Transparent,
@@ -244,9 +282,11 @@ internal fun SettingsPage(
                 },
                 scrollBehavior = scrollBehavior,
                 windowInsets = WindowInsets(0),
+                // A filled bar on scroll began only below the status bar, a solid band
+                // with the wallpaper above it and the content cut off sharply beneath.
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    scrolledContainerColor = Color.Transparent,
                 ),
             )
         },
@@ -255,7 +295,8 @@ internal fun SettingsPage(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .fadingTopEdge { scroll.value.toFloat() }
+                    .verticalScroll(scroll)
                     .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(spacing),
                 content = content,
@@ -264,3 +305,23 @@ internal fun SettingsPage(
         }
     }
 }
+
+/**
+ * Fades the content out towards the top edge, by up to [ScrollFade] once [scrolled] pixels
+ * have gone under it; at the top of the page nothing fades. Read during drawing, so
+ * scrolling redraws only this layer.
+ */
+private fun Modifier.fadingTopEdge(scrolled: () -> Float): Modifier =
+    graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+        .drawWithContent {
+            drawContent()
+            val fade = scrolled().coerceAtMost(ScrollFade.toPx())
+            if (fade > 0f) {
+                drawRect(
+                    brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
+
+private val ScrollFade = 28.dp

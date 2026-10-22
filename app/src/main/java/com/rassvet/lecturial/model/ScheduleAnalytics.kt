@@ -2,6 +2,7 @@ package com.rassvet.lecturial.model
 
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
@@ -203,6 +204,34 @@ fun intradayRoomLoad(loads: List<RoomLoad>, slots: List<PairSlot> = SiriusPairSl
         val busy = loads.sumOf { it.bySlot.getOrElse(index) { 0 } }
         slot to if (daysPerSlot == 0) 0.0 else busy.toDouble() / (daysPerSlot * loads.size)
     }
+}
+
+/** A room with nothing on in a pair; [freeUntil] is when its next lesson that day starts. */
+data class FreeRoom(val room: String, val freeUntil: LocalTime?)
+
+/** Rooms with no lesson overlapping [slot] on [date], and until when each stays free. */
+fun freeRooms(schedules: Map<String, List<ScheduleEvent>>, date: LocalDate, slot: PairSlot): List<FreeRoom> =
+    schedules.mapNotNull { (room, events) ->
+        if (isBusy(events, date, slot)) return@mapNotNull null
+        val next = events.asSequence()
+            .filter { it.date == date }
+            .mapNotNull { it.timeRange()?.first }
+            .filter { it >= slot.end }
+            .minOrNull()
+        FreeRoom(room, next)
+    }
+
+/**
+ * The pair to look up first: the current or next one today, or else the first pair of the
+ * next study day.
+ */
+fun upcomingPair(now: LocalDateTime, slots: List<PairSlot> = SiriusPairSlots): Pair<LocalDate, PairSlot> {
+    val today = now.toLocalDate()
+    if (today.dayOfWeek != DayOfWeek.SUNDAY) {
+        slots.firstOrNull { it.end > now.toLocalTime() }?.let { return today to it }
+    }
+    val next = today.plusDays(1).let { if (it.dayOfWeek == DayOfWeek.SUNDAY) it.plusDays(1) else it }
+    return next to slots.first()
 }
 
 /** Specialist-degree ("специалитет") groups are the ИОП-ИТ ones, e.g. "ИОП-ИТ-26/1". */
