@@ -45,6 +45,6 @@ class LecturialApplication : Application() {
         LessonAlerts.sync(this)
         DeadlineAlerts.sync(this)
         UpdateNotifier.schedule(this)
-        UpdateNotifier.check(this)
+        UpdateNotifier.check(this, minInterval = UpdateNotifier.START_INTERVAL)
     }
 }

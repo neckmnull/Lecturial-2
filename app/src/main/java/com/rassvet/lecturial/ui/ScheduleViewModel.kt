@@ -7,6 +7,7 @@ import com.rassvet.lecturial.data.ScheduleRepository
 import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.UserPreferences
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
+import com.rassvet.lecturial.data.network.compareVersions
 import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
@@ -104,6 +105,8 @@ data class ScheduleUiState(
     val deadlineReminderDays: Set<Int> = DeadlineReminder.default,
     val lessonAlertsPausedUntil: Long? = null,
     val appUpdateState: AppUpdateState = AppUpdateState.Idle,
+    /** A newer version the releases require; while set, the app shows only the update screen. */
+    val requiredUpdateVersion: String? = null,
     val now: LocalDateTime = LocalDateTime.now(),
 )
 
@@ -115,6 +118,7 @@ class ScheduleViewModel(
     private val updatesDirectory: File,
     private val today: () -> LocalDate = LocalDate::now,
     private val now: () -> LocalDateTime = LocalDateTime::now,
+    private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ScheduleUiState())
     val state: StateFlow<ScheduleUiState> = _state.asStateFlow()
@@ -125,6 +129,12 @@ class ScheduleViewModel(
     private var entryRefreshPending = false
 
     init {
+        viewModelScope.launch {
+            preferences.requiredUpdateVersion.collectLatest { version ->
+                val required = version?.takeIf { compareVersions(it, BuildConfig.VERSION_NAME) > 0 }
+                _state.update { it.copy(requiredUpdateVersion = required) }
+            }
+        }
         viewModelScope.launch {
             studyPlanRepository.plans.collectLatest { plans ->
                 _state.update { it.copy(studyPlans = plans) }
@@ -293,6 +303,11 @@ class ScheduleViewModel(
             try {
                 val result = updateChecker.check(BuildConfig.VERSION_NAME)
                 _state.update { it.copy(appUpdateState = result) }
+                when (result) {
+                    is AppUpdateState.Available -> if (result.required) preferences.setRequiredUpdateVersion(result.version)
+                    is AppUpdateState.UpToDate -> preferences.setRequiredUpdateVersion(null)
+                    else -> Unit
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
@@ -473,8 +488,9 @@ class ScheduleViewModel(
     fun refresh() = loadCurrentWeek(isManualRefresh = true)
 
     /**
-     * Called every time the app comes to the foreground: refreshes the schedule with a
-     * visible indicator and jumps to the new day if the app was left open overnight.
+     * Called every time the app comes to the foreground: jumps to the new day if the app was
+     * left open overnight and refreshes weeks fetched more than four hours ago, with a
+     * visible indicator. Fresher weeks come from the phone without asking the site.
      */
     fun refreshOnEntry() {
         val current = _state.value
@@ -810,6 +826,20 @@ class ScheduleViewModel(
                     )
                 }
             }
+            // Automatic loads ask the site at most every four hours per week; a pull-to-refresh always does.
+            val fetch = weeksToFetch(starts, cached.associate { it.week.weekStart to it.updatedAtMillis }, nowMillis(), isManualRefresh)
+            if (fetch.isEmpty()) {
+                _state.update {
+                    if (!it.matchesRequest()) it else it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        isManualRefreshing = false,
+                        errorMessage = null,
+                        showingCachedData = false,
+                    )
+                }
+                return@launch
+            }
             _state.update {
                 if (!it.matchesRequest()) it else it.copy(
                     isLoading = cached.isEmpty() && !isManualRefresh,
@@ -819,7 +849,7 @@ class ScheduleViewModel(
                 )
             }
             val firstFailure = try {
-                repository.refreshWeeks(group, starts) { fresh ->
+                repository.refreshWeeks(group, fetch) { fresh ->
                     val start = fresh.week.weekStart
                     _state.update {
                         if (!it.matchesRequest()) it else {
@@ -871,6 +901,26 @@ class ScheduleViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker, updatesDirectory) as T
     }
+}
+
+/** How long a fetched week counts as current: automatic loads don't ask the site sooner. */
+internal const val AUTO_REFRESH_MILLIS = 4 * 60 * 60 * 1000L
+
+/**
+ * The weeks to fetch from the site. A pull-to-refresh fetches all of them; otherwise only
+ * weeks never fetched or fetched [AUTO_REFRESH_MILLIS] ago or earlier — as one consecutive
+ * span, so a single site session covers them. [fetchedAt] maps a week to when it was fetched.
+ */
+internal fun weeksToFetch(
+    starts: List<LocalDate>,
+    fetchedAt: Map<LocalDate, Long>,
+    nowMillis: Long,
+    manual: Boolean,
+): List<LocalDate> {
+    if (manual) return starts
+    val stale = starts.filter { start -> fetchedAt[start]?.let { nowMillis - it >= AUTO_REFRESH_MILLIS } ?: true }
+    if (stale.isEmpty()) return emptyList()
+    return starts.filter { it in stale.first()..stale.last() }
 }
 
 internal fun scheduleWeekStarts(

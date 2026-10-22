@@ -53,6 +53,23 @@ class GitHubUpdateCheckerTest {
     }
 
     @Test
+    fun `release notes can make older versions update`() = runBlocking {
+        server.enqueue(release("v1.11.0", notes = "Что нового\n<!-- lecturial-min-version: 1.11.0 -->"))
+        assertTrue((checker().check("1.10.1") as AppUpdateState.Available).required)
+
+        // A version that is old but still allowed gets an ordinary update.
+        server.enqueue(release("v1.12.0", notes = "<!-- lecturial-min-version: v1.10.0 -->"))
+        assertEquals(false, (checker().check("1.10.1") as AppUpdateState.Available).required)
+    }
+
+    @Test
+    fun `the hidden version line is found in the notes`() {
+        assertEquals("1.11.0", requiredMinVersion("text <!-- lecturial-min-version: 1.11.0 --> more"))
+        assertEquals("2.0", requiredMinVersion("<!--lecturial-min-version:v2.0-->"))
+        assertEquals(null, requiredMinVersion("Обычный релиз"))
+    }
+
+    @Test
     fun `compares numeric version segments`() {
         assertTrue(compareVersions("1.10.0", "1.9.9") > 0)
         assertTrue(compareVersions("2.0", "1.99.99") > 0)
@@ -162,10 +179,11 @@ class GitHubUpdateCheckerTest {
         server.url("downloads/").toString(),
     )
 
-    private fun release(version: String) = MockResponse().setBody(
+    private fun release(version: String, notes: String = "") = MockResponse().setBody(
         """
         {
           "tag_name": "$version",
+          "body": ${org.json.JSONObject.quote(notes)},
           "html_url": "https://github.com/neckmnull/Lecturial-2/releases/tag/$version",
           "draft": false,
           "prerelease": false,
