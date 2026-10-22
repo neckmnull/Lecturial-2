@@ -222,6 +222,7 @@ import com.rassvet.lecturial.model.parseThemeColor
 import com.rassvet.lecturial.model.themeColorHex
 import com.rassvet.lecturial.ui.theme.LecturialTheme
 import java.text.DateFormat
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -271,6 +272,12 @@ private val WallpaperGradientColors = listOf(
     0xFF0F766E, 0xFF166534, 0xFF9F1239, 0xFF581C87,
 )
 
+/** A lesson to open the schedule on, e.g. one tapped in the widget; [key] tells requests apart. */
+data class OpenLessonRequest(val key: Long, val date: LocalDate, val eventId: String) {
+    /** The schedule row of this lesson. */
+    val rowKey: String get() = "lesson-$date-$eventId"
+}
+
 private enum class SettingsSection { LanguageTeacher, Appearance, Widget, Names, Testing, About, Privacy }
 private enum class MainSection { Schedule, Plans, Statistics, Settings }
 private enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
@@ -288,6 +295,8 @@ fun LecturialApp(
     openPlanRequestKey: Long = 0L,
     openUpdatesKey: Long = 0L,
     onOpenPlanConsumed: (Long) -> Unit = {},
+    openLesson: OpenLessonRequest? = null,
+    onOpenLessonConsumed: (Long) -> Unit = {},
     onGroupSelected: (String) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onMoveWeek: (Long) -> Unit,
@@ -448,6 +457,8 @@ fun LecturialApp(
                         onTeacherSelected = onTeacherSelected,
                         onSearchModeChanged = onSearchModeChanged,
                         openUpdatesKey = openUpdatesKey,
+                        openLesson = openLesson,
+                        onOpenLessonConsumed = onOpenLessonConsumed,
                     )
                 }
             }
@@ -769,9 +780,28 @@ private fun ScheduleScreen(
     onTeacherSelected: (TeacherInfo) -> Unit = {},
     onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
     openUpdatesKey: Long = 0L,
+    openLesson: OpenLessonRequest? = null,
+    onOpenLessonConsumed: (Long) -> Unit = {},
 ) {
     var mainSection by remember { mutableStateOf(MainSection.Schedule) }
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
+    // The lesson the list scrolls to and briefly lights up.
+    var focusedLesson by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(openLesson?.key) {
+        val request = openLesson ?: return@LaunchedEffect
+        settingsSection = null
+        mainSection = MainSection.Schedule
+        if (request.date.with(DayOfWeek.MONDAY) == state.weekStart) onDateSelected(request.date) else onToday()
+        focusedLesson = request.rowKey
+        onOpenLessonConsumed(request.key)
+    }
+    // Its own effect: consuming the request above restarts that one, which would cancel
+    // the wait. The highlight fades after a few seconds, or if the lesson never shows up.
+    LaunchedEffect(focusedLesson) {
+        if (focusedLesson == null) return@LaunchedEffect
+        delay(FOCUS_TIMEOUT_MILLIS)
+        focusedLesson = null
+    }
     val screenEffectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val predictiveBackProgress = remember { Animatable(0f) }
     LaunchedEffect(openPlanId, openPlanRequestKey) {
@@ -1009,6 +1039,7 @@ private fun ScheduleScreen(
                         rows = scheduleRows,
                         listState = scheduleListState,
                         scrolledForState = scheduleScrolledFor,
+                        focusedLesson = focusedLesson,
                         onRetry = onRetry,
                         onToday = onToday,
                         onStudyPlanSaved = onStudyPlanSaved,
@@ -2933,6 +2964,7 @@ private val PreviewLessons = listOf(
 )
 
 private const val PREVIEW_HIDE_DELAY_MILLIS = 4_000L
+private const val FOCUS_TIMEOUT_MILLIS = 6_000L
 private val PREVIEW_RESERVED_HEIGHT = 380.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3430,6 +3462,7 @@ private fun ScheduleContent(
     rows: List<ScheduleRow>,
     listState: LazyListState,
     scrolledForState: MutableState<String?>,
+    focusedLesson: String? = null,
     onRetry: () -> Unit,
     onToday: () -> Unit,
     onStudyPlanSaved: (StudyPlan) -> Unit,
@@ -3445,8 +3478,18 @@ private fun ScheduleContent(
             CompositionLocalProvider(LocalOverscrollFactory provides null) {
                 val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.selectedDate}|${state.isLoading}"
                 var scrolledFor by scrolledForState
-                LaunchedEffect(rows, scrollSession) {
+                var scrolledToLesson by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(rows, scrollSession, focusedLesson) {
                     if (state.isLoading) return@LaunchedEffect
+                    // A lesson opened from the widget wins over the usual jump to the day.
+                    val focusIndex = focusedLesson?.let { key -> rows.indexOfFirst { it.key == key } } ?: -1
+                    if (focusIndex >= 0 && scrolledToLesson != focusedLesson) {
+                        // Once per lesson, with one row of context above it.
+                        scrolledToLesson = focusedLesson
+                        listState.animateScrollToItem((focusIndex - 1).coerceAtLeast(0))
+                        scrolledFor = scrollSession
+                        return@LaunchedEffect
+                    }
                     if (scrolledFor == scrollSession) return@LaunchedEffect
                     val index = scheduleInitialRowIndex(
                         rowKeys = rows.map(ScheduleRow::key),
@@ -3500,7 +3543,7 @@ private fun ScheduleContent(
                             is ScheduleRow.WeekBreak -> WeekDivider(row.title, row.range, row.isCurrent)
                             is ScheduleRow.EmptyWeek -> EmptyWeekState()
                             is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
-                            is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions)
+                            is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions, highlighted = row.key == focusedLesson)
                             is ScheduleRow.Plan -> StudyPlanTimelineItem(
                                 plan = row.plan,
                                 options = state.appDisplayOptions,
@@ -3775,7 +3818,13 @@ private fun pairCountText(count: Int): String {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOptions) {
+private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOptions, highlighted: Boolean = false) {
+    // Lights up a lesson opened from the widget, then fades back.
+    val highlight by animateFloatAsState(
+        if (highlighted) 1f else 0f,
+        MaterialTheme.motionScheme.slowEffectsSpec(),
+        label = "lesson-highlight",
+    )
     val container = if (lesson.isLecture) {
         MaterialTheme.colorScheme.secondaryContainer
     } else {
@@ -3807,6 +3856,10 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
             .background(color = tileColor, shape = tileShape)
             .then(
                 if (ongoing) Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), tileShape)
+                else Modifier,
+            )
+            .then(
+                if (highlight > 0f) Modifier.border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = highlight), tileShape)
                 else Modifier,
             )
             .drawBehind {

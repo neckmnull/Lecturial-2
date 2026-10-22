@@ -697,33 +697,18 @@ private fun drawTonalFields(canvas: Canvas, appearance: WidgetAppearance, size: 
     )
 }
 
-private fun renderWidgetTile(
-    context: Context,
-    appearance: WidgetAppearance,
-): Bitmap {
-    val density = context.resources.displayMetrics.density
-    val estimatedHeightDp = 54 + appearance.look.verticalPaddingDp * 2 +
-        (appearance.look.titleMaxLines - 2).coerceAtLeast(0) * appearance.look.titleTextSizeSp
-    val requestedWidth = max(1, (320 * density).roundToInt())
-    val requestedHeight = max(1, (estimatedHeightDp * density).roundToInt())
-    // Collection rows are transferred through Binder one by one. A compact bitmap
-    // keeps rounded translucent tiles without risking launcher transaction limits.
-    val pixelBudget = 20_000f
-    val downscale = min(1f, sqrt(pixelBudget / (requestedWidth.toFloat() * requestedHeight)))
-    val width = max(1, (requestedWidth * downscale).roundToInt())
-    val height = max(1, (requestedHeight * downscale).roundToInt())
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val radius = appearance.options.tileCornerRadiusDp.coerceIn(0, 32) * density * downscale
-    canvas.clipRoundedRect(width, height, radius)
-    canvas.drawColor(
-        withAlpha(
-            appearance.surfaceVariantColor,
-            appearance.options.tileOpacityPercent.coerceIn(0, 100) / 100f,
-        ),
-    )
-    return bitmap
-}
+/**
+ * Lesson tiles are tinted white shapes, one per corner radius, not bitmaps: on recent
+ * Android versions a bitmap inside a widget list row could be swapped for the widget's own
+ * wallpaper bitmap, which showed squeezed inside every row.
+ */
+private val TileShapes = listOf(
+    R.drawable.widget_tile_r0, R.drawable.widget_tile_r4, R.drawable.widget_tile_r8,
+    R.drawable.widget_tile_r12, R.drawable.widget_tile_r16, R.drawable.widget_tile_r20,
+    R.drawable.widget_tile_r24, R.drawable.widget_tile_r28, R.drawable.widget_tile_r32,
+)
+
+private fun tileShape(radiusDp: Int): Int = TileShapes[((radiusDp.coerceIn(0, 32) + 2) / 4).coerceIn(0, TileShapes.lastIndex)]
 
 private fun drawSoftField(
     canvas: Canvas,
@@ -806,7 +791,6 @@ private class ScheduleWidgetFactory(
     private var look: WidgetLook = WidgetLook.fromApp(AppDisplayOptions())
     private var lessonAliases: Map<String, String> = emptyMap()
     private var widgetAppearance: WidgetAppearance? = null
-    private var widgetTile: Bitmap? = null
     /** Minutes since midnight when the rows were built, for the current-lesson mark. */
     private var nowMinutes: Int = 0
 
@@ -820,7 +804,6 @@ private class ScheduleWidgetFactory(
                     .onFailure { error -> Log.e(SERVICE_TAG, "Unable to load widget appearance; using defaults", error) }
                     .getOrElse(::defaultWidgetAppearance)
                 widgetAppearance = appearance
-                widgetTile = renderWidgetTile(context, appearance)
                 look = appearance.look
                 nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
                 lessonAliases = runCatching { app.preferences.lessonAliases.first() }.getOrDefault(emptyMap())
@@ -846,13 +829,11 @@ private class ScheduleWidgetFactory(
             widgetAppearance = runCatching {
                 defaultWidgetAppearance(error)
             }.getOrNull()
-            widgetTile = null
         }.getOrElse { listOf(Item.Error) }
     }
 
     override fun onDestroy() {
         items = emptyList()
-        widgetTile = null
     }
 
     override fun getCount(): Int = items.size
@@ -898,10 +879,19 @@ private class ScheduleWidgetFactory(
             )
             setTextColor(R.id.widget_item_title, if (isFinished) finishedColor else titleColor)
             setTextColor(R.id.widget_item_room, if (isFinished) finishedColor else secondaryTextColor)
-            val imageAlpha = if (isFinished) (FINISHED_ALPHA * 255).roundToInt() else 255
-            setInt(R.id.widget_item_stripe, "setImageAlpha", imageAlpha)
-            setInt(R.id.widget_item_background, "setImageAlpha", imageAlpha)
-            widgetTile?.let { setImageViewBitmap(R.id.widget_item_background, it) }
+            val fade = if (isFinished) FINISHED_ALPHA else 1f
+            setInt(R.id.widget_item_stripe, "setImageAlpha", (fade * 255).roundToInt())
+            if (appearance != null) {
+                // The current lesson's tile takes the accent tint, as in the app.
+                setImageViewResource(R.id.widget_item_background, tileShape(appearance.options.tileCornerRadiusDp))
+                setInt(
+                    R.id.widget_item_background,
+                    "setColorFilter",
+                    if (isCurrent) appearance.primaryChipColor else appearance.surfaceVariantColor,
+                )
+                val opacity = appearance.options.tileOpacityPercent.coerceIn(0, 100) / 100f
+                setInt(R.id.widget_item_background, "setImageAlpha", (opacity * fade * 255).roundToInt())
+            }
             val horizontalPaddingPx = context.dpToPx(look.horizontalPaddingDp)
             val verticalPaddingPx = context.dpToPx(look.verticalPaddingDp)
             val spacingPx = context.dpToPx(look.itemSpacingDp)
@@ -977,9 +967,15 @@ private class ScheduleWidgetFactory(
                 R.id.widget_item_room,
                 if ((plan != null || look.showClassroom) && details.isNotEmpty()) View.VISIBLE else View.GONE,
             )
+            // A plan opens in Plans; a lesson opens the schedule on that very lesson.
             setOnClickFillInIntent(
                 R.id.widget_item_root,
-                if (plan != null) Intent().putExtra(MainActivity.EXTRA_PLAN_ID, plan.id) else Intent(),
+                when {
+                    plan != null -> Intent().putExtra(MainActivity.EXTRA_PLAN_ID, plan.id)
+                    else -> Intent()
+                        .putExtra(MainActivity.EXTRA_LESSON_DATE, event!!.date)
+                        .putExtra(MainActivity.EXTRA_LESSON_ID, event.id)
+                },
             )
         }
 

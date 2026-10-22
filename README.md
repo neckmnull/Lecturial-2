@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.9.1/Lecturial-2-v1.9.1.apk"><img src="https://img.shields.io/badge/Download_APK-v1.9.1-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.9.1 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.0/Lecturial-2-v1.10.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.10.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.10.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -63,7 +63,7 @@ keep common actions one tap away.
 | **At a glance** | Resizable Today widget that mirrors the app’s background and cards, marks the current class, and can be tuned separately |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 
-> **Current release:** `1.9.1` (`versionCode 32`) · minimum Android version:
+> **Current release:** `1.10.0` (`versionCode 33`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -94,7 +94,7 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.9.1.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.9.1/Lecturial-2-v1.9.1.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.10.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.10.0/Lecturial-2-v1.10.0.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
