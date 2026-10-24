@@ -281,10 +281,13 @@ class TodayScheduleWidget : AppWidgetProvider() {
                     data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
                 }
                 setRemoteAdapter(R.id.widget_list, serviceIntent)
+                // Single top: a running app gets the tapped lesson in onNewIntent. With clear top
+                // alone Android finished and restarted it, so the tap seemed to just open the app.
                 val listTemplate = PendingIntent.getActivity(
                     context,
                     appWidgetId,
-                    Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                    Intent(context, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
                 )
                 setPendingIntentTemplate(R.id.widget_list, listTemplate)

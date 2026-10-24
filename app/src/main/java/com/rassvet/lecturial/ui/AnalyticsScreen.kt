@@ -55,10 +55,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.rotate
@@ -68,6 +70,10 @@ import com.rassvet.lecturial.model.intradayRoomLoad
 import com.rassvet.lecturial.model.naturalRoomKey
 import com.rassvet.lecturial.model.RoomInfo
 import com.rassvet.lecturial.model.SiriusPairSlots
+import com.rassvet.lecturial.model.displayEventType
+import com.rassvet.lecturial.model.displayAddress
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
@@ -184,14 +190,15 @@ internal fun AnalyticsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifie
 @Composable
 private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     TabIntro(
-        "Подбор пары, когда свободны все выбранные преподаватели и группы, — например, для встречи, консультации или пересдачи.",
+        "Подбор пары, когда свободны все выбранные преподаватели и группы, — например, для встречи, консультации или пересдачи. «По парам» показывает, что у них идёт в выбранные пары дня.",
         listOf(
-            "Добавьте участников: преподавателей по фамилии или группы по названию. Группы ИТ-специалитета (ИОП-ИТ) вашего курса добавляются сразу; фильтр «ИТ-специалитет» оставляет в поиске только их.",
+            "Добавьте участников: преподавателей по фамилии или группы по названию. Поиск после добавления не закрывается — можно добавить несколько подряд или все найденные сразу. Группы ИТ-специалитета (ИОП-ИТ) вашего курса добавляются сразу; фильтр «ИТ-специалитет» оставляет в поиске только их.",
             "Нажатие на участника в списке временно исключает его из подбора — он остаётся в списке, повторное нажатие возвращает. Крестик убирает участника совсем.",
             "Сравниваются пары с понедельника по субботу: с 1 пары (08:45) по 7 пару (18:15).",
             "Пара занята, если у кого-то из участников в это время есть любое занятие, даже не совпадающее с сеткой пар.",
             "«Лучшие варианты» — сначала пары, когда свободны все: в будни и в середине дня (2–5 пары). Если таких нет — пары с наименьшим числом занятых и их список.",
             "«Все общие окна» — все свободные для всех пары по дням. Прошедшие пары не показываются.",
+            "«По парам» — выберите день и одну или несколько пар: для каждой пары видно, кто занят и кто свободен, а у занятых — предмет, тип занятия, время, аудитория с адресом, преподаватели (у преподавателя — группы), комментарий и ссылка на онлайн-занятие. Другие пары и дни той же недели после загрузки показываются сразу.",
         ),
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -206,7 +213,17 @@ private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) 
         }
     }
     if (state.participants.isNotEmpty()) ToggleHint()
-    ParticipantPicker(state, viewModel, actionLabel = "Добавить", onPick = viewModel::addParticipant)
+    ParticipantPicker(
+        state,
+        viewModel,
+        added = state.participants.mapTo(HashSet()) { it.key },
+        onPick = viewModel::addParticipant,
+    )
+    ConnectedChoice(ParticipantsMode.entries, state.participantsMode, { it.title }, viewModel::setParticipantsMode)
+    if (state.participantsMode == ParticipantsMode.Pairs) {
+        PairsLookup(state, viewModel)
+        return
+    }
     ConnectedChoice(FreeTimeRange.entries, state.freeRange, { it.title }, viewModel::setFreeRange)
     Button(
         onClick = viewModel::findFreeTime,
@@ -216,6 +233,148 @@ private fun FreeTimeTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) 
 
     val result = state.freeResult ?: return
     key(result) { FreeTimeResults(result, state, viewModel) }
+}
+
+/** Pick a day and pairs, then see what each participant has in them. */
+@Composable
+private fun PairsLookup(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
+    DayChips(state.lookupDays, state.pairsDate, viewModel::setPairsDate)
+    PairToggles(state.pairsSelected, viewModel::togglePairsSlot)
+    Caption(
+        SiriusPairSlots.filter { it.number in state.pairsSelected }
+            .joinToString { "${it.number} пара ${it.start.format(timeFormatter)}–${it.end.format(timeFormatter)}" },
+    )
+    val result = state.pairsResult
+    if (result == null) {
+        Button(
+            onClick = viewModel::showPairs,
+            enabled = state.activeParticipants.isNotEmpty() && !state.isBusy,
+            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+        ) { Text("Показать пары") }
+    } else {
+        Text(
+            result.date.format(dayFormatter).replaceFirstChar { it.titlecase(ru) },
+            modifier = Modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        result.pairs.forEach { pair ->
+            SectionTitle(pair.slot.label)
+            Caption(pairSummary(pair))
+            pair.rows.forEachIndexed { index, row -> PairRowTile(row, settingsGroupShape(index, pair.rows.size)) }
+        }
+    }
+}
+
+/** Who is busy in a pair and who is free, in one line. */
+private fun pairSummary(pair: PairLessons): String {
+    val free = pair.rows.filter { it.lessons.isEmpty() }.map { it.participant.label }
+    val busy = pair.rows.size - free.size
+    return when {
+        free.isEmpty() -> "Заняты все: ${pair.rows.size}"
+        busy == 0 -> "Свободны все: ${pair.rows.size}"
+        else -> "Заняты $busy из ${pair.rows.size} · свободны: ${free.joinToString()}"
+    }
+}
+
+/** Pairs 1–7 as a connected group where several can be on at once. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PairToggles(selected: Set<Int>, onToggle: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        SiriusPairSlots.forEachIndexed { index, slot ->
+            ToggleButton(
+                checked = slot.number in selected,
+                onCheckedChange = { onToggle(slot.number) },
+                modifier = Modifier.weight(1f).semantics { contentDescription = "${slot.number} пара" },
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    SiriusPairSlots.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
+            ) { Text("${slot.number}", maxLines = 1) }
+        }
+    }
+}
+
+/** One teacher or group in a pair: everything the schedule says about their lessons then. */
+@Composable
+private fun PairRowTile(row: PairRow, shape: RoundedCornerShape) {
+    val forTeacher = ScheduleTarget.isTeacher(row.participant.key)
+    val free = row.lessons.isEmpty()
+    Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    row.participant.label,
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (free) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = if (free) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                ) {
+                    Text(
+                        if (free) "Свободно" else "Занятие",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+            row.lessons.forEach { lesson -> PairLessonDetails(lesson, forTeacher) }
+        }
+    }
+}
+
+/** A lesson in full: subject, type and time, room and address, people, comment, online link. */
+@Composable
+private fun PairLessonDetails(lesson: ScheduleEvent, forTeacher: Boolean) {
+    val uriHandler = LocalUriHandler.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(lesson.discipline, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Text(
+            listOfNotNull(displayEventType(lesson.type).ifBlank { null }, "${lesson.startTime}–${lesson.endTime}").joinToString(" · "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        val place = listOfNotNull(lesson.classroom?.trim()?.ifBlank { null }, displayAddress(lesson.address)).joinToString(" · ")
+        if (place.isNotEmpty()) DetailLine(Icons.Rounded.Place, place)
+        // A group sees who teaches; a teacher sees which groups.
+        val people = if (forTeacher) lesson.studentGroup?.trim().orEmpty() else lesson.teachers.joinToString()
+        if (people.isNotEmpty()) DetailLine(Icons.Rounded.Person, people)
+        lesson.comment?.trim()?.takeIf { it.isNotEmpty() }?.let { DetailLine(Icons.Rounded.Info, it) }
+        lesson.onlineUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Открыть онлайн-занятие") }
+        }
+    }
+}
+
+@Composable
+private fun DetailLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(icon, contentDescription = null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Study days to choose from: today, tomorrow and the rest of the coming week. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DayChips(days: List<LocalDate>, selected: LocalDate, onSelected: (LocalDate) -> Unit) {
+    val today = days.firstOrNull()
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        days.forEach { date ->
+            FilterChip(
+                selected = date == selected,
+                onClick = { onSelected(date) },
+                label = { Text(dayChipLabel(date, today)) },
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -365,7 +524,12 @@ private fun LoadTab(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
         if (state.courseGroups.isNotEmpty() || state.extraTeachers.isNotEmpty()) ToggleHint()
     }
     if (state.editingCourse) {
-        ParticipantPicker(state, viewModel, actionLabel = "Добавить", onPick = viewModel::addToCourse)
+        ParticipantPicker(
+            state,
+            viewModel,
+            added = state.courseGroups.toHashSet() + state.extraTeachers.map { it.key },
+            onPick = viewModel::addToCourse,
+        )
     }
     ConnectedChoice(AnalyticsPeriod.entries, state.loadPeriod, { it.title }, viewModel::setLoadPeriod)
     Button(
@@ -714,16 +878,7 @@ private fun RoomsResults(result: RoomsResult, sort: LoadSort, onSort: (LoadSort)
 @Composable
 private fun FreeRoomsLookup(state: AnalyticsUiState, viewModel: AnalyticsViewModel) {
     SectionTitle("Свободные аудитории")
-    val today = state.freeRoomDays.firstOrNull()
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        state.freeRoomDays.forEach { date ->
-            FilterChip(
-                selected = date == state.freeRoomDate,
-                onClick = { viewModel.setFreeRoomDate(date) },
-                label = { Text(dayChipLabel(date, today)) },
-            )
-        }
-    }
+    DayChips(state.lookupDays, state.freeRoomDate, viewModel::setFreeRoomDate)
     ConnectedChoice(SiriusPairSlots.map { it.number }, state.freeRoomPair, { "$it" }, viewModel::setFreeRoomPair)
     SiriusPairSlots.firstOrNull { it.number == state.freeRoomPair }?.let { Caption(it.label) }
     val result = state.freeRoomsResult
@@ -892,7 +1047,8 @@ private fun roomsWord(count: Int): String {
 private fun ParticipantPicker(
     state: AnalyticsUiState,
     viewModel: AnalyticsViewModel,
-    actionLabel: String,
+    /** Keys already in the list: shown as added rather than offered again. */
+    added: Set<String>,
     onPick: (AnalyticsParticipant) -> Unit,
 ) {
     val teacherSearch = state.searchMode == ScheduleSearchMode.Teacher
@@ -926,19 +1082,43 @@ private fun ParticipantPicker(
     } else {
         state.visibleGroups.map { AnalyticsParticipant(it, it) }
     }
-    options.take(MAX_RESULTS).forEachIndexed { index, option ->
+    val shown = options.take(MAX_RESULTS)
+    val notAdded = shown.filterNot { it.key in added }
+    if (notAdded.size > 1) {
+        FilledTonalButton(
+            onClick = {
+                focusManager.clearFocus()
+                notAdded.forEach(onPick)
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Добавить все найденные: ${notAdded.size}") }
+    }
+    shown.forEachIndexed { index, option ->
+        val isAdded = option.key in added
         Surface(
             onClick = {
                 focusManager.clearFocus()
                 onPick(option)
             },
-            shape = settingsGroupShape(index, options.take(MAX_RESULTS).size),
+            enabled = !isAdded,
+            shape = settingsGroupShape(index, shown.size),
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(option.label, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(actionLabel, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                if (isAdded) {
+                    Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Добавлено", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                } else {
+                    Text("Добавить", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

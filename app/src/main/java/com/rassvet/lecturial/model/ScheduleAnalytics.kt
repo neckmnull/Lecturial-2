@@ -65,12 +65,23 @@ private fun ScheduleEvent.timeRange(): Pair<LocalTime, LocalTime>? {
     return LocalTime.of(start / 60, start % 60) to (if (end == 24 * 60) LocalTime.MAX else LocalTime.of(end / 60, end % 60))
 }
 
-/** Whether any of [events] on [date] overlaps [slot]. */
-fun isBusy(events: List<ScheduleEvent>, date: LocalDate, slot: PairSlot): Boolean = events.any { event ->
-    if (event.date != date) return@any false
-    val (start, end) = event.timeRange() ?: return@any false
-    start < slot.end && end > slot.start
+private fun ScheduleEvent.overlaps(date: LocalDate, slot: PairSlot): Boolean {
+    if (this.date != date) return false
+    val (start, end) = timeRange() ?: return false
+    return start < slot.end && end > slot.start
 }
+
+/** Whether any of [events] on [date] overlaps [slot]. */
+fun isBusy(events: List<ScheduleEvent>, date: LocalDate, slot: PairSlot): Boolean = events.any { it.overlaps(date, slot) }
+
+/**
+ * Lessons of [events] on [date] overlapping [slot], earliest first; a lesson listed once per
+ * group in a teacher's schedule is kept once.
+ */
+fun lessonsIn(events: List<ScheduleEvent>, date: LocalDate, slot: PairSlot): List<ScheduleEvent> =
+    events.filter { it.overlaps(date, slot) }
+        .sortedBy { it.startTime }
+        .distinctBy { Triple(it.startTime, it.endTime, it.discipline) }
 
 // ---------------------------------------------------------------------------------------
 // Common free time (teachers or groups)

@@ -34,6 +34,7 @@ import com.rassvet.lecturial.model.roomLoads
 import com.rassvet.lecturial.model.slotAvailability
 import com.rassvet.lecturial.model.SiriusPairSlots
 import com.rassvet.lecturial.model.freeRooms
+import com.rassvet.lecturial.model.lessonsIn
 import com.rassvet.lecturial.model.studyDays
 import com.rassvet.lecturial.model.upcomingPair
 import java.time.DayOfWeek
@@ -60,6 +61,9 @@ enum class AnalyticsTab(val title: String) { Load("Нагрузка"), FreeTime(
 
 /** Order of teacher, group and room lists: the busiest first unless asked otherwise. */
 enum class LoadSort { Busiest, Freest, ByName }
+
+/** What the participants tab shows: common free pairs, or what everyone has in chosen pairs. */
+enum class ParticipantsMode(val title: String) { FreeTime("Общие окна"), Pairs("По парам") }
 
 enum class FreeTimeRange(val title: String) { ThisWeek("Эта неделя"), NextWeek("Следующая"), TwoWeeks("2 недели") }
 
@@ -117,6 +121,13 @@ data class RoomsResult(
     val notRooms: Int,
 )
 
+/** One participant's lessons in a pair; empty when they have none then. */
+data class PairRow(val participant: AnalyticsParticipant, val lessons: List<ScheduleEvent>)
+
+data class PairLessons(val slot: PairSlot, val rows: List<PairRow>)
+
+data class PairsResult(val date: LocalDate, val pairs: List<PairLessons>)
+
 /** A room free in the chosen pair, under its tidy name. */
 data class FreeRoomStat(
     val info: RoomInfo,
@@ -150,6 +161,7 @@ data class AnalyticsUiState(
     val participants: List<AnalyticsParticipant> = emptyList(),
     /** Participants switched off by a tap: they stay in the list but aren't compared. */
     val excludedParticipants: Set<String> = emptySet(),
+    val participantsMode: ParticipantsMode = ParticipantsMode.FreeTime,
     val freeRange: FreeTimeRange = FreeTimeRange.ThisWeek,
     val freeResult: FreeTimeResult? = null,
     val expandedSlot: SlotKey? = null,
@@ -166,11 +178,14 @@ data class AnalyticsUiState(
     val detail: LoadRow? = null,
     val roomPeriod: AnalyticsPeriod = AnalyticsPeriod.Week,
     val roomsResult: RoomsResult? = null,
-    /** Study days to pick for the free-room lookup, today first. */
-    val freeRoomDays: List<LocalDate> = emptyList(),
+    /** Study days to pick for the free-room and pair lookups, today first. */
+    val lookupDays: List<LocalDate> = emptyList(),
     val freeRoomDate: LocalDate = LocalDate.now(),
     val freeRoomPair: Int = 1,
     val freeRoomsResult: FreeRoomsResult? = null,
+    val pairsDate: LocalDate = LocalDate.now(),
+    val pairsSelected: Set<Int> = setOf(1),
+    val pairsResult: PairsResult? = null,
     val progress: AnalyticsProgress? = null,
     val error: String? = null,
 ) {
@@ -204,15 +219,19 @@ class AnalyticsViewModel(
     private val _state = MutableStateFlow(
         upcomingPair(now()).let { (date, slot) ->
             AnalyticsUiState(
-                freeRoomDays = studyDays(today()..today().plusDays(7)).take(FREE_ROOM_DAYS),
+                lookupDays = studyDays(today()..today().plusDays(7)).take(LOOKUP_DAYS),
                 freeRoomDate = date,
                 freeRoomPair = slot.number,
+                pairsDate = date,
+                pairsSelected = setOf(slot.number),
             )
         },
     )
     val state: StateFlow<AnalyticsUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
     private var workJob: Job? = null
+    /** Participants' lessons of the last week looked up, so other pairs that week show at once. */
+    private var pairsWeek: Pair<ClosedRange<LocalDate>, Map<String, List<ScheduleEvent>>>? = null
     /** Room schedules of the last week looked up, so other pairs that week show at once. */
     private var roomWeek: Pair<ClosedRange<LocalDate>, RoomSchedules>? = null
 
@@ -292,24 +311,85 @@ class AnalyticsViewModel(
         }
     }
 
-    fun addParticipant(participant: AnalyticsParticipant) = _state.update { state ->
-        if (state.participants.any { it.key == participant.key }) state
-        else state.copy(participants = state.participants + participant, freeResult = null, query = "",
-            teacherResults = emptyList(), groupResults = emptyList())
+    fun addParticipant(participant: AnalyticsParticipant) {
+        _state.update { state ->
+            // The search stays as it is, so several of its results can be added one after another.
+            if (state.participants.any { it.key == participant.key }) state
+            else state.copy(participants = state.participants + participant, freeResult = null)
+        }
+        showPairsFromLoadedWeek()
     }
 
-    fun removeParticipant(key: String) = _state.update { state ->
-        state.copy(
-            participants = state.participants.filterNot { it.key == key },
-            excludedParticipants = state.excludedParticipants - key,
-            freeResult = null,
-        )
+    fun removeParticipant(key: String) {
+        _state.update { state ->
+            state.copy(
+                participants = state.participants.filterNot { it.key == key },
+                excludedParticipants = state.excludedParticipants - key,
+                freeResult = null,
+            )
+        }
+        showPairsFromLoadedWeek()
     }
 
     /** Switches a participant off or back on without taking it out of the list. */
-    fun toggleParticipant(key: String) = _state.update { state ->
-        val excluded = if (key in state.excludedParticipants) state.excludedParticipants - key else state.excludedParticipants + key
-        state.copy(excludedParticipants = excluded, freeResult = null)
+    fun toggleParticipant(key: String) {
+        _state.update { state ->
+            val excluded = if (key in state.excludedParticipants) state.excludedParticipants - key else state.excludedParticipants + key
+            state.copy(excludedParticipants = excluded, freeResult = null)
+        }
+        showPairsFromLoadedWeek()
+    }
+
+    fun setParticipantsMode(mode: ParticipantsMode) = _state.update { it.copy(participantsMode = mode) }
+
+    fun setPairsDate(date: LocalDate) {
+        _state.update { it.copy(pairsDate = date) }
+        showPairsFromLoadedWeek()
+    }
+
+    /** Adds a pair to the lookup or takes it out; at least one stays chosen. */
+    fun togglePairsSlot(pair: Int) {
+        _state.update { state ->
+            val next = if (pair in state.pairsSelected) state.pairsSelected - pair else state.pairsSelected + pair
+            if (next.isEmpty()) state else state.copy(pairsSelected = next)
+        }
+        showPairsFromLoadedWeek()
+    }
+
+    /** What every participant has in the chosen pairs of the day. */
+    fun showPairs() {
+        val participants = _state.value.activeParticipants
+        if (participants.isEmpty()) return
+        val week = _state.value.pairsDate.with(DayOfWeek.MONDAY).let { it..it.plusDays(6) }
+        runWork { report ->
+            val schedules = linkedMapOf<String, List<ScheduleEvent>>()
+            participants.forEachIndexed { index, participant ->
+                report(AnalyticsProgress("Загружаем: ${participant.label}", index, participants.size))
+                schedules[participant.key] = repository.lessons(participant.key, week.start, week.endInclusive, today())
+            }
+            pairsWeek = week to schedules
+            showPairsFromLoadedWeek()
+        }
+    }
+
+    /**
+     * Answers from the week already loaded; clears the answer when the day is in another week
+     * or someone was added whose schedule isn't loaded yet.
+     */
+    private fun showPairsFromLoadedWeek() {
+        val state = _state.value
+        val schedules = pairsWeek?.takeIf { (week, loaded) ->
+            state.pairsDate in week && state.activeParticipants.isNotEmpty() && state.activeParticipants.all { it.key in loaded }
+        }?.second ?: return _state.update { it.copy(pairsResult = null) }
+        val pairs = SiriusPairSlots.filter { it.number in state.pairsSelected }.map { slot ->
+            PairLessons(
+                slot = slot,
+                rows = state.activeParticipants.map { participant ->
+                    PairRow(participant, lessonsIn(schedules.getValue(participant.key), state.pairsDate, slot))
+                },
+            )
+        }
+        _state.update { it.copy(pairsResult = PairsResult(state.pairsDate, pairs)) }
     }
 
     /** Switches a course group or teacher off or back on; it stays in the course list. */
@@ -324,7 +404,8 @@ class AnalyticsViewModel(
     /** Adds a group to the course, or an extra teacher when [participant] is a teacher. */
     fun addToCourse(participant: AnalyticsParticipant) {
         _state.update { state ->
-            val cleared = state.copy(query = "", teacherResults = emptyList(), groupResults = emptyList(), courseResult = null)
+            // The search stays as it is, so several of its results can be added one after another.
+            val cleared = state.copy(courseResult = null)
             if (ScheduleTarget.isTeacher(participant.key)) {
                 if (state.extraTeachers.any { it.key == participant.key }) cleared
                 else cleared.copy(extraTeachers = state.extraTeachers + participant)
@@ -646,6 +727,6 @@ class AnalyticsViewModel(
     private companion object {
         const val WORKERS = 2
         const val ROOM_CANDIDATES = 6
-        const val FREE_ROOM_DAYS = 6
+        const val LOOKUP_DAYS = 6
     }
 }
