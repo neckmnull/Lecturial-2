@@ -28,6 +28,10 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -797,24 +801,31 @@ private fun ScheduleScreen(
     openLesson: OpenLessonRequest? = null,
     onOpenLessonConsumed: (Long) -> Unit = {},
 ) {
-    var mainSection by remember { mutableStateOf(MainSection.Schedule) }
-    var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
+    // Saved: rotating the phone recreates the activity, and a plain remember went back to
+    // the schedule, even in the middle of a statistics run.
+    var mainSection by rememberSaveable { mutableStateOf(MainSection.Schedule) }
+    var settingsSection by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
     // The lesson the list scrolls to and briefly lights up.
     var focusedLesson by remember { mutableStateOf<String?>(null) }
+    var focusShown by remember { mutableStateOf(false) }
     LaunchedEffect(openLesson?.key) {
         val request = openLesson ?: return@LaunchedEffect
         settingsSection = null
         mainSection = MainSection.Schedule
         if (request.date.with(DayOfWeek.MONDAY) == state.weekStart) onDateSelected(request.date) else onToday()
         focusedLesson = request.rowKey
+        focusShown = false
         onOpenLessonConsumed(request.key)
     }
     // Its own effect: consuming the request above restarts that one, which would cancel
     // the wait. The highlight fades after a few seconds, or if the lesson never shows up.
-    LaunchedEffect(focusedLesson) {
+    LaunchedEffect(focusedLesson, focusShown) {
         if (focusedLesson == null) return@LaunchedEffect
-        delay(FOCUS_TIMEOUT_MILLIS)
+        // Lit for a few seconds once it is on screen: a cold start can take longer than that
+        // to load the week. A lesson that never shows up is given up on later.
+        delay(if (focusShown) FOCUS_VISIBLE_MILLIS else FOCUS_TIMEOUT_MILLIS)
         focusedLesson = null
+        focusShown = false
     }
     val screenEffectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val predictiveBackProgress = remember { Animatable(0f) }
@@ -1054,6 +1065,7 @@ private fun ScheduleScreen(
                         listState = scheduleListState,
                         scrolledForState = scheduleScrolledFor,
                         focusedLesson = focusedLesson,
+                        onFocusShown = { focusShown = true },
                         onRetry = onRetry,
                         onToday = onToday,
                         onStudyPlanSaved = onStudyPlanSaved,
@@ -1381,14 +1393,14 @@ private fun AppearanceSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var editedTheme by remember { mutableStateOf<CustomAppTheme?>(null) }
-    var editedBuiltInTheme by remember { mutableStateOf<AppTheme?>(null) }
-    var creatingTheme by remember { mutableStateOf(false) }
+    var editedBuiltInTheme by rememberSaveable { mutableStateOf<AppTheme?>(null) }
+    var creatingTheme by rememberSaveable { mutableStateOf(false) }
     // Live schedule preview: floats in on any change to the lesson cards, stays while the
     // user keeps adjusting, and leaves a few seconds after the last change unless pinned.
     var previewOptions by remember { mutableStateOf(appDisplayOptions) }
     var previewRequestKey by remember { mutableStateOf(0) }
-    var previewVisible by remember { mutableStateOf(false) }
-    var previewPinned by remember { mutableStateOf(false) }
+    var previewVisible by rememberSaveable { mutableStateOf(false) }
+    var previewPinned by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(appDisplayOptions) {
         previewOptions = appDisplayOptions
     }
@@ -3046,7 +3058,8 @@ private val PreviewLessons = listOf(
 )
 
 private const val PREVIEW_HIDE_DELAY_MILLIS = 4_000L
-private const val FOCUS_TIMEOUT_MILLIS = 6_000L
+private const val FOCUS_TIMEOUT_MILLIS = 15_000L
+private const val FOCUS_VISIBLE_MILLIS = 4_000L
 private val PREVIEW_RESERVED_HEIGHT = 380.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3531,6 +3544,7 @@ private fun ScheduleContent(
     listState: LazyListState,
     scrolledForState: MutableState<String?>,
     focusedLesson: String? = null,
+    onFocusShown: () -> Unit = {},
     onRetry: () -> Unit,
     onToday: () -> Unit,
     onStudyPlanSaved: (StudyPlan) -> Unit,
@@ -3547,6 +3561,8 @@ private fun ScheduleContent(
                 val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.selectedDate}|${state.isLoading}"
                 var scrolledFor by scrolledForState
                 var scrolledToLesson by remember { mutableStateOf<String?>(null) }
+                val listAlpha = remember { Animatable(1f) }
+                val listScale = remember { Animatable(1f) }
                 LaunchedEffect(rows, scrollSession, focusedLesson) {
                     if (state.isLoading) return@LaunchedEffect
                     // A lesson opened from the widget wins over the usual jump to the day.
@@ -3554,7 +3570,8 @@ private fun ScheduleContent(
                     if (focusIndex >= 0 && scrolledToLesson != focusedLesson) {
                         // Once per lesson, with one row of context above it.
                         scrolledToLesson = focusedLesson
-                        listState.animateScrollToItem((focusIndex - 1).coerceAtLeast(0))
+                        listState.revealItem((focusIndex - 1).coerceAtLeast(0), listAlpha, listScale)
+                        onFocusShown()
                         scrolledFor = scrollSession
                         return@LaunchedEffect
                     }
@@ -3589,7 +3606,14 @@ private fun ScheduleContent(
                 val scope = rememberCoroutineScope()
                 Box(Modifier.fillMaxSize()) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().testTag("schedule-list"),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("schedule-list")
+                        .graphicsLayer {
+                            alpha = listAlpha.value
+                            scaleX = listScale.value
+                            scaleY = listScale.value
+                        },
                     state = listState,
                     contentPadding = PaddingValues(
                         start = state.appDisplayOptions.outerPaddingDp.dp,
@@ -3628,7 +3652,7 @@ private fun ScheduleContent(
                     direction = todayDirection,
                     onClick = {
                         if (todayRowIndex >= 0) {
-                            scope.launch { listState.animateScrollToItem(todayRowIndex) }
+                            scope.launch { listState.revealItem(todayRowIndex, listAlpha, listScale) }
                         } else {
                             onToday()
                         }
@@ -3654,6 +3678,43 @@ private fun ScheduleContent(
         )
     }
 }
+
+/**
+ * Brings row [index] into view the Material way. Rows within about a screen scroll there;
+ * farther ones use the "fade through" pattern of the Material motion guide: the list fades
+ * out, jumps while unseen and fades back in, growing slightly, instead of racing past
+ * dozens of cards. [alpha] and [scale] drive the list's layer.
+ */
+private suspend fun LazyListState.revealItem(index: Int, alpha: Animatable<Float, *>, scale: Animatable<Float, *>) {
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return scrollToItem(index)
+    val first = visible.first().index
+    val last = visible.last().index
+    val screen = (last - first).coerceAtLeast(1)
+    if (index in (first - screen)..(last + screen)) return animateScrollToItem(index)
+    try {
+        alpha.animateTo(0f, tween(FADE_THROUGH_OUT_MILLIS, easing = EmphasizedAccelerate))
+        scrollToItem(index)
+        scale.snapTo(FADE_THROUGH_START_SCALE)
+        coroutineScope {
+            launch { alpha.animateTo(1f, tween(FADE_THROUGH_IN_MILLIS, easing = EmphasizedDecelerate)) }
+            launch { scale.animateTo(1f, tween(FADE_THROUGH_IN_MILLIS, easing = EmphasizedDecelerate)) }
+        }
+    } finally {
+        // A second tap mid-way cancels this one; the list must not stay faded.
+        withContext(NonCancellable) {
+            alpha.snapTo(1f)
+            scale.snapTo(1f)
+        }
+    }
+}
+
+// Durations and curves of the Material 3 fade through and emphasized easing.
+private const val FADE_THROUGH_OUT_MILLIS = 90
+private const val FADE_THROUGH_IN_MILLIS = 210
+private const val FADE_THROUGH_START_SCALE = 0.92f
+private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 
 /**
  * Returns to today's heading. [direction] is -1 when today is above the viewport,
@@ -3927,8 +3988,13 @@ private fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayOp
                 else Modifier,
             )
             .then(
-                if (highlight > 0f) Modifier.border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = highlight), tileShape)
-                else Modifier,
+                if (highlight > 0f) {
+                    Modifier
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f * highlight), tileShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = highlight), tileShape)
+                } else {
+                    Modifier
+                },
             )
             .drawBehind {
                 if (!options.showStripe) return@drawBehind

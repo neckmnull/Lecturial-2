@@ -177,4 +177,22 @@ class ScheduleAnalyticsTest {
         assertEquals(monday.plusWeeks(1) to 1, at(saturday, 21, 0).let { it.first to it.second.number })
         assertEquals(monday.plusWeeks(1) to 1, at(saturday.plusDays(1), 10, 0).let { it.first to it.second.number })
     }
+
+    @Test
+    fun `lessons in a pair are the ones overlapping it that day, each once`() {
+        val third = SiriusPairSlots[2] // 11:55–13:15
+        val events = listOf(
+            lesson(monday, "12:30", "14:00", id = "late start"),
+            lesson(monday, "11:55", "13:15", id = "group 1"),
+            // The same lesson listed again for another group in a teacher's schedule.
+            lesson(monday, "11:55", "13:15", id = "group 2"),
+            lesson(monday, "10:20", "11:55", id = "ends as the pair starts"),
+            lesson(monday.plusDays(1), "11:55", "13:15", id = "another day"),
+        )
+
+        val found = lessonsIn(events, monday, third)
+
+        assertEquals(listOf("group 1", "late start"), found.map { it.id })
+        assertTrue(lessonsIn(events, monday, SiriusPairSlots[6]).isEmpty())
+    }
 }
