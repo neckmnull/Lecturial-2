@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasContentDescription
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.semantics.SemanticsActions
+import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
@@ -291,7 +293,7 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Неон").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(AppTheme.Neon, selectedTheme) }
@@ -306,7 +308,7 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Тёмный режим").performClick()
 
         compose.runOnIdle { assertEquals(false, darkTheme) }
@@ -365,7 +367,7 @@ class LecturialAppTest {
         render(ScheduleUiState(selectedGroup = "ИОП-ИТ-26/1", isStarting = false))
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Изменить цвета").performScrollTo().performClick()
 
         compose.onNodeWithText("Тема «Сириус»").assertIsDisplayed()
@@ -385,7 +387,7 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Сбросить настройки расписания").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(true, resetCalled) }
@@ -419,7 +421,7 @@ class LecturialAppTest {
         compose.onNodeWithText("Настройки").performClick()
         compose.onNodeWithText("О приложении").performScrollTo().performClick()
         compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText("Версия 1.6.1-debug")
+            compose.onAllNodesWithText("Версия ${BuildConfig.VERSION_NAME}")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
@@ -457,7 +459,7 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Аметист").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Бордовый").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Янтарь").performScrollTo().assertIsDisplayed()
@@ -478,7 +480,7 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Создать тему").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Открыть палитру: Основной цвет").performClick()
         compose.onNodeWithContentDescription("Hue-колесо: Основной цвет").assertIsDisplayed()
@@ -500,10 +502,11 @@ class LecturialAppTest {
         )
 
         compose.onNodeWithText("Настройки").performClick()
-        compose.onNodeWithText("Оформление").performClick()
+        compose.onNodeWithText("Оформление").performScrollTo().performClick()
         compose.onNodeWithText("Фон приложения").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Фон: классический").assertIsSelected()
         compose.onNodeWithText("Однотонный фон темы без градиентов и анимации, как до появления динамического фона.")
+            .performScrollTo()
             .assertIsDisplayed()
         compose.onNodeWithText("Интенсивность фона").assertIsNotDisplayed()
         compose.onNodeWithText("Скорость фона").assertIsNotDisplayed()
@@ -520,7 +523,7 @@ class LecturialAppTest {
             .assertIsDisplayed()
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(37f) }
         compose.onNodeWithContentDescription("Скорость фона: 37 %").assertIsDisplayed()
-        compose.onNodeWithText("Оформление расписания").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Карточки расписания").performScrollTo().assertIsDisplayed()
         compose.onAllNodes(hasContentDescription("Живой предпросмотр расписания")).assertCountEquals(0)
         compose.onNodeWithText("Показывать аудиторию").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Показывать аудиторию").performClick()
@@ -536,7 +539,10 @@ class LecturialAppTest {
         compose.onNodeWithContentDescription("Лекция: Голубой")
             .performScrollTo()
             .performClick()
-        compose.onNodeWithText("Основы программирования").assertIsDisplayed()
+        // The live preview, not the theme preview card at the top of the page.
+        compose.onNode(
+            hasText("Основы программирования") and hasAnyAncestor(hasContentDescription("Живой предпросмотр расписания")),
+        ).assertIsDisplayed()
         compose.onNodeWithText("Показывать время").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Показывать цветную полосу").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Время окончания").performScrollTo().assertIsDisplayed()
@@ -551,12 +557,16 @@ class LecturialAppTest {
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
-        compose.onNodeWithText("Тонкая настройка").performScrollTo().performClick()
+        // The floating live preview can lie over this row, so click it the way TalkBack does.
+        compose.onNodeWithText("Тонкая настройка").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithContentDescription("Название предмета: 16")
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(24f) }
         compose.onNodeWithContentDescription("Живой предпросмотр расписания").assertIsDisplayed()
-        compose.onNodeWithText("Основы программирования").assertIsDisplayed()
+        // The live preview, not the theme preview card at the top of the page.
+        compose.onNode(
+            hasText("Основы программирования") and hasAnyAncestor(hasContentDescription("Живой предпросмотр расписания")),
+        ).assertIsDisplayed()
         compose.onNodeWithText("Оформление виджета").performScrollTo().assertIsDisplayed()
     }
 

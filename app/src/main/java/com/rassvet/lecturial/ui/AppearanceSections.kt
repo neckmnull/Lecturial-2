@@ -41,6 +41,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.draw.clip
 
 /** A theme in the swatch row: its name and three accent colours. */
 internal data class ThemeSwatch(
@@ -69,11 +72,11 @@ internal fun ThemeSwatchRow(swatches: List<ThemeSwatch>, onCreate: () -> Unit) {
         Column(
             modifier = Modifier
                 .width(SwatchItemWidth)
-                .semantics { role = Role.Button },
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(role = Role.Button, onClick = onCreate),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Surface(
-                onClick = onCreate,
                 modifier = Modifier.size(SwatchSize),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -104,14 +107,13 @@ private fun ThemeSwatchItem(swatch: ThemeSwatch) {
     Column(
         modifier = Modifier
             .width(SwatchItemWidth)
-            .semantics {
-                selected = swatch.selected
-                contentDescription = "Тема: ${swatch.name}"
-            },
+            .clip(MaterialTheme.shapes.medium)
+            // The swatch and its name are one target: tapping the name used to do nothing.
+            .selectable(selected = swatch.selected, role = Role.RadioButton, onClick = swatch.onClick)
+            .semantics { contentDescription = "Тема: ${swatch.name}" },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
-            onClick = swatch.onClick,
             modifier = Modifier.size(SwatchSize),
             shape = CircleShape,
             color = Color.Transparent,
@@ -188,11 +190,7 @@ internal fun <T> PresetChoice(
                     checked = option == selected,
                     onCheckedChange = { onSelected(option) },
                     modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                    shapes = when (index) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    },
+                    shapes = connectedButtonShapes(index, options.size),
                 ) {
                     Text(label(option), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
                 }

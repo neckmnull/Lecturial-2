@@ -12,6 +12,7 @@ import com.rassvet.lecturial.model.weekStartsOf
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.core.content.edit
 
 /**
  * Loads schedules of arbitrary teachers, groups and classrooms for analytics.
@@ -92,7 +93,10 @@ class ScheduleAnalyticsRepository(
         }
         if (found.isNotEmpty()) {
             withContext(Dispatchers.IO) {
-                prefs.edit().putStringSet(KEY_ROOMS, found).putLong(KEY_ROOMS_AT, nowMillis()).apply()
+                prefs.edit {
+                    putStringSet(KEY_ROOMS, found)
+                    putLong(KEY_ROOMS_AT, nowMillis())
+                }
             }
         }
         return found.sorted()
@@ -114,7 +118,7 @@ class ScheduleAnalyticsRepository(
             searchRemote.fetchTeachers(query).firstOrNull { normalizePersonName(it.name) == wanted }
         } ?: return null
         known.put(wanted, JSONObject().put("id", match.id).put("name", match.name).put("department", match.department ?: ""))
-        withContext(Dispatchers.IO) { prefs.edit().putString(KEY_TEACHER_IDS, known.toString()).apply() }
+        withContext(Dispatchers.IO) { prefs.edit { putString(KEY_TEACHER_IDS, known.toString()) } }
         return match
     }
 
@@ -132,7 +136,7 @@ class ScheduleAnalyticsRepository(
             .firstOrNull { ScheduleTarget.classroomLabel(it).trim().lowercase() == wanted }
             ?: return null
         known.put(wanted, id)
-        withContext(Dispatchers.IO) { prefs.edit().putString(KEY_CLASSROOM_IDS, known.toString()).apply() }
+        withContext(Dispatchers.IO) { prefs.edit { putString(KEY_CLASSROOM_IDS, known.toString()) } }
         return id
     }
 
@@ -142,9 +146,7 @@ class ScheduleAnalyticsRepository(
             ?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
 
     fun setCourseGroups(groups: List<String>) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY_COURSE_GROUPS, groups.joinToString("\n"))
-            .apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_COURSE_GROUPS, groups.joinToString("\n")) }
     }
 
     /** Course groups and teachers switched off for now: kept in the list, left out of the count. */
@@ -153,9 +155,7 @@ class ScheduleAnalyticsRepository(
             ?.split('\n')?.filter { it.isNotBlank() }?.toSet().orEmpty()
 
     fun setExcludedCourseMembers(keys: Set<String>) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY_COURSE_EXCLUDED, keys.joinToString("\n"))
-            .apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_COURSE_EXCLUDED, keys.joinToString("\n")) }
     }
 
     private fun consecutiveRuns(weeks: List<LocalDate>): List<List<LocalDate>> {

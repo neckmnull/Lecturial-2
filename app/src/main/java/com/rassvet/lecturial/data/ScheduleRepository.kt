@@ -98,16 +98,19 @@ class ScheduleRepository(
             // Nothing loaded at all: the site is unreachable, retrying week by week won't help.
             if (failure != null && pending.size == starts.size) throw failure
         }
+        // The weeks the session missed, one by one. Only a week still missing is an error: the
+        // session's own failure used to be thrown even when every week had loaded after all.
+        var missing: Throwable? = null
         for (start in pending) {
             try {
                 onWeek(refreshWeek(group, start))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                if (failure == null) failure = error
+                if (missing == null) missing = error
             }
         }
-        failure?.let { throw it }
+        missing?.let { throw it }
     }
 
     private suspend fun fetchAndCache(group: String, weekStart: LocalDate): CachedSchedule {

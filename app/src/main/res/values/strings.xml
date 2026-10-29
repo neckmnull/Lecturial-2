@@ -3,8 +3,6 @@
     <string name="app_full_name">Lecturial 2</string>
     <string name="widget_description">Расписание и ближайшие планы на сегодня</string>
     <string name="widget_no_lessons">Нет занятий и планов</string>
-    <string name="widget_loading">Обновляем расписание…</string>
-    <string name="widget_loading_hint">Занятия появятся через несколько секунд</string>
     <string name="widget_initial_hint">Нажмите, чтобы открыть приложение</string>
     <string name="widget_load_error">Не удалось обновить расписание</string>
     <string name="widget_load_error_hint">Нажмите, чтобы открыть приложение и повторить</string>

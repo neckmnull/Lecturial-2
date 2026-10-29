@@ -42,6 +42,7 @@ import kotlin.math.sin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import androidx.core.content.edit
 
 object LessonAlerts {
     const val CHANNEL_ID = "lesson_live"
@@ -113,7 +114,8 @@ object LessonAlerts {
         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
+        // Package visibility hides the Settings app from resolveActivity, so just try it.
+        runCatching { context.startActivity(intent) }
     }
 
     private fun testEvent() = ScheduleEvent(
@@ -193,7 +195,7 @@ object LessonAlerts {
         val key = "${live.event.date}-${live.event.id}"
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getString(KEY_ALERTED, null) == key) return false
-        prefs.edit().putString(KEY_ALERTED, key).apply()
+        prefs.edit { putString(KEY_ALERTED, key) }
         return true
     }
 
@@ -306,7 +308,6 @@ object LessonAlerts {
             .setChronometerCountDown(true)
             .setTimeoutAfter(3 * 60 * 60 * 1000L)
             .addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
-        if (alert) builder.setDefaults(Notification.DEFAULT_ALL)
         return builder.build()
     }
 
@@ -340,7 +341,6 @@ object LessonAlerts {
             .setPriority(if (alert) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setProgress(total.coerceAtLeast(1), elapsed.coerceIn(0, total.coerceAtLeast(1)), false)
             .setStyle(compatProgressStyle(total, elapsed))
-        if (alert) builder.setDefaults(NotificationCompat.DEFAULT_ALL)
         return builder.build()
     }
 
@@ -438,9 +438,7 @@ object LessonAlerts {
             codes += code
         }
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_CODES, codes.map(Int::toString).toSet())
-            .apply()
+            .edit { putStringSet(KEY_CODES, codes.map(Int::toString).toSet()) }
     }
 
     private fun cancelAlarms(app: Context) {
@@ -457,7 +455,7 @@ object LessonAlerts {
             )
             alarmManager.cancel(pending)
         }
-        prefs.edit().remove(KEY_CODES).apply()
+        prefs.edit { remove(KEY_CODES) }
     }
 
     private fun alarmIntent(context: Context, kind: LessonAlarmKind, event: ScheduleEvent): Intent =
@@ -478,7 +476,6 @@ object LessonAlerts {
         31 * 31 * kind.name.hashCode() + 31 * event.date.toString().hashCode() + event.id.hashCode()
 
     private fun ensureChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
             NotificationChannel(

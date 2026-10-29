@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import androidx.core.content.edit
 
 object DeadlineAlerts {
     const val ACTION_ALARM = "com.rassvet.lecturial.DEADLINE_ALARM"
@@ -136,9 +137,7 @@ object DeadlineAlerts {
             }
             codes += code
         }
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putStringSet(KEY_CODES, codes.map(Int::toString).toSet())
-            .apply()
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putStringSet(KEY_CODES, codes.map(Int::toString).toSet()) }
     }
 
     private fun cancelAlarms(context: Context) {
@@ -154,7 +153,7 @@ object DeadlineAlerts {
             )
             alarmManager.cancel(pending)
         }
-        prefs.edit().remove(KEY_CODES).apply()
+        prefs.edit { remove(KEY_CODES) }
     }
 
     private fun alarmIntent(context: Context, plan: StudyPlan, daysBefore: Int, minutesBefore: Int?) =
@@ -175,7 +174,6 @@ object DeadlineAlerts {
         listOf(planId, daysBefore, minutesBefore).hashCode() xor 0x4D31
 
     private fun ensureChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
         context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Сроки планов", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Выбранные напоминания о задачах, целях и дедлайнах"

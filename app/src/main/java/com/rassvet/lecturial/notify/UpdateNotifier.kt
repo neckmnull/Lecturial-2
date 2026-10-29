@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import androidx.core.content.edit
 
 /**
  * Tells the user about a new GitHub release with a notification, once per version.
@@ -76,7 +77,7 @@ object UpdateNotifier {
         val now = System.currentTimeMillis()
         if (!force && now - prefs.getLong(KEY_LAST_CHECK, 0L) < minInterval) return
         val result = app.updateChecker.check(BuildConfig.VERSION_NAME)
-        prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
+        prefs.edit { putLong(KEY_LAST_CHECK, now) }
         // Remember a required update, so the app stays blocked even without internet.
         when (result) {
             is AppUpdateState.Available -> if (result.required) app.preferences.setRequiredUpdateVersion(result.version)
@@ -85,7 +86,7 @@ object UpdateNotifier {
         }
         val update = result as? AppUpdateState.Available ?: return
         if (prefs.getString(KEY_NOTIFIED_VERSION, null) == update.version) return
-        if (notify(app, update)) prefs.edit().putString(KEY_NOTIFIED_VERSION, update.version).apply()
+        if (notify(app, update)) prefs.edit { putString(KEY_NOTIFIED_VERSION, update.version) }
     }
 
     private fun notify(context: Context, update: AppUpdateState.Available): Boolean {
@@ -123,7 +124,6 @@ object UpdateNotifier {
     )
 
     private fun ensureChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
         context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Обновления приложения", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Сообщает о выходе новой версии Lecturial 2"

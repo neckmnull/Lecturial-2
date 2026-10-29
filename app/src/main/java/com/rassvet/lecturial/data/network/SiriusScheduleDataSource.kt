@@ -63,7 +63,9 @@ class SiriusScheduleDataSource(
     client: OkHttpClient? = null,
 ) : ScheduleRemoteDataSource {
     private val cookieJar = InMemoryCookieJar()
-    private val http = (client?.newBuilder() ?: OkHttpClient.Builder())
+    // Each session keeps its own cookies but shares the connection pool and dispatcher, so
+    // parallel sessions reuse kept-alive connections instead of a TLS handshake each.
+    private val http = (client ?: SharedClient).newBuilder()
         .cookieJar(cookieJar)
         .protocols(listOf(Protocol.HTTP_1_1))
         .dns { hostname ->
@@ -82,7 +84,6 @@ class SiriusScheduleDataSource(
         }
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
-    private val json = Json { ignoreUnknownKeys = true }
     private val sessionMutex = Mutex()
     private val teacherPageUrl = baseUrl.trimEnd('/') + "/teacher"
     private val classroomPageUrl = baseUrl.trimEnd('/') + "/classroom"
@@ -303,6 +304,8 @@ class SiriusScheduleDataSource(
     private fun parseSiteDate(value: String): LocalDate = LocalDate.parse(value, siteDateFormatter)
 
     private companion object {
+        val SharedClient: OkHttpClient by lazy { OkHttpClient() }
+        val json = Json { ignoreUnknownKeys = true }
         val initialDataPattern = Regex("wire:initial-data=\"([^\"]+)\"")
         val tokenPattern = Regex("window\\.livewire_token\\s*=\\s*'([^']+)'")
         val siteDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")

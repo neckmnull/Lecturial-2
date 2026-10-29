@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.core.content.edit
 
 class LessonLiveService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -147,7 +148,7 @@ class LessonLiveService : Service() {
         ) {
             if (isTest) {
                 context.getSharedPreferences(TEST_PREFS, Context.MODE_PRIVATE)
-                    .edit().putLong(KEY_TEST_TARGET, live.endMillis).apply()
+                    .edit { putLong(KEY_TEST_TARGET, live.endMillis) }
             } else {
                 clearTestState(context)
             }
@@ -193,14 +194,14 @@ class LessonLiveService : Service() {
             return if (target > System.currentTimeMillis() && notificationActive) {
                 true
             } else {
-                prefs.edit().remove(KEY_TEST_TARGET).apply()
+                prefs.edit { remove(KEY_TEST_TARGET) }
                 false
             }
         }
 
         private fun clearTestState(context: Context) {
             context.getSharedPreferences(TEST_PREFS, Context.MODE_PRIVATE)
-                .edit().remove(KEY_TEST_TARGET).apply()
+                .edit { remove(KEY_TEST_TARGET) }
         }
     }
 }

@@ -11,7 +11,6 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +45,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import androidx.core.graphics.createBitmap
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.drawscope.translate
 
 /**
  * Line wallpaper that draws itself: lines appear in the pattern's growth order (the
@@ -105,35 +108,41 @@ internal fun LinePatternLayer(
     }
     val flowPeriod = flowPeriodMillis(speedPercent)
 
-    Canvas(
+    Spacer(
         Modifier
             .fillMaxSize()
             .testTag("line-wallpaper")
             // Offscreen so the gradient can be clipped to the lines with SrcIn.
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
-    ) {
-        val current = tile ?: return@Canvas
-        val shader = growShader
-        if (shader != null && progress.value < 1f) {
-            setProgress(shader, progress.value, size.width)
-            drawRect(ShaderBrush(shader))
-        } else {
-            drawRect(ShaderBrush(current.lines))
-        }
-        val angle = Math.toRadians(angleDegrees.toDouble())
-        val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
-        val reach = abs(direction.x) * size.width + abs(direction.y) * size.height
-        val half = Offset(direction.x * reach / 2f, direction.y * reach / 2f)
-        val center = Offset(size.width / 2f, size.height / 2f)
-        // Mirrored, the gradient repeats seamlessly, so shifting it by two lengths loops.
-        val phase = if (flows) (flowMillis % flowPeriod).toFloat() / flowPeriod else 0f
-        val shift = Offset(direction.x * reach * 2f * phase, direction.y * reach * 2f * phase)
-        drawRect(
-            brush = Brush.linearGradient(colors, start = center - half + shift, end = center + half + shift, tileMode = TileMode.Mirror),
-            alpha = lineAlpha.coerceIn(0f, 1f),
-            blendMode = BlendMode.SrcIn,
-        )
-    }
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            // The brushes are built once per size and options; each flow frame only moves the
+            // gradient. Creating them in the draw call made two shaders 25 times a second.
+            .drawWithCache {
+                val current = tile ?: return@drawWithCache onDrawBehind {}
+                val linesBrush = ShaderBrush(current.lines)
+                val angle = Math.toRadians(angleDegrees.toDouble())
+                val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                val reach = abs(direction.x) * size.width + abs(direction.y) * size.height
+                val half = Offset(direction.x * reach / 2f, direction.y * reach / 2f)
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val gradient = Brush.linearGradient(colors, start = center - half, end = center + half, tileMode = TileMode.Mirror)
+                val alpha = lineAlpha.coerceIn(0f, 1f)
+                onDrawBehind {
+                    val shader = growShader
+                    if (shader != null && progress.value < 1f) {
+                        setProgress(shader, progress.value, size.width)
+                        drawRect(ShaderBrush(shader))
+                    } else {
+                        drawRect(linesBrush)
+                    }
+                    // Mirrored, the gradient repeats seamlessly, so shifting it by two lengths loops.
+                    val phase = if (flows) (flowMillis % flowPeriod).toFloat() / flowPeriod else 0f
+                    val shift = Offset(direction.x * reach * 2f * phase, direction.y * reach * 2f * phase)
+                    translate(shift.x, shift.y) {
+                        drawRect(gradient, topLeft = -shift, size = size, alpha = alpha, blendMode = BlendMode.SrcIn)
+                    }
+                }
+            },
+    )
 }
 
 /** One full flow of the gradient: about 16 seconds at full speed, a minute at the slowest. */
@@ -238,7 +247,7 @@ private object WallpaperTiles {
     }
 
     private fun alphaBitmap(pixels: ByteArray, sizePx: Int): Bitmap =
-        Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ALPHA_8).apply {
+        createBitmap(sizePx, sizePx, Bitmap.Config.ALPHA_8).apply {
             copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
         }
 

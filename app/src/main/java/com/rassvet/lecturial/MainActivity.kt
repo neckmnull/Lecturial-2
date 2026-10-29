@@ -5,7 +5,6 @@ import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -15,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
@@ -30,13 +30,15 @@ import com.rassvet.lecturial.ui.theme.LecturialTheme
 import com.rassvet.lecturial.ui.OpenLessonRequest
 import java.io.File
 import java.time.LocalDate
+import androidx.core.content.edit
+import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
     private val splashStartedAt = SystemClock.elapsedRealtime()
     private var pendingUpdate: AppUpdateState.ReadyToInstall? = null
     private var installationErrorHandler: ((AppUpdateState.ReadyToInstall, String) -> Unit)? = null
     private var openPlanRequest by mutableStateOf<OpenPlanRequest?>(null)
-    private var openUpdatesKey by mutableStateOf(0L)
+    private var openUpdatesKey by mutableLongStateOf(0L)
     private var openLessonRequest by mutableStateOf<OpenLessonRequest?>(null)
     private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
@@ -203,7 +205,7 @@ class MainActivity : ComponentActivity() {
         }
         val prefs = getSharedPreferences("lesson_alerts", MODE_PRIVATE)
         if (prefs.getBoolean("asked_notifications", false)) return
-        prefs.edit().putBoolean("asked_notifications", true).apply()
+        prefs.edit { putBoolean("asked_notifications", true) }
         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
@@ -221,7 +223,7 @@ class MainActivity : ComponentActivity() {
             unknownSourcesSettings.launch(
                 Intent(
                     android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName"),
+                    "package:$packageName".toUri(),
                 ),
             )
         }.onFailure {

@@ -64,6 +64,7 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -233,11 +234,7 @@ private fun PlansFilterButtons(selected: PlansFilter, onSelected: (PlansFilter) 
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },
-                shapes = when (index) {
-                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                },
+                shapes = connectedButtonShapes(index, options.size),
             ) {
                 if (checked) {
                     Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
@@ -431,7 +428,7 @@ internal fun StudyPlanEditor(
     var isAllDay by remember(plan) { mutableStateOf(plan?.isAllDay ?: false) }
     var recurrence by remember(plan) { mutableStateOf(plan?.recurrence ?: StudyPlanRecurrence.None) }
     var reminderMinutes by remember(plan) { mutableStateOf(plan?.reminderMinutesBefore) }
-    var color by remember(plan) { mutableStateOf(plan?.color ?: StudyPlanColors.default) }
+    var color by remember(plan) { mutableIntStateOf(plan?.color ?: StudyPlanColors.default) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }

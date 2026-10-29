@@ -8,6 +8,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.security.SecureRandom
+import androidx.core.content.edit
 
 /**
  * Line wallpaper fields shared by the app background and the widget. The labyrinth is a
@@ -42,7 +43,7 @@ internal object WallpaperFieldCache {
         synchronized(lock) {
             if (prefs.contains(KEY_SEED)) return prefs.getInt(KEY_SEED, 0)
             val seed = SecureRandom().nextInt()
-            prefs.edit().putInt(KEY_SEED, seed).commit()
+            prefs.edit(commit = true) { putInt(KEY_SEED, seed) }
             return seed
         }
     }
