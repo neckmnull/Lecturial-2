@@ -203,6 +203,7 @@ internal fun ScheduleScreen(
     onTeacherSelected: (TeacherInfo) -> Unit = {},
     onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
     openUpdatesKey: Long = 0L,
+    openOutlookKey: Long = 0L,
     openLesson: OpenLessonRequest? = null,
     onOpenLessonConsumed: (Long) -> Unit = {},
 ) {
@@ -236,6 +237,13 @@ internal fun ScheduleScreen(
     val predictiveBackProgress = remember { Animatable(0f) }
     LaunchedEffect(openPlanId, openPlanRequestKey) {
         if (openPlanId != null) mainSection = MainSection.Plans
+    }
+    // Back from the Microsoft sign-in: Settings → Outlook.
+    LaunchedEffect(openOutlookKey) {
+        if (openOutlookKey > 0L) {
+            mainSection = MainSection.Settings
+            settingsSection = SettingsDestination.Outlook
+        }
     }
     // The update notification lands on Settings → About.
     LaunchedEffect(openUpdatesKey) {
@@ -399,6 +407,10 @@ internal fun ScheduleScreen(
                         onAliasChanged = onLessonAliasChanged,
                         onBack = { settingsSection = null },
                     )
+                    SettingsDestination.Outlook -> OutlookSettingsScreen(
+                        modifier = nestedModifier,
+                        onBack = { settingsSection = null },
+                    )
                     SettingsDestination.Testing -> NotificationTestingScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
@@ -427,6 +439,7 @@ internal fun ScheduleScreen(
                         onOpenAppearance = { settingsSection = SettingsDestination.Appearance },
                         onOpenLessonNames = { settingsSection = SettingsDestination.Names },
                         onOpenTesting = { settingsSection = SettingsDestination.Testing },
+                        onOpenOutlook = { settingsSection = SettingsDestination.Outlook },
                         onOpenAbout = { settingsSection = SettingsDestination.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
                         onLessonAlertsPause = onLessonAlertsPause,

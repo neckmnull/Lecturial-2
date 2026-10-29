@@ -6,6 +6,7 @@ import com.rassvet.lecturial.data.ScheduleRepository
 import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.local.UserPreferences
+import com.rassvet.lecturial.data.outlook.OutlookSync
 import com.rassvet.lecturial.data.network.SiriusScheduleDataSource
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
 import com.rassvet.lecturial.notify.LessonAlerts
@@ -23,6 +24,7 @@ class LecturialApplication : Application() {
         StudyPlanRepository(database) {
             TodayScheduleWidget.updateAll(this)
             DeadlineAlerts.sync(this)
+            outlook.requestSync()
         }
     }
     val analyticsRepository by lazy {
@@ -35,9 +37,13 @@ class LecturialApplication : Application() {
             onCacheUpdated = {
                 TodayScheduleWidget.updateAll(this)
                 LessonAlerts.sync(this)
+                outlook.requestSync()
             },
         )
     }
+
+    /** Keeps the "Lecturial 2" calendar in Outlook in step with the schedule and plans. */
+    val outlook by lazy { OutlookSync(this) }
 
     override fun onCreate() {
         super.onCreate()

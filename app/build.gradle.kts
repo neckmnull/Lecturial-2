@@ -23,10 +23,14 @@ android {
         applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 37
-        versionName = "1.10.4"
+        versionCode = 38
+        versionName = "1.11.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Application (client) ID of the app registered in Microsoft Entra for the Outlook sync.
+        // Not a secret: public clients sign in with PKCE. Empty turns the Outlook sync off.
+        val msClientId = providers.gradleProperty("lecturial.msClientId").getOrElse("")
+        buildConfigField("String", "MS_CLIENT_ID", "\"$msClientId\"")
     }
 
     signingConfigs {
@@ -98,6 +102,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")

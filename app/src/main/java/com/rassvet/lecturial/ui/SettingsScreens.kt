@@ -113,6 +113,7 @@ internal fun AppSettingsScreen(
     onOpenLessonNames: () -> Unit,
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenOutlook: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
     onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
@@ -197,6 +198,16 @@ internal fun AppSettingsScreen(
                     icon = Icons.Rounded.Create,
                     onClick = onOpenAppearance,
                     accessibilityLabel = "Открыть: Оформление",
+                )
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "Outlook",
+                    subtitle = "Пары и планы в календаре Outlook",
+                    shape = shape,
+                    icon = Icons.Rounded.DateRange,
+                    onClick = onOpenOutlook,
+                    accessibilityLabel = "Открыть: Outlook",
                 )
             }
             if (BuildConfig.DEBUG) {

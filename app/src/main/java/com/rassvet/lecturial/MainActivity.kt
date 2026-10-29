@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
     private var openPlanRequest by mutableStateOf<OpenPlanRequest?>(null)
     private var openUpdatesKey by mutableLongStateOf(0L)
     private var openLessonRequest by mutableStateOf<OpenLessonRequest?>(null)
+    private var openOutlookKey by mutableLongStateOf(0L)
     private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
                     openPlanId = openPlanRequest?.planId,
                     openPlanRequestKey = openPlanRequest?.key ?: 0L,
                     openUpdatesKey = openUpdatesKey,
+                    openOutlookKey = openOutlookKey,
                     onOpenPlanConsumed = { key ->
                         if (openPlanRequest?.key == key) openPlanRequest = null
                     },
@@ -168,6 +170,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
+        if (intent?.action == ACTION_OPEN_OUTLOOK) {
+            openPlanSequence += 1
+            openOutlookKey = openPlanSequence
+            intent.action = null
+            return
+        }
         if (intent?.action == ACTION_OPEN_UPDATES) {
             openPlanSequence += 1
             openUpdatesKey = openPlanSequence
@@ -262,6 +270,13 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_LESSON_DATE = "com.rassvet.lecturial.extra.LESSON_DATE"
         const val EXTRA_LESSON_ID = "com.rassvet.lecturial.extra.LESSON_ID"
         private const val ACTION_OPEN_UPDATES = "com.rassvet.lecturial.action.OPEN_UPDATES"
+        private const val ACTION_OPEN_OUTLOOK = "com.rassvet.lecturial.action.OPEN_OUTLOOK"
+
+        /** Opens Settings → Outlook, e.g. after the Microsoft sign-in. */
+        fun openOutlookIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(ACTION_OPEN_OUTLOOK)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         /** Opens Settings → About, where the update can be downloaded. */
         fun openUpdatesIntent(context: Context): Intent =
