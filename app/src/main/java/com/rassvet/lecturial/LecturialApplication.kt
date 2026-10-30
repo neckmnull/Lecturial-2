@@ -6,6 +6,7 @@ import com.rassvet.lecturial.data.ScheduleRepository
 import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.local.UserPreferences
+import com.rassvet.lecturial.data.devicecalendar.DeviceCalendarSync
 import com.rassvet.lecturial.data.outlook.OutlookSync
 import com.rassvet.lecturial.data.network.SiriusScheduleDataSource
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
@@ -25,6 +26,7 @@ class LecturialApplication : Application() {
             TodayScheduleWidget.updateAll(this)
             DeadlineAlerts.sync(this)
             outlook.requestSync()
+            googleCalendar.requestSync()
         }
     }
     val analyticsRepository by lazy {
@@ -38,12 +40,16 @@ class LecturialApplication : Application() {
                 TodayScheduleWidget.updateAll(this)
                 LessonAlerts.sync(this)
                 outlook.requestSync()
+                googleCalendar.requestSync()
             },
         )
     }
 
     /** Keeps the "Lecturial 2" calendar in Outlook in step with the schedule and plans. */
     val outlook by lazy { OutlookSync(this) }
+
+    /** Keeps a calendar of the phone's Google account in step with the schedule and plans. */
+    val googleCalendar by lazy { DeviceCalendarSync(this) }
 
     override fun onCreate() {
         super.onCreate()

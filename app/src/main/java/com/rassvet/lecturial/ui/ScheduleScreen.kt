@@ -411,6 +411,10 @@ internal fun ScheduleScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
                     )
+                    SettingsDestination.GoogleCalendar -> GoogleCalendarScreen(
+                        modifier = nestedModifier,
+                        onBack = { settingsSection = null },
+                    )
                     SettingsDestination.Testing -> NotificationTestingScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
@@ -440,6 +444,7 @@ internal fun ScheduleScreen(
                         onOpenLessonNames = { settingsSection = SettingsDestination.Names },
                         onOpenTesting = { settingsSection = SettingsDestination.Testing },
                         onOpenOutlook = { settingsSection = SettingsDestination.Outlook },
+                        onOpenGoogleCalendar = { settingsSection = SettingsDestination.GoogleCalendar },
                         onOpenAbout = { settingsSection = SettingsDestination.About },
                         onDeadlineReminderDaysChanged = onDeadlineReminderDaysChanged,
                         onLessonAlertsPause = onLessonAlertsPause,

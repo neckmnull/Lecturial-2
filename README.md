@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.11.0/Lecturial-2-v1.11.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.11.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.11.0 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.12.0/Lecturial-2-v1.12.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.12.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.12.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -62,9 +62,9 @@ keep common actions one tap away.
 | **Appearance** | Material You plus 11 built-in themes, custom palettes, light/dark modes, animated line wallpapers, gradient presets, font styles, sizing, spacing, and title wrapping |
 | **At a glance** | Resizable Today widget that mirrors the app’s background and cards, marks the current class, and can be tuned separately |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
-| **Calendar sync** | Lessons and plans in a “Lecturial 2” Outlook calendar after signing in with a Microsoft account |
+| **Calendar sync** | Lessons and plans in a “Lecturial 2” Outlook calendar after signing in with a Microsoft account, or in any Google calendar of the phone’s Google account |
 
-> **Current release:** `1.11.0` (`versionCode 38`) · minimum Android version:
+> **Current release:** `1.12.0` (`versionCode 39`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -95,12 +95,12 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.11.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.11.0/Lecturial-2-v1.11.0.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.12.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.12.0/Lecturial-2-v1.12.0.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  848451555ee453ff80560b1cd815baf55b90167b1d570cfbe187815ffdd4a570
+SHA-256  d58a9191f7e3f49f6c15594c1d3f094cbce618dadeb906509c5bda2fbf840b69
 Package  com.rassvet.lecturial2
 ```
 
@@ -118,6 +118,12 @@ installed app was signed with a different key. See all builds and release notes 
 > Lecturial 2 is an independent project and is **not** an official Sirius University
 > application. Schedule availability depends on the university website and its current
 > Livewire contract.
+
+### Google Calendar sync
+
+No setup is needed: the app writes events through Android's calendar provider into a calendar
+the user picks, and the phone's Google account sync takes them on to Google Calendar. It only
+asks for the calendar permission.
 
 ### Outlook sync
 

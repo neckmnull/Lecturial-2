@@ -70,7 +70,7 @@ data class OpenLessonRequest(val key: Long, val date: LocalDate, val eventId: St
     val rowKey: String get() = "lesson-$date-$eventId"
 }
 
-internal enum class SettingsDestination { LanguageTeacher, Appearance, Widget, Names, Outlook, Testing, About, Privacy }
+internal enum class SettingsDestination { LanguageTeacher, Appearance, Widget, Names, Outlook, GoogleCalendar, Testing, About, Privacy }
 internal enum class MainSection { Schedule, Plans, Statistics, Settings }
 internal enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
 

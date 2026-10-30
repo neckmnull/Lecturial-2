@@ -6,11 +6,10 @@ import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.LecturialApplication
+import com.rassvet.lecturial.data.SyncedEntriesFile
+import com.rassvet.lecturial.data.calendarEntries
+import com.rassvet.lecturial.data.syncSummary
 import com.rassvet.lecturial.model.CalendarSyncSettings
-import com.rassvet.lecturial.model.SyncedEntry
-import com.rassvet.lecturial.model.lessonEntries
-import com.rassvet.lecturial.model.matchesLanguageTeacher
-import com.rassvet.lecturial.model.planEntries
 import com.rassvet.lecturial.model.planSync
 import java.io.File
 import java.time.LocalDate
@@ -30,8 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
-import org.json.JSONArray
-import org.json.JSONObject
 
 /** What the Outlook settings screen shows. */
 data class OutlookState(
@@ -58,7 +55,7 @@ class OutlookSync(private val app: LecturialApplication) {
     private val auth = MicrosoftAuth(BuildConfig.MS_CLIENT_ID, http)
     private val vault = TokenVault(app)
     private val prefs = app.getSharedPreferences("outlook_sync", Context.MODE_PRIVATE)
-    private val syncedFile = File(app.filesDir, "outlook_synced.json")
+    private val synced = SyncedEntriesFile(File(app.filesDir, "outlook_synced.json"))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private var pending: Job? = null
@@ -109,7 +106,7 @@ class OutlookSync(private val app: LecturialApplication) {
                 val label = account.email.ifBlank { account.name }
                 prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).putString(KEY_ACCOUNT, label).remove(KEY_CALENDAR).apply()
                 // A new account starts with an empty calendar of its own.
-                saveSynced(emptyList())
+                synced.save(emptyList())
                 _state.update { it.copy(account = label, signingIn = false, error = null) }
                 syncNow()
             } catch (cancelled: CancellationException) {
@@ -126,7 +123,7 @@ class OutlookSync(private val app: LecturialApplication) {
         pending?.cancel()
         vault.clear()
         prefs.edit().remove(KEY_ACCOUNT).remove(KEY_CALENDAR).remove(KEY_LAST_SYNC).remove(KEY_SUMMARY).apply()
-        syncedFile.delete()
+        synced.delete()
         _state.update { it.copy(account = null, syncing = false, lastSyncMillis = null, lastSummary = null, error = null) }
     }
 
@@ -158,25 +155,21 @@ class OutlookSync(private val app: LecturialApplication) {
             val today = LocalDate.now()
             val windowStart = today.minusDays(PAST_DAYS)
             val windowEnd = today.plusDays(FUTURE_DAYS)
-            val entries = buildList {
-                if (settings.lessons) addAll(lessonEntries(lessons(windowStart, windowEnd), app.preferences.lessonAliases.first(), settings.reminderMinutes))
-                if (settings.plans) addAll(planEntries(app.studyPlanRepository.plans.first(), windowStart, windowEnd, settings.reminderMinutes))
-            }
+            val entries = app.calendarEntries(settings, windowStart, windowEnd)
             val calendar = prefs.getString(KEY_CALENDAR, null) ?: graph.calendarId(CALENDAR_NAME).also {
                 prefs.edit().putString(KEY_CALENDAR, it).apply()
             }
-            val before = loadSynced()
+            val before = synced.load()
             val plan = planSync(entries, before, windowStart)
             val result = graph.apply(calendar, plan, before)
-            saveSynced(result.synced)
-            val summary = buildString {
-                val inCalendar = result.synced.count { !it.date.isBefore(windowStart) }
-                append("В календаре $inCalendar ${eventsWord(inCalendar)}")
-                if (result.created + result.updated + result.deleted > 0) {
-                    append(" · добавлено ${result.created}, изменено ${result.updated}, удалено ${result.deleted}")
-                }
-                if (result.failed > 0) append(" · не прошло ${result.failed}, повторим позже")
-            }
+            synced.save(result.synced)
+            val summary = syncSummary(
+                inCalendar = result.synced.count { !it.date.isBefore(windowStart) },
+                created = result.created,
+                updated = result.updated,
+                deleted = result.deleted,
+                failed = result.failed,
+            )
             val now = System.currentTimeMillis()
             prefs.edit().putLong(KEY_LAST_SYNC, now).putString(KEY_SUMMARY, summary).apply()
             _state.update { it.copy(syncing = false, lastSyncMillis = now, lastSummary = summary) }
@@ -196,20 +189,6 @@ class OutlookSync(private val app: LecturialApplication) {
         scope.launch { syncNow() }
     }
 
-    private fun eventsWord(count: Int): String = when {
-        count % 100 in 11..14 -> "событий"
-        count % 10 == 1 -> "событие"
-        count % 10 in 2..4 -> "события"
-        else -> "событий"
-    }
-
-    /** Lessons of the chosen schedule cached on the phone, with the language-teacher filter. */
-    private suspend fun lessons(from: LocalDate, to: LocalDate) = run {
-        val group = app.preferences.selectedGroup.first() ?: return@run emptyList()
-        val teacher = app.preferences.languageTeacher(group).first()
-        app.repository.eventsBetween(group, from, to).filter { matchesLanguageTeacher(it.discipline, it.teachers, teacher) }
-    }
-
     private suspend fun accessToken(forceRefresh: Boolean): String {
         val tokens = vault.load() ?: throw IllegalStateException("Войдите в аккаунт Microsoft")
         if (!forceRefresh && tokens.expiresAtMillis > System.currentTimeMillis()) return tokens.accessToken
@@ -224,24 +203,6 @@ class OutlookSync(private val app: LecturialApplication) {
         }
         vault.save(renewed)
         return renewed.accessToken
-    }
-
-    private fun loadSynced(): List<SyncedEntry> = runCatching {
-        val array = JSONArray(syncedFile.readText())
-        (0 until array.length()).map { index ->
-            val item = array.getJSONObject(index)
-            SyncedEntry(item.getString("key"), item.getString("id"), item.getString("fp"), LocalDate.parse(item.getString("date")))
-        }
-    }.getOrDefault(emptyList())
-
-    private fun saveSynced(entries: List<SyncedEntry>) {
-        val array = JSONArray()
-        entries.forEach { entry ->
-            array.put(JSONObject().put("key", entry.key).put("id", entry.remoteId).put("fp", entry.fingerprint).put("date", entry.date.toString()))
-        }
-        val partial = File(syncedFile.parentFile, syncedFile.name + ".part")
-        partial.writeText(array.toString())
-        partial.renameTo(syncedFile)
     }
 
     private companion object {

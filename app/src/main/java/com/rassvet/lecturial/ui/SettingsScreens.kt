@@ -114,6 +114,7 @@ internal fun AppSettingsScreen(
     onOpenTesting: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenOutlook: () -> Unit,
+    onOpenGoogleCalendar: () -> Unit,
     onDeadlineReminderDaysChanged: (Set<Int>) -> Unit,
     onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
@@ -208,6 +209,16 @@ internal fun AppSettingsScreen(
                     icon = Icons.Rounded.DateRange,
                     onClick = onOpenOutlook,
                     accessibilityLabel = "Открыть: Outlook",
+                )
+            }
+            item { shape ->
+                SettingsListItem(
+                    title = "Google Календарь",
+                    subtitle = "Пары и планы в календаре Google",
+                    shape = shape,
+                    icon = Icons.Rounded.DateRange,
+                    onClick = onOpenGoogleCalendar,
+                    accessibilityLabel = "Открыть: Google Календарь",
                 )
             }
             if (BuildConfig.DEBUG) {
