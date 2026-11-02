@@ -54,7 +54,9 @@ Copy-Item keystore.properties.example keystore.properties
 README screenshots come from made-up data, so no real schedule or grades are published.
 To redraw them, install the debug and test APKs and run
 `adb shell am instrument -w -e readmeScreenshots true -e class com.rassvet.lecturial.ui.ReadmeScreenshots com.rassvet.lecturial2.debug.test/androidx.test.runner.AndroidJUnitRunner`;
-the PNGs land in the debug app's `cache/readme/`.
+the PNGs land in the debug app's `cache/readme/`. Add `-e readmeDemo true` and
+`#walkthrough` to the class to draw the demo clip frame by frame into `cache/readme/frames/`
+(20 frames a second); `artwork/demo.gif` is made from them with ffmpeg.
 
 | Component | Version / choice |
 |---|---|

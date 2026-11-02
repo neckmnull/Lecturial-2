@@ -12,6 +12,10 @@ It works offline, shows grades from the student account and fits homework into y
 </div>
 
 <p align="center">
+  <img src="./artwork/demo.gif" width="300" alt="Short clip: the current class in the feed, swiping by day, grades and the day plan" />
+</p>
+
+<p align="center">
   <img src="./artwork/screenshots/1-schedule.png" width="24%" alt="Schedule as a feed with the current class" />
   <img src="./artwork/screenshots/2-by-day.png" width="24%" alt="Schedule by day with a week strip" />
   <img src="./artwork/screenshots/3-study.png" width="24%" alt="Study tab with grades and attendance" />

@@ -37,6 +37,19 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeUp
 
 /**
  * The README's screenshots, drawn from made-up data so no real schedule or grades end up on
@@ -142,7 +155,82 @@ class ReadmeScreenshots {
     }
 
     @Test
-    fun studyGrades() = shoot("3-study") {
+    fun studyGrades() = shoot("3-study") { Study() }
+
+    @Test
+    fun dayPlanner() = shoot("4-day-plan") { DayPlan() }
+
+    /**
+     * The README's demo clip: the feed with the current class, the day-by-day layout swiped
+     * along, grades and the day plan, saved frame by frame under `cache/readme/frames/` at
+     * [FRAME_MILLIS] steps of the test clock. Runs only with `-e readmeDemo true` as well.
+     */
+    @Test
+    fun walkthrough() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("readmeDemo") == "true")
+        var scene by mutableStateOf(0)
+        var appState by mutableStateOf(state)
+        compose.setContent {
+            LecturialTheme {
+                AnimatedContent(
+                    targetState = scene,
+                    transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(400)) },
+                    label = "demo-scene",
+                ) { current ->
+                    when (current) {
+                        0 -> App(appState)
+                        1 -> Study()
+                        else -> DayPlan()
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        frames = File(context.cacheDir, "readme/frames").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        hold(2500)
+        compose.onNodeWithTag("schedule-list").performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.4f, durationMillis = 700) }
+        hold(1800)
+        compose.onNodeWithTag("schedule-list").performTouchInput { swipeDown(startY = bottom * 0.3f, endY = bottom * 0.8f, durationMillis = 700) }
+        hold(1500)
+        compose.runOnUiThread { appState = appState.copy(appDisplayOptions = AppDisplayOptions(scheduleLayout = ScheduleLayout.Days)) }
+        hold(2200)
+        repeat(2) {
+            compose.onNodeWithTag("schedule-days").performTouchInput { swipeLeft(durationMillis = 350) }
+            hold(1600)
+        }
+        compose.runOnUiThread { scene = 1 }
+        hold(2600)
+        compose.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.45f, durationMillis = 700) }
+        hold(2000)
+        compose.runOnUiThread { scene = 2 }
+        hold(2600)
+        compose.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.45f, durationMillis = 700) }
+        hold(2500)
+    }
+
+    private var frames: File? = null
+    private var frameCount = 0
+
+    /** Lets [millis] of the test clock pass, saving a frame of the clip at every step. */
+    private fun hold(millis: Long) {
+        repeat((millis / FRAME_MILLIS).toInt()) {
+            compose.mainClock.advanceTimeBy(FRAME_MILLIS)
+            frames?.let { folder -> save(File(folder, "%04d.png".format(frameCount++)), CLIP_WIDTH) }
+        }
+    }
+
+    private fun save(file: File, width: Int) {
+        val shot = compose.onRoot().captureToImage().asAndroidBitmap()
+        val scaled = Bitmap.createScaledBitmap(shot, width, shot.height * width / shot.width, true)
+        file.outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Composable
+    private fun Study() {
         MaterialYouBackground(Modifier.fillMaxSize()) {
             StudyContent(
                 state = LksState(connected = true, snapshot = studySnapshot()),
@@ -154,8 +242,8 @@ class ReadmeScreenshots {
         }
     }
 
-    @Test
-    fun dayPlanner() = shoot("4-day-plan") {
+    @Composable
+    private fun DayPlan() {
         MaterialYouBackground(Modifier.fillMaxSize()) {
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp),
@@ -202,13 +290,16 @@ class ReadmeScreenshots {
         )
     }
 
+    private companion object {
+        /** 20 frames a second. */
+        const val FRAME_MILLIS = 50L
+        const val CLIP_WIDTH = 480
+    }
+
     private fun shoot(name: String, content: @Composable () -> Unit) {
         compose.setContent { LecturialTheme { content() } }
         compose.waitForIdle()
-        val shot = compose.onRoot().captureToImage().asAndroidBitmap()
-        val width = 540
-        val scaled = Bitmap.createScaledBitmap(shot, width, shot.height * width / shot.width, true)
         val folder = File(context.cacheDir, "readme").apply { mkdirs() }
-        File(folder, "$name.png").outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        save(File(folder, "$name.png"), 540)
     }
 }

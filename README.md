@@ -14,6 +14,10 @@
 </div>
 
 <p align="center">
+  <img src="./artwork/demo.gif" width="300" alt="Короткий ролик: текущая пара в ленте, свайп по дням, оценки и план дня" />
+</p>
+
+<p align="center">
   <img src="./artwork/screenshots/1-schedule.png" width="24%" alt="Расписание лентой: текущая пара с полосой прогресса" />
   <img src="./artwork/screenshots/2-by-day.png" width="24%" alt="Расписание по дням: полоса недели и пары выбранного дня" />
   <img src="./artwork/screenshots/3-study.png" width="24%" alt="Вкладка «Учёба»: средний балл, посещаемость и оценки по предметам" />
