@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var openUpdatesKey by mutableLongStateOf(0L)
     private var openLessonRequest by mutableStateOf<OpenLessonRequest?>(null)
     private var openOutlookKey by mutableLongStateOf(0L)
+    private var openStudyKey by mutableLongStateOf(0L)
     private var openPlanSequence = 0L
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
                     openPlanRequestKey = openPlanRequest?.key ?: 0L,
                     openUpdatesKey = openUpdatesKey,
                     openOutlookKey = openOutlookKey,
+                    openStudyKey = openStudyKey,
                     onOpenPlanConsumed = { key ->
                         if (openPlanRequest?.key == key) openPlanRequest = null
                     },
@@ -176,6 +178,12 @@ class MainActivity : ComponentActivity() {
             intent.action = null
             return
         }
+        if (intent?.action == ACTION_OPEN_STUDY) {
+            openPlanSequence += 1
+            openStudyKey = openPlanSequence
+            intent.action = null
+            return
+        }
         if (intent?.action == ACTION_OPEN_UPDATES) {
             openPlanSequence += 1
             openUpdatesKey = openPlanSequence
@@ -200,6 +208,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Fresh grades and notifications from the personal account, at most every half hour.
+        (application as LecturialApplication).lks.refreshIfStale()
         requestLessonNotifications()
         LessonAlerts.sync(this)
     }
@@ -270,6 +280,13 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_LESSON_DATE = "com.rassvet.lecturial.extra.LESSON_DATE"
         const val EXTRA_LESSON_ID = "com.rassvet.lecturial.extra.LESSON_ID"
         private const val ACTION_OPEN_UPDATES = "com.rassvet.lecturial.action.OPEN_UPDATES"
+        private const val ACTION_OPEN_STUDY = "com.rassvet.lecturial.action.OPEN_STUDY"
+
+        /** Opens the Study tab, e.g. from a notification about new grades. */
+        fun openStudyIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(ACTION_OPEN_STUDY)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         private const val ACTION_OPEN_OUTLOOK = "com.rassvet.lecturial.action.OPEN_OUTLOOK"
 
         /** Opens Settings → Outlook, e.g. after the Microsoft sign-in. */

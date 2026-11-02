@@ -21,6 +21,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import com.rassvet.lecturial.model.ScheduleTarget
+import com.rassvet.lecturial.model.isExtracurricular
+import com.rassvet.lecturial.model.withoutExtracurricular
 
 class ScheduleRepository(
     private val database: LecturialDatabase,
@@ -40,6 +43,7 @@ class ScheduleRepository(
         database.scheduleDao()
             .eventsForWeek(group, start.toString(), end.toString())
             .map { it.toDomain() }
+            .filterNot { ScheduleTarget.isGroup(group) && isExtracurricular(it.type, it.discipline) }
 
     suspend fun cachedWeek(group: String, weekStart: LocalDate): CachedSchedule? {
         val start = weekStart.toString()
@@ -50,7 +54,7 @@ class ScheduleRepository(
             val date = weekStart.plusDays(offset)
             ScheduleDay(date, grouped[date].orEmpty().map { it.toDomain() })
         }
-        return CachedSchedule(ScheduleWeek(group, weekStart, days), cache.updatedAtMillis)
+        return CachedSchedule(ScheduleWeek(group, weekStart, days), cache.updatedAtMillis).forShowing()
     }
 
     suspend fun refreshWeek(group: String, weekStart: LocalDate): CachedSchedule {
@@ -62,7 +66,7 @@ class ScheduleRepository(
         if (active !== candidate) candidate.cancel()
         active.start()
         return try {
-            active.await()
+            active.await().forShowing()
         } finally {
             if (active.isCompleted) inFlight.remove(key, active)
         }
@@ -85,7 +89,7 @@ class ScheduleRepository(
                         val updatedAt = nowMillis()
                         database.cacheWeek(group, week, updatedAt)
                         pending.remove(week.weekStart)
-                        onWeek(CachedSchedule(week, updatedAt))
+                        onWeek(CachedSchedule(week, updatedAt).forShowing())
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -112,6 +116,10 @@ class ScheduleRepository(
         }
         missing?.let { throw it }
     }
+
+    /** The cache keeps everything (rooms and statistics need it); a group's schedule shows only pairs. */
+    private fun CachedSchedule.forShowing(): CachedSchedule =
+        if (ScheduleTarget.isGroup(week.group)) copy(week = week.withoutExtracurricular()) else this
 
     private suspend fun fetchAndCache(group: String, weekStart: LocalDate): CachedSchedule {
         val week = remote.fetchWeek(group, weekStart)

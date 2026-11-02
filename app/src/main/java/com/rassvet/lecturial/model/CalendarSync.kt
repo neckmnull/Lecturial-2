@@ -58,6 +58,51 @@ fun planSync(desired: List<CalendarEntry>, synced: List<SyncedEntry>, windowStar
     )
 }
 
+/** The last line of every event the app writes; it also tells the app's events apart in a calendar. */
+const val LESSON_MARK = "Из расписания Lecturial 2"
+const val PLAN_MARK = "Из планов Lecturial 2"
+
+/**
+ * An event in the calendar that carries the app's mark, whoever wrote it: this install, one
+ * whose data was cleared since, or another build. [key] is known when the event recorded it;
+ * [look] is its title and times, to recognise older events that did not.
+ */
+data class MarkedEvent(val remoteId: String, val key: String?, val look: String)
+
+/** The marked events taken over by this sync, and the extra copies to remove. */
+data class Adoption(val tracked: List<SyncedEntry>, val strays: List<String>)
+
+/**
+ * Brings the calendar's marked events that the local record doesn't know into the sync. Each
+ * wanted entry may own one event: a marked event with its key, or else one that looks the same,
+ * is adopted, with a blank fingerprint so this sync rewrites it. Everything else marked is a
+ * stray copy, e.g. left by an earlier install, so the same lesson never shows up twice.
+ */
+fun adoptMarked(
+    desired: List<CalendarEntry>,
+    tracked: List<SyncedEntry>,
+    marked: List<MarkedEvent>,
+    look: (CalendarEntry) -> String,
+): Adoption {
+    val known = tracked.mapTo(HashSet()) { it.remoteId }
+    val owned = tracked.mapTo(HashSet()) { it.key }
+    val wanted = desired.associateBy { it.key }
+    val byLook = desired.groupBy(look)
+    val adopted = ArrayList<SyncedEntry>()
+    val strays = ArrayList<String>()
+    marked.filter { it.remoteId !in known }.forEach { event ->
+        val entry = event.key?.let { wanted[it] }?.takeIf { it.key !in owned }
+            ?: byLook[event.look]?.firstOrNull { it.key !in owned }
+        if (entry == null) {
+            strays += event.remoteId
+        } else {
+            owned += entry.key
+            adopted += SyncedEntry(entry.key, event.remoteId, "", entry.date)
+        }
+    }
+    return Adoption(tracked + adopted, strays)
+}
+
 /** Calendar events for the lessons of the schedule, in the names the user gave them. */
 fun lessonEntries(
     events: List<ScheduleEvent>,
@@ -84,7 +129,7 @@ fun lessonEntries(
             event.studentGroup?.takeIf { it.isNotBlank() }?.let { "Группа: $it" },
             event.onlineUrl?.takeIf { it.isNotBlank() }?.let { "Ссылка: $it" },
             event.comment?.takeIf { it.isNotBlank() },
-            "Из расписания Lecturial 2",
+            LESSON_MARK,
         ).joinToString("\n"),
         reminderMinutes = reminderMinutes,
     )
@@ -117,7 +162,7 @@ fun planEntries(
                 end = end,
                 allDay = !timed,
                 location = null,
-                body = listOfNotNull(plan.note.takeIf { it.isNotBlank() }, "Из планов Lecturial 2").joinToString("\n"),
+                body = listOfNotNull(plan.note.takeIf { it.isNotBlank() }, PLAN_MARK).joinToString("\n"),
                 reminderMinutes = plan.reminderMinutesBefore ?: reminderMinutes,
             )
         }

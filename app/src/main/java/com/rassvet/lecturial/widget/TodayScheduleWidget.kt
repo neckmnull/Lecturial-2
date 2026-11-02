@@ -33,6 +33,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
+import com.rassvet.lecturial.model.ScheduleTarget
 
 class TodayScheduleWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -361,7 +362,8 @@ internal suspend fun todayLessons(app: LecturialApplication): List<ScheduleEvent
     val group = app.preferences.selectedGroup.first() ?: return emptyList()
     val teacher = app.preferences.languageTeacher(group).first()
     return app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
-        com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers.split("\u001F"), teacher)
+        com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers.split("\u001F"), teacher) &&
+            !(ScheduleTarget.isGroup(group) && com.rassvet.lecturial.model.isExtracurricular(it.type, it.discipline))
     }
 }
 

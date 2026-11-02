@@ -34,6 +34,26 @@ fun displayEventType(type: String): String {
     }
 }
 
+/**
+ * Tutor hours, meetings with the project group, excursions, festivals and other events outside
+ * the curriculum. They are not pairs, so a group's schedule leaves them out.
+ */
+fun isExtracurricular(type: String, discipline: String): Boolean {
+    val kind = type.lowercase(ru)
+    if ("внеучеб" in kind || "внеурочн" in kind || "мероприят" in kind) return true
+    val name = discipline.trim().lowercase(ru)
+    // Prefixes only: a course such as "Организация мероприятий" is a real subject.
+    return ExtracurricularNames.any { name.startsWith(it) }
+}
+
+private val ExtracurricularNames = listOf(
+    "мероприятие", "внеурочное мероприятие", "лекция по теме", "экскурсия", "фестиваль", "встреча с ", "встречи с ", "тьюторский час",
+)
+
+/** [week] without the events outside the curriculum, for a group's schedule. */
+fun ScheduleWeek.withoutExtracurricular(): ScheduleWeek =
+    copy(days = days.map { day -> day.copy(events = day.events.filterNot { isExtracurricular(it.type, it.discipline) }) })
+
 fun displayAddress(address: String?): String? {
     val value = address?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return if (isGenericCampusLabel(value)) null else value

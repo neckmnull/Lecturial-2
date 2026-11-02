@@ -23,6 +23,9 @@ object ScheduleTarget {
 
     fun isTeacher(key: String?): Boolean = teacherId(key) != null
 
+    /** A student group's schedule, as opposed to a teacher's or a classroom's. */
+    fun isGroup(key: String?): Boolean = key != null && !isTeacher(key) && classroomId(key) == null
+
     /** [id] is the classroom value exactly as the site lists it, e.g. "Альфа 5.8Альфа 5.8 (Основной)". */
     fun classroomKey(id: String): String = CLASSROOM_PREFIX + id
 

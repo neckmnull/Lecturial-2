@@ -1,6 +1,8 @@
 package com.rassvet.lecturial.ui
 
+import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +38,8 @@ import com.rassvet.lecturial.model.StudyPlan
 import com.rassvet.lecturial.model.StudyPlanType
 import com.rassvet.lecturial.ui.theme.LecturialTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
@@ -46,6 +50,39 @@ import java.util.concurrent.atomic.AtomicInteger
 class LecturialAppTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComposeTestActivity>()
+
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+    // Most tests look at the app past its first-launch setup.
+    @Before
+    fun skipFirstRunSetup() {
+        FirstRun.markDone(context)
+    }
+
+    private fun forgetFirstRun() {
+        context.getSharedPreferences("first_run", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test
+    fun firstLaunchWalksThroughSetupToGroups() {
+        forgetFirstRun()
+        render(ScheduleUiState(availableGroups = listOf("ИОП-ИТ-26/1"), isStarting = false))
+
+        compose.onNodeWithText("Начать").assertIsDisplayed()
+        compose.onNodeWithText("Начать").performClick()
+        compose.onNodeWithText("ИОП-ИТ-26/1").assertIsDisplayed()
+        compose.onNodeWithText("Назад").performClick()
+        compose.onNodeWithText("Начать").assertIsDisplayed()
+    }
+
+    @Test
+    fun existingUsersSkipFirstRunSetup() {
+        forgetFirstRun()
+        render(ScheduleUiState(selectedGroup = "ИОП-ИТ-26/1", isStarting = false))
+
+        compose.onAllNodesWithText("Начать").assertCountEquals(0)
+        compose.runOnIdle { assertTrue(FirstRun.isDone(context)) }
+    }
 
     @Test
     fun appUsesSharedMaterialYouBackground() {

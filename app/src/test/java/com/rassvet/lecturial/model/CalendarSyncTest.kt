@@ -84,4 +84,31 @@ class CalendarSyncTest {
         assertEquals(listOf("r3"), plan.delete.map { it.remoteId })
         assertTrue(planSync(listOf(kept), listOf(synced.first()), day).isEmpty)
     }
+
+    @Test
+    fun `copies left by another install are taken over once and the rest removed`() {
+        val first = lessonEntries(listOf(lesson("first")), emptyMap(), null).single()
+        val second = lessonEntries(listOf(lesson("second", start = "10:20", end = "11:40")), emptyMap(), null).single()
+        val look = { entry: CalendarEntry -> "${entry.subject}|${entry.start}|${entry.end}" }
+        val tracked = listOf(SyncedEntry(first.key, "r1", first.fingerprint, day))
+        val marked = listOf(
+            MarkedEvent("r1", first.key, look(first)),
+            // The same lesson written again by an install that lost its record.
+            MarkedEvent("r2", first.key, look(first)),
+            // An older untagged copy of the second lesson, and a duplicate of it.
+            MarkedEvent("r3", null, look(second)),
+            MarkedEvent("r4", null, look(second)),
+            MarkedEvent("r5", "lesson:cancelled", "gone"),
+        )
+
+        val adoption = adoptMarked(listOf(first, second), tracked, marked, look)
+
+        assertEquals(listOf("r1", "r3"), adoption.tracked.map { it.remoteId })
+        assertEquals("", adoption.tracked.last().fingerprint)
+        assertEquals(listOf("r2", "r4", "r5"), adoption.strays)
+        // Nothing is created again for an adopted event; it is rewritten instead.
+        val plan = planSync(listOf(first, second), adoption.tracked, day)
+        assertTrue(plan.create.isEmpty())
+        assertEquals(listOf("r3"), plan.update.map { it.first.remoteId })
+    }
 }

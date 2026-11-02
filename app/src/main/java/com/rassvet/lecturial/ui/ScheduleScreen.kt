@@ -142,6 +142,13 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import com.rassvet.lecturial.LecturialApplication
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.Create
+import com.rassvet.lecturial.model.LksMark
+import com.rassvet.lecturial.model.ScheduleLayout
 
 private val ru = Locale.forLanguageTag("ru")
 private val LessonTimeColumnWidth = 68.dp
@@ -203,6 +210,7 @@ internal fun ScheduleScreen(
     onTeacherSelected: (TeacherInfo) -> Unit = {},
     onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
     openUpdatesKey: Long = 0L,
+    openStudyKey: Long = 0L,
     openOutlookKey: Long = 0L,
     openLesson: OpenLessonRequest? = null,
     onOpenLessonConsumed: (Long) -> Unit = {},
@@ -252,9 +260,14 @@ internal fun ScheduleScreen(
             settingsSection = SettingsDestination.About
         }
     }
-    // Statistics is a teacher tool; students switching back from teacher mode leave it.
+    // A notification about new grades or personal-account news lands on Study.
+    LaunchedEffect(openStudyKey) {
+        if (openStudyKey > 0L) mainSection = MainSection.Study
+    }
+    // Statistics is a teacher tool and Study a student's; switching mode leaves the other one.
     LaunchedEffect(state.isTeacherMode) {
         if (!state.isTeacherMode && mainSection == MainSection.Statistics) mainSection = MainSection.Schedule
+        if (state.isTeacherMode && mainSection == MainSection.Study) mainSection = MainSection.Schedule
     }
     LaunchedEffect(mainSection) {
         if (mainSection != MainSection.Settings) settingsSection = null
@@ -262,9 +275,12 @@ internal fun ScheduleScreen(
     LaunchedEffect(mainSection, settingsSection) {
         predictiveBackProgress.snapTo(0f)
     }
-    BackHandler(enabled = mainSection == MainSection.Plans || mainSection == MainSection.Statistics) {
+    BackHandler(enabled = mainSection == MainSection.Plans || mainSection == MainSection.Statistics || mainSection == MainSection.Study) {
         mainSection = MainSection.Schedule
     }
+    // The personal account's journal: grades and attendance on the lessons, for students.
+    val lksState by (LocalContext.current.applicationContext as LecturialApplication).lks.state.collectAsState()
+    val lksMarks = if (state.isTeacherMode) emptyList() else lksState.snapshot?.marks.orEmpty()
     // Kept outside the tab transition: coming back to the schedule reuses the rows and the
     // scroll position instead of rebuilding the list and jumping to today a frame later.
     val scheduleRows = remember(
@@ -279,6 +295,7 @@ internal fun ScheduleScreen(
         state.now,
         state.lessonAliases,
         state.studyPlans,
+        lksMarks,
     ) {
         buildScheduleRows(
             scheduleWeeks = state.scheduleWeeks,
@@ -293,6 +310,7 @@ internal fun ScheduleScreen(
             now = state.now,
             aliases = state.lessonAliases,
             plans = state.studyPlans,
+            lksMarks = lksMarks,
         )
     }
     val scheduleListState = rememberLazyListState()
@@ -454,10 +472,15 @@ internal fun ScheduleScreen(
                 }
             } else if (selectedSection == MainSection.Statistics) {
                 AnalyticsScreen(onBack = null)
+            } else if (selectedSection == MainSection.Study) {
+                StudyScreen(scheduleEvents = state.loadedScheduleWeeks().flatMap { it.days }.flatMap { it.events })
             } else if (selectedSection == MainSection.Plans) {
                 StudyPlansScreen(
                     plans = state.studyPlans,
                     displayOptions = state.appDisplayOptions,
+                    dayPlanner = if (state.isTeacherMode) null else {
+                        { DayPlannerSection(state.loadedScheduleWeeks(), lksMarks, state.studyPlans, state.now) }
+                    },
                     requestedPlanId = openPlanId,
                     requestedPlanKey = openPlanRequestKey,
                     onRequestedPlanOpened = onOpenPlanConsumed,
@@ -489,6 +512,7 @@ internal fun ScheduleScreen(
                         scrolledForState = scheduleScrolledFor,
                         focusedLesson = focusedLesson,
                         onFocusShown = { focusShown = true },
+                        lksMarks = lksMarks,
                         onRetry = onRetry,
                         onToday = onToday,
                         onStudyPlanSaved = onStudyPlanSaved,
@@ -509,6 +533,8 @@ internal fun ScheduleScreen(
             onStatistics = { mainSection = MainSection.Statistics },
             showStatistics = state.isTeacherMode,
             onSettings = { mainSection = MainSection.Settings },
+            onStudy = { mainSection = MainSection.Study },
+            showStudy = !state.isTeacherMode,
         )
     }
 }
@@ -524,6 +550,7 @@ private fun ScheduleContent(
     scrolledForState: MutableState<String?>,
     focusedLesson: String? = null,
     onFocusShown: () -> Unit = {},
+    lksMarks: List<LksMark> = emptyList(),
     onRetry: () -> Unit,
     onToday: () -> Unit,
     onStudyPlanSaved: (StudyPlan) -> Unit,
@@ -531,10 +558,41 @@ private fun ScheduleContent(
     onStudyPlanDeleted: (String) -> Unit,
 ) {
     var editingPlan by remember { mutableStateOf<StudyPlan?>(null) }
+    val rowContent: @Composable (ScheduleRow) -> Unit = { row ->
+        when (row) {
+            is ScheduleRow.Header -> ScheduleHeader(row.group, row.subtitle)
+            is ScheduleRow.Banner -> OfflineBanner(row.message, row.updatedAt)
+            is ScheduleRow.Empty -> EmptyScheduleState()
+            is ScheduleRow.WeekBreak -> WeekDivider(row.title, row.range, row.isCurrent)
+            is ScheduleRow.EmptyWeek -> EmptyWeekState()
+            is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
+            is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions, highlighted = row.key == focusedLesson)
+            is ScheduleRow.Plan -> StudyPlanTimelineItem(
+                plan = row.plan,
+                options = state.appDisplayOptions,
+                onToggle = {
+                    onStudyPlanCompletedChanged(row.sourcePlan.id, !row.sourcePlan.isCompleted)
+                },
+                onEdit = { editingPlan = row.sourcePlan },
+            )
+            is ScheduleRow.Rest -> BreakHint(row.text)
+        }
+    }
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
         state.scheduleWeeks.isEmpty() && state.week == null && state.nextWeek == null && state.errorMessage != null ->
             FullError(state.errorMessage, onRetry)
+        state.appDisplayOptions.scheduleLayout == ScheduleLayout.Days -> CompositionLocalProvider(LocalOverscrollFactory provides null) {
+            ScheduleDaysPager(
+                state = state,
+                rows = rows,
+                lksMarks = lksMarks,
+                focusedLesson = focusedLesson,
+                onFocusShown = onFocusShown,
+                onToday = onToday,
+                rowContent = rowContent,
+            )
+        }
         else -> {
             CompositionLocalProvider(LocalOverscrollFactory provides null) {
                 val scrollSession = "${state.selectedGroup}|${state.weekStart}|${state.selectedDate}|${state.isLoading}"
@@ -606,26 +664,7 @@ private fun ScheduleContent(
                         items = rows,
                         key = { it.key },
                         contentType = { it.contentType },
-                    ) { row ->
-                        when (row) {
-                            is ScheduleRow.Header -> ScheduleHeader(row.group, row.subtitle)
-                            is ScheduleRow.Banner -> OfflineBanner(row.message, row.updatedAt)
-                            is ScheduleRow.Empty -> EmptyScheduleState()
-                            is ScheduleRow.WeekBreak -> WeekDivider(row.title, row.range, row.isCurrent)
-                            is ScheduleRow.EmptyWeek -> EmptyWeekState()
-                            is ScheduleRow.Day -> DayHeading(row.title, row.subtitle, row.separated)
-                            is ScheduleRow.Lesson -> LessonTimelineItem(row, state.appDisplayOptions, highlighted = row.key == focusedLesson)
-                            is ScheduleRow.Plan -> StudyPlanTimelineItem(
-                                plan = row.plan,
-                                options = state.appDisplayOptions,
-                                onToggle = {
-                                    onStudyPlanCompletedChanged(row.sourcePlan.id, !row.sourcePlan.isCompleted)
-                                },
-                                onEdit = { editingPlan = row.sourcePlan },
-                            )
-                            is ScheduleRow.Rest -> BreakHint(row.text)
-                        }
-                    }
+                    ) { row -> rowContent(row) }
                 }
                 JumpToTodayButton(
                     direction = todayDirection,
@@ -700,7 +739,7 @@ private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
  * 1 when below, 0 when it isn't in the loaded range, and null to hide the button.
  */
 @Composable
-private fun JumpToTodayButton(direction: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun JumpToTodayButton(direction: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     // Keep the last arrow while the button animates out instead of flipping to the calendar icon.
     val lastDirection = remember { intArrayOf(0) }.also { if (direction != null) it[0] = direction }[0]
     AnimatedVisibility(
@@ -730,7 +769,7 @@ private fun JumpToTodayButton(direction: Int?, onClick: () -> Unit, modifier: Mo
 }
 
 @Composable
-private fun ScheduleHeader(group: String, subtitle: String) {
+internal fun ScheduleHeader(group: String, subtitle: String) {
     Column(modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)) {
         Text(
             group,
@@ -747,7 +786,7 @@ private fun ScheduleHeader(group: String, subtitle: String) {
 }
 
 @Composable
-private fun EmptyScheduleState() {
+internal fun EmptyScheduleState() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.largeIncreased,
@@ -867,7 +906,7 @@ private fun WeekDivider(title: String, range: String, isCurrent: Boolean) {
 }
 
 @Composable
-private fun DayHeading(title: String, subtitle: String, separated: Boolean) {
+internal fun DayHeading(title: String, subtitle: String, separated: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -956,7 +995,8 @@ internal fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayO
                 bottom = (options.verticalPaddingDp + 8).dp,
             ),
     ) {
-        if (lesson.typeLabel.isNotBlank() || lesson.liveLabel != null) {
+        val lksChip = lesson.lks?.let { it.grade != null || it.absent == true } == true
+        if (lesson.typeLabel.isNotBlank() || lesson.liveLabel != null || lksChip) {
             FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -973,6 +1013,12 @@ internal fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayO
                         MaterialTheme.colorScheme.primaryContainer,
                         MaterialTheme.colorScheme.onPrimaryContainer,
                     )
+                }
+                lesson.lks?.grade?.let { grade ->
+                    LessonChip("Оценка $grade", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                if (lesson.lks?.absent == true) {
+                    LessonChip("Пропуск", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
         }
@@ -1015,6 +1061,8 @@ internal fun LessonTimelineItem(lesson: ScheduleRow.Lesson, options: AppDisplayO
                 if (!lesson.comment.isNullOrBlank()) {
                     LessonDetail(Icons.Outlined.Info, lesson.comment, options)
                 }
+                lesson.lks?.topic?.let { LessonDetail(Icons.AutoMirrored.Outlined.List, "Тема: $it", options) }
+                lesson.lks?.homework?.let { LessonDetail(Icons.Outlined.Create, "ДЗ: $it", options) }
             }
         }
         lesson.liveProgress?.let { progress ->
@@ -1222,7 +1270,7 @@ private fun BreakHint(text: String) {
 }
 
 @Composable
-private fun EmptyDay(date: LocalDate) {
+internal fun EmptyDay(date: LocalDate) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1238,7 +1286,7 @@ private fun EmptyDay(date: LocalDate) {
 }
 
 @Composable
-private fun OfflineBanner(message: String, updatedAt: Long?) {
+internal fun OfflineBanner(message: String, updatedAt: Long?) {
     Column(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer, MaterialTheme.shapes.medium).padding(14.dp),
     ) {

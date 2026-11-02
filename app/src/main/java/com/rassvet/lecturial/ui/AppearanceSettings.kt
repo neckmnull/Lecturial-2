@@ -101,6 +101,7 @@ import com.rassvet.lecturial.model.themeColorHex
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import com.rassvet.lecturial.model.ScheduleLayout
 
 private val ru = Locale.forLanguageTag("ru")
 private val WallpaperGradientColors = listOf(
@@ -302,6 +303,14 @@ internal fun AppearanceSettingsScreen(
                 Icon(Icons.Rounded.Create, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                 Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                 Text("Изменить цвета")
+            }
+        }
+        SettingsSection(
+            "Вид расписания",
+            description = "Лентой — все дни одним списком. По дням — неделя сверху, дни листаются свайпом.",
+        ) {
+            ConnectedChoice(ScheduleLayout.entries, appDisplayOptions.scheduleLayout, { it.title }) { layout ->
+                onAppDisplayOptionsChanged(appDisplayOptions.copy(scheduleLayout = layout))
             }
         }
         SettingsSection(
@@ -758,7 +767,7 @@ internal fun AppThemePreview(options: AppDisplayOptions) {
     }
 }
 
-private fun appThemeTitle(theme: AppTheme): String = when (theme) {
+internal fun appThemeTitle(theme: AppTheme): String = when (theme) {
     AppTheme.Dynamic -> "Обои"
     AppTheme.Sirius -> "Сириус"
     AppTheme.Ocean -> "Океан"
@@ -771,6 +780,11 @@ private fun appThemeTitle(theme: AppTheme): String = when (theme) {
     AppTheme.Neon -> "Неон"
     AppTheme.Fuchsia -> "Фуксия"
     AppTheme.Electric -> "Электрик"
+    AppTheme.Paper -> "Бумага"
+    AppTheme.Mint -> "Мята"
+    AppTheme.Lavender -> "Лаванда"
+    AppTheme.Midnight -> "Полночь"
+    AppTheme.Espresso -> "Эспрессо"
     AppTheme.Custom -> "Своя тема"
 }
 
@@ -787,6 +801,11 @@ private fun appThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.Neon -> "Кислотный зелёный"
     AppTheme.Fuchsia -> "Яркий розовый"
     AppTheme.Electric -> "Насыщенный синий"
+    AppTheme.Paper -> "Белые карточки на светлом листе, один синий акцент"
+    AppTheme.Mint -> "Свежий зелёный, плоские карточки"
+    AppTheme.Lavender -> "Мягкий сиреневый, плоские карточки"
+    AppTheme.Midnight -> "Глубокий ночной синий, плоские карточки"
+    AppTheme.Espresso -> "Тёплый кофейный, плоские карточки"
     AppTheme.Custom -> "Пользовательская палитра"
 }
 
@@ -802,6 +821,11 @@ private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
     AppTheme.Neon -> Color(0xFFB6FF00)
     AppTheme.Fuchsia -> Color(0xFFFF3CAC)
     AppTheme.Electric -> Color(0xFF2979FF)
+    AppTheme.Paper -> Color(0xFF2563EB)
+    AppTheme.Mint -> Color(0xFF5FD4AE)
+    AppTheme.Lavender -> Color(0xFFBBA6FF)
+    AppTheme.Midnight -> Color(0xFF8EA8FF)
+    AppTheme.Espresso -> Color(0xFFD9A27C)
     AppTheme.Custom, AppTheme.Dynamic -> Color(0xFF8AABFF)
 }
 

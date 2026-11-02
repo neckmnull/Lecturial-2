@@ -7,6 +7,7 @@ import com.rassvet.lecturial.data.StudyPlanRepository
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.local.UserPreferences
 import com.rassvet.lecturial.data.devicecalendar.DeviceCalendarSync
+import com.rassvet.lecturial.data.lks.LksRepository
 import com.rassvet.lecturial.data.outlook.OutlookSync
 import com.rassvet.lecturial.data.network.SiriusScheduleDataSource
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
@@ -15,6 +16,7 @@ import com.rassvet.lecturial.notify.DeadlineAlerts
 import com.rassvet.lecturial.notify.UpdateNotifier
 import com.rassvet.lecturial.widget.TodayScheduleWidget
 import java.io.File
+import com.rassvet.lecturial.data.local.DayPlannerStore
 
 class LecturialApplication : Application() {
     val preferences by lazy { UserPreferences(this) }
@@ -50,6 +52,10 @@ class LecturialApplication : Application() {
 
     /** Keeps a calendar of the phone's Google account in step with the schedule and plans. */
     val googleCalendar by lazy { DeviceCalendarSync(this) }
+
+    /** The student's personal account: grades, attendance, session, notifications and news. */
+    val lks by lazy { LksRepository(this) }
+    val dayPlanner by lazy { DayPlannerStore(this) }
 
     override fun onCreate() {
         super.onCreate()

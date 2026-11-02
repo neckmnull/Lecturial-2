@@ -25,9 +25,6 @@ import com.rassvet.lecturial.BuildConfig
 import com.rassvet.lecturial.data.local.UserPreferences
 import com.rassvet.lecturial.notify.LessonAlerts
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -78,7 +75,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -252,16 +248,13 @@ internal fun AppSettingsScreen(
 @Composable
 internal fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.97f else 1f,
-        tween(durationMillis = 100), label = "settings-press")
     Surface(
         onClick = onClick,
         interactionSource = interaction,
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Открыть: $title" }
-            .graphicsLayer { scaleX = scale; scaleY = scale },
+            .pressScale(interaction),
         shape = MaterialTheme.shapes.largeIncreased,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
@@ -606,6 +599,7 @@ internal fun AboutScreen(
             }
         }
         SettingsNavigationRow("Политика конфиденциальности", "Данные и их хранение", onOpenPrivacy)
+        SettingsNavigationRow("Первичная настройка", "Пройти знакомство с приложением заново", FirstRun::replay)
         Spacer(Modifier.height(12.dp))
     }
 }

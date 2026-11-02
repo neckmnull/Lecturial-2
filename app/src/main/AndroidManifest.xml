@@ -59,6 +59,10 @@
         </provider>
 
         <receiver
+            android:name=".data.lks.LksRefreshReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".widget.TodayScheduleWidget"
             android:exported="false">
             <intent-filter>

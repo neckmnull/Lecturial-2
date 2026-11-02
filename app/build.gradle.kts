@@ -23,8 +23,8 @@ android {
         applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 39
-        versionName = "1.12.0"
+        versionCode = 40
+        versionName = "1.13.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Application (client) ID of the app registered in Microsoft Entra for the Outlook sync.
@@ -108,6 +108,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.4")
     kapt("androidx.room:room-compiler:2.8.4")
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
+    implementation("org.jsoup:jsoup:1.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

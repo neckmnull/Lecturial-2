@@ -11,9 +11,11 @@ import com.rassvet.lecturial.data.SyncedEntriesFile
 import com.rassvet.lecturial.data.calendarEntries
 import com.rassvet.lecturial.data.syncSummary
 import com.rassvet.lecturial.model.CalendarSyncSettings
+import com.rassvet.lecturial.model.adoptMarked
 import com.rassvet.lecturial.model.planSync
 import java.io.File
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +51,7 @@ data class DeviceCalendarState(
  * Google sign-in or API access is needed. Past events are left as they were.
  */
 class DeviceCalendarSync(private val app: LecturialApplication) {
-    private val calendar = DeviceCalendar(app.contentResolver)
+    private val calendar = DeviceCalendar(app.contentResolver, appPackage = app.packageName)
     private val prefs = app.getSharedPreferences("device_calendar_sync", Context.MODE_PRIVATE)
     private val synced = SyncedEntriesFile(File(app.filesDir, "device_calendar_synced.json"))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -86,7 +88,7 @@ class DeviceCalendarSync(private val app: LecturialApplication) {
         pending?.cancel()
         scope.launch {
             mutex.withLock {
-                calendar.deleteAll(synced.load())
+                _state.value.selectedId?.let { removeEverything(it) }
                 synced.save(emptyList())
                 prefs.edit { putLong(KEY_CALENDAR, chosen.id) }
                 _state.update { it.copy(selectedId = chosen.id, error = null) }
@@ -100,7 +102,7 @@ class DeviceCalendarSync(private val app: LecturialApplication) {
         pending?.cancel()
         scope.launch {
             mutex.withLock {
-                val left = runCatching { calendar.deleteAll(synced.load()) }.getOrDefault(0)
+                val left = _state.value.selectedId?.let { removeEverything(it) } ?: 0
                 synced.delete()
                 prefs.edit {
                     remove(KEY_CALENDAR)
@@ -156,15 +158,25 @@ class DeviceCalendarSync(private val app: LecturialApplication) {
             val today = LocalDate.now()
             val windowStart = today.minusDays(PAST_DAYS)
             val entries = app.calendarEntries(_state.value.settings, windowStart, today.plusDays(FUTURE_DAYS))
-            val before = calendar.stillPresent(synced.load())
+            // The calendar has the last word: events of an earlier install or of lost app data
+            // are taken over, and extra copies of a lesson go.
+            val windowMillis = windowStart.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val adoption = adoptMarked(
+                entries,
+                calendar.stillPresent(synced.load()),
+                calendar.markedEvents(calendarId, windowMillis),
+                calendar::look,
+            )
+            val strayFailures = calendar.deleteIds(adoption.strays)
+            val before = adoption.tracked
             val result = calendar.apply(calendarId, planSync(entries, before, windowStart), before)
             synced.save(result.synced)
             val summary = syncSummary(
                 inCalendar = result.synced.count { !it.date.isBefore(windowStart) },
                 created = result.created,
                 updated = result.updated,
-                deleted = result.deleted,
-                failed = result.failed,
+                deleted = result.deleted + adoption.strays.size - strayFailures,
+                failed = result.failed + strayFailures,
             )
             val now = System.currentTimeMillis()
             prefs.edit {
@@ -180,6 +192,13 @@ class DeviceCalendarSync(private val app: LecturialApplication) {
             _state.update { it.copy(syncing = false, error = failure.message ?: "Синхронизация не удалась") }
         }
     }
+
+    /** Takes every event of the app out of [calendarId]: the recorded ones and any marked copies. */
+    private fun removeEverything(calendarId: Long): Int = runCatching {
+        val recorded = synced.load()
+        val marked = calendar.markedEvents(calendarId, fromMillis = null).map { it.remoteId }
+        calendar.deleteAll(recorded) + calendar.deleteIds(marked - recorded.map { it.remoteId }.toSet())
+    }.getOrDefault(0)
 
     private fun hasPermission(): Boolean = CALENDAR_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(app, it) == PackageManager.PERMISSION_GRANTED

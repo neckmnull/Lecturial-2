@@ -7,6 +7,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.AnimatedContent
@@ -30,6 +32,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +57,7 @@ import com.rassvet.lecturial.model.StudyPlan
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.runtime.mutableIntStateOf
 
 private val ru = Locale.forLanguageTag("ru")
 private val fullWeekdayFormatter = DateTimeFormatter.ofPattern("EEEE", ru)
@@ -71,7 +76,7 @@ data class OpenLessonRequest(val key: Long, val date: LocalDate, val eventId: St
 }
 
 internal enum class SettingsDestination { LanguageTeacher, Appearance, Widget, Names, Outlook, GoogleCalendar, Testing, About, Privacy }
-internal enum class MainSection { Schedule, Plans, Statistics, Settings }
+internal enum class MainSection { Schedule, Study, Plans, Statistics, Settings }
 internal enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -81,6 +86,7 @@ fun LecturialApp(
     openPlanId: String? = null,
     openPlanRequestKey: Long = 0L,
     openUpdatesKey: Long = 0L,
+    openStudyKey: Long = 0L,
     openOutlookKey: Long = 0L,
     onOpenPlanConsumed: (Long) -> Unit = {},
     openLesson: OpenLessonRequest? = null,
@@ -136,11 +142,30 @@ fun LecturialApp(
     onSearchModeChanged: (ScheduleSearchMode) -> Unit = {},
 ) {
     var returnToGroups by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Decided once the saved group is known: a fresh install walks through the setup, while
+    // anyone who already picked a group before the setup existed goes straight in.
+    fun needsSetup() = !FirstRun.isDone(context) && state.selectedGroup == null
+    var firstRun by rememberSaveable { mutableStateOf(if (state.isStarting) null else needsSetup()) }
+    LaunchedEffect(state.isStarting) {
+        if (!state.isStarting && firstRun == null) firstRun = needsSetup()
+    }
+    LaunchedEffect(firstRun) {
+        if (firstRun == false) FirstRun.markDone(context)
+    }
+    var seenReplays by rememberSaveable { mutableIntStateOf(FirstRun.replays) }
+    LaunchedEffect(FirstRun.replays) {
+        if (FirstRun.replays != seenReplays) {
+            seenReplays = FirstRun.replays
+            firstRun = true
+        }
+    }
     val stage = when {
-        state.isStarting -> 0
-        state.selectedGroup == null || returnToGroups -> 1
-        state.choosingLanguageTeacher -> 2
-        else -> 3
+        state.isStarting || firstRun == null -> 0
+        firstRun == true -> 1
+        state.selectedGroup == null || returnToGroups -> 2
+        state.choosingLanguageTeacher -> 3
+        else -> 4
     }
     MaterialYouBackground(
         modifier = Modifier.fillMaxSize(),
@@ -169,7 +194,21 @@ fun LecturialApp(
         ) { screen ->
             when (screen) {
                 0 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
-                1 -> GroupSelectionScreen(
+                1 -> FirstRunSetup(
+                    state = state,
+                    onGroupSearchQueryChanged = onGroupSearchQueryChanged,
+                    onGroupsRetry = onGroupsRetry,
+                    onGroupSelected = onGroupSelected,
+                    onTeacherSelected = onTeacherSelected,
+                    onSearchModeChanged = onSearchModeChanged,
+                    onLanguageTeacherSelected = onLanguageTeacherSelected,
+                    onRetry = onRetry,
+                    onAppThemeSelected = onAppThemeSelected,
+                    onDarkThemeChanged = onDarkThemeChanged,
+                    onAppDisplayOptionsChanged = onAppDisplayOptionsChanged,
+                    onFinished = { firstRun = false },
+                )
+                2 -> GroupSelectionScreen(
                     state = state,
                     onSearchQueryChanged = onGroupSearchQueryChanged,
                     onRetry = onGroupsRetry,
@@ -183,7 +222,7 @@ fun LecturialApp(
                     },
                     onSearchModeChanged = onSearchModeChanged,
                 )
-                2 -> LanguageTeacherSelectionScreen(
+                3 -> LanguageTeacherSelectionScreen(
                     state = state,
                     onSelected = onLanguageTeacherSelected,
                     onRetry = onRetry,
@@ -256,6 +295,7 @@ fun LecturialApp(
                         onTeacherSelected = onTeacherSelected,
                         onSearchModeChanged = onSearchModeChanged,
                         openUpdatesKey = openUpdatesKey,
+                        openStudyKey = openStudyKey,
                         openOutlookKey = openOutlookKey,
                         openLesson = openLesson,
                         onOpenLessonConsumed = onOpenLessonConsumed,
@@ -274,6 +314,8 @@ internal fun LecturialBottomBar(
     onStatistics: () -> Unit,
     onSettings: () -> Unit,
     showStatistics: Boolean,
+    onStudy: () -> Unit = {},
+    showStudy: Boolean = false,
 ) {
     NavigationBar(
         modifier = Modifier
@@ -289,6 +331,15 @@ internal fun LecturialBottomBar(
             icon = Icons.Outlined.DateRange,
             label = "Расписание",
         )
+        if (showStudy) {
+            BottomBarItem(
+                selected = selectedSection == MainSection.Study,
+                onClick = onStudy,
+                selectedIcon = Icons.Filled.Star,
+                icon = Icons.Outlined.Star,
+                label = "Учёба",
+            )
+        }
         BottomBarItem(
             selected = selectedSection == MainSection.Plans,
             onClick = onPlans,

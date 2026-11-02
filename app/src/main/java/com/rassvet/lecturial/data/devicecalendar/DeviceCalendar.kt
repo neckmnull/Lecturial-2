@@ -6,7 +6,11 @@ import android.content.ContentValues
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Reminders
+import android.net.Uri
 import com.rassvet.lecturial.model.CalendarEntry
+import com.rassvet.lecturial.model.LESSON_MARK
+import com.rassvet.lecturial.model.MarkedEvent
+import com.rassvet.lecturial.model.PLAN_MARK
 import com.rassvet.lecturial.model.SyncPlan
 import com.rassvet.lecturial.model.SyncedEntry
 import java.time.ZoneId
@@ -61,7 +65,12 @@ data class DeviceApplyResult(
 class DeviceCalendar(
     private val resolver: ContentResolver,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    /** Recorded on each event with its key, so any install of the app knows the event again. */
+    private val appPackage: String? = null,
 ) {
+    /** Dropped if the provider refuses the custom-app columns; the mark in the text still works. */
+    private var tagEvents = appPackage != null
+
     /** Calendars the user may add events to, Google ones first. */
     fun writableCalendars(): List<DeviceCalendarInfo> {
         val projection = arrayOf(
@@ -104,6 +113,37 @@ class DeviceCalendar(
         return entries.filter { it.remoteId.toLongOrNull() in alive }
     }
 
+    /**
+     * The app's events in [calendarId] starting from [fromMillis] (all of them when null): tagged
+     * with a key, or written before tags with the app's mark at the end of the description.
+     */
+    fun markedEvents(calendarId: Long, fromMillis: Long?): List<MarkedEvent> {
+        val projection = arrayOf(Events._ID, Events.CUSTOM_APP_URI, Events.TITLE, Events.DTSTART, Events.DTEND)
+        val selection = buildString {
+            append("${Events.CALENDAR_ID} = ? AND ${Events.DELETED} = 0")
+            append(" AND (${Events.CUSTOM_APP_URI} LIKE ? OR ${Events.DESCRIPTION} LIKE ? OR ${Events.DESCRIPTION} LIKE ?)")
+            if (fromMillis != null) append(" AND ${Events.DTSTART} >= ?")
+        }
+        val args = listOfNotNull(calendarId.toString(), "$TAG_PREFIX%", "%$LESSON_MARK", "%$PLAN_MARK", fromMillis?.toString())
+        val events = mutableListOf<MarkedEvent>()
+        resolver.query(Events.CONTENT_URI, projection, selection, args.toTypedArray(), null)?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val key = cursor.getString(1)?.takeIf { it.startsWith(TAG_PREFIX) }?.let { Uri.decode(it.removePrefix(TAG_PREFIX)) }
+                val look = look(cursor.getString(2).orEmpty(), cursor.getLong(3), cursor.getLong(4))
+                events += MarkedEvent(cursor.getLong(0).toString(), key, look)
+            }
+        }
+        return events
+    }
+
+    /** Title and times as the calendar holds them, to match an event with the entry it shows. */
+    fun look(entry: CalendarEntry): String = providerTimes(entry, zone).let { look(entry.subject, it.start, it.end) }
+
+    private fun look(title: String, start: Long, end: Long) = "$title|$start|$end"
+
+    /** Removes the given events; returns how many could not be removed. */
+    fun deleteIds(ids: List<String>): Int = ids.count { id -> runCatching { delete(id.toLong()) }.isFailure }
+
     fun apply(calendarId: Long, plan: SyncPlan, before: List<SyncedEntry>): DeviceApplyResult {
         val kept = before.associateBy { it.key }.toMutableMap()
         var created = 0
@@ -118,7 +158,7 @@ class DeviceCalendar(
         plan.update.forEach { (old, entry) ->
             runCatching {
                 val id = old.remoteId.toLong()
-                if (resolver.update(ContentUris.withAppendedId(Events.CONTENT_URI, id), values(calendarId, entry), null, null) == 0) {
+                if (tagged { resolver.update(ContentUris.withAppendedId(Events.CONTENT_URI, id), values(calendarId, entry), null, null) } == 0) {
                     insert(calendarId, entry)
                 } else {
                     setReminder(id, entry.reminderMinutes)
@@ -141,7 +181,7 @@ class DeviceCalendar(
         entries.count { entry -> runCatching { delete(entry.remoteId.toLong()) }.isFailure }
 
     private fun insert(calendarId: Long, entry: CalendarEntry): Long {
-        val uri = resolver.insert(Events.CONTENT_URI, values(calendarId, entry)) ?: error("Календарь не принял событие")
+        val uri = tagged { resolver.insert(Events.CONTENT_URI, values(calendarId, entry)) } ?: error("Календарь не принял событие")
         val id = ContentUris.parseId(uri)
         setReminder(id, entry.reminderMinutes)
         return id
@@ -164,6 +204,15 @@ class DeviceCalendar(
         )
     }
 
+    /** Runs a write, once more without the tag columns if the provider won't take them. */
+    private fun <T> tagged(write: () -> T): T = try {
+        write()
+    } catch (refused: IllegalArgumentException) {
+        if (!tagEvents) throw refused
+        tagEvents = false
+        write()
+    }
+
     private fun values(calendarId: Long, entry: CalendarEntry): ContentValues {
         val times = providerTimes(entry, zone)
         return ContentValues().apply {
@@ -177,11 +226,16 @@ class DeviceCalendar(
             put(Events.ALL_DAY, if (entry.allDay) 1 else 0)
             put(Events.HAS_ALARM, if (entry.reminderMinutes != null) 1 else 0)
             put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY)
+            if (tagEvents) {
+                put(Events.CUSTOM_APP_PACKAGE, appPackage)
+                put(Events.CUSTOM_APP_URI, TAG_PREFIX + Uri.encode(entry.key))
+            }
         }
     }
 
     private companion object {
         /** Well under SQLite's limit on the number of terms in one query. */
         const val QUERY_CHUNK = 400
+        const val TAG_PREFIX = "lecturial2://calendar/"
     }
 }

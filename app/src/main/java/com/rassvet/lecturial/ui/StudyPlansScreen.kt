@@ -107,6 +107,8 @@ internal fun StudyPlansScreen(
     displayOptions: AppDisplayOptions = AppDisplayOptions(),
     requestedPlanId: String? = null,
     requestedPlanKey: Long = 0L,
+    /** The day planner shown above the plans, for students. */
+    dayPlanner: (@Composable () -> Unit)? = null,
     onRequestedPlanOpened: (Long) -> Unit = {},
     onSave: (StudyPlan) -> Unit,
     onCompletedChanged: (String, Boolean) -> Unit,
@@ -151,6 +153,23 @@ internal fun StudyPlansScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                if (dayPlanner != null) {
+                    item(key = "day-planner") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("План дня", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Пары, домашние задания из личного кабинета, дедлайны и свободное время. " +
+                                    "Отмечайте сделанное — план перестроится, а давно забытые предметы поднимутся выше.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            dayPlanner()
+                        }
+                    }
+                    item(key = "plans-heading") {
+                        Text("Мои планы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    }
                 }
                 item(key = "summary") { PlansSummary(active, todayCount, overdue) }
                 item(key = "filters") {

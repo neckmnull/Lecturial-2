@@ -91,6 +91,18 @@ enum class AppBackgroundStyle(
     }
 }
 
+/** How the schedule is laid out: one long list to scroll, or a day at a time to swipe. */
+enum class ScheduleLayout(val storageId: String, val title: String) {
+    Feed("feed", "Лентой"),
+    Days("days", "По дням");
+
+    companion object {
+        val default = Feed
+
+        fun fromStorageId(value: String?): ScheduleLayout = entries.firstOrNull { it.storageId == value } ?: default
+    }
+}
+
 data class AppDisplayOptions(
     val lectureStripeColor: Int = WidgetStripePalette.defaultLecture,
     val practiceStripeColor: Int = WidgetStripePalette.defaultPractice,
@@ -121,6 +133,7 @@ data class AppDisplayOptions(
     val backgroundLineDensityPercent: Int = 100,
     /** Line thickness for line wallpapers, 1–5. */
     val backgroundLineWeight: Int = 2,
+    val scheduleLayout: ScheduleLayout = ScheduleLayout.default,
 ) {
     /** Default schedule-card settings with the current background kept: what a reset leaves. */
     fun withDefaultCards(): AppDisplayOptions = AppDisplayOptions(
@@ -133,6 +146,7 @@ data class AppDisplayOptions(
         backgroundGradientAngleDegrees = backgroundGradientAngleDegrees,
         backgroundLineDensityPercent = backgroundLineDensityPercent,
         backgroundLineWeight = backgroundLineWeight,
+        scheduleLayout = scheduleLayout,
     )
 }
 

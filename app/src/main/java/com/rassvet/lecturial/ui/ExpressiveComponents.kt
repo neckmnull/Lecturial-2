@@ -50,6 +50,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
 
 /** Outer corners of a settings group; items inside it meet with [SettingsGroupInnerRadius]. */
 private val SettingsGroupOuterRadius = 24.dp
@@ -336,3 +340,18 @@ private fun Modifier.fadingTopEdge(scrolled: () -> Float): Modifier =
         }
 
 private val ScrollFade = 28.dp
+
+/** A pressed card sinks a little and springs back when let go. */
+@Composable
+internal fun Modifier.pressScale(interactionSource: MutableInteractionSource): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.97f else 1f,
+        MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "press-scale",
+    )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}

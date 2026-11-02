@@ -61,7 +61,7 @@ internal data class ThemeSwatch(
  * creates a new theme.
  */
 @Composable
-internal fun ThemeSwatchRow(swatches: List<ThemeSwatch>, onCreate: () -> Unit) {
+internal fun ThemeSwatchRow(swatches: List<ThemeSwatch>, onCreate: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -69,7 +69,7 @@ internal fun ThemeSwatchRow(swatches: List<ThemeSwatch>, onCreate: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         swatches.forEach { swatch -> ThemeSwatchItem(swatch) }
-        Column(
+        if (onCreate != null) Column(
             modifier = Modifier
                 .width(SwatchItemWidth)
                 .clip(MaterialTheme.shapes.medium)

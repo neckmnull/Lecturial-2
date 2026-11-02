@@ -374,7 +374,36 @@ private val ElectricColors = LecturialColors.copy(
     outlineVariant = Color(0xFF354A65),
 )
 
+/**
+ * The paper themes: cards are the plain surface on a slightly darker sheet, set apart by
+ * thin lines instead of tints, with one quiet accent.
+ */
+private val PaperThemes = setOf(AppTheme.Paper, AppTheme.Mint, AppTheme.Lavender, AppTheme.Midnight, AppTheme.Espresso)
+
+private fun paperDarkPalette(theme: AppTheme) = when (theme) {
+    AppTheme.Mint -> ThemePalette(0xFF5FD4AE.toInt(), 0xFF9CC3B5.toInt(), 0xFF8DB8F0.toInt(), 0xFF0F1714.toInt(), 0xFF17211D.toInt(), 0xFFDDEBE5.toInt())
+    AppTheme.Lavender -> ThemePalette(0xFFBBA6FF.toInt(), 0xFFC2BAD9.toInt(), 0xFFF2A3C6.toInt(), 0xFF15131C.toInt(), 0xFF1E1B27.toInt(), 0xFFE8E3F2.toInt())
+    AppTheme.Midnight -> ThemePalette(0xFF8EA8FF.toInt(), 0xFF8FA0C8.toInt(), 0xFFC4A6FF.toInt(), 0xFF0A0E1A.toInt(), 0xFF121829.toInt(), 0xFFDCE2F2.toInt())
+    AppTheme.Espresso -> ThemePalette(0xFFD9A27C.toInt(), 0xFFC9B7AA.toInt(), 0xFF9FCBA9.toInt(), 0xFF17120F.toInt(), 0xFF211A16.toInt(), 0xFFEDE2DA.toInt())
+    else -> ThemePalette(0xFF7AA2FF.toInt(), 0xFF94A3B8.toInt(), 0xFFF5B54A.toInt(), 0xFF121418.toInt(), 0xFF1B1E24.toInt(), 0xFFE6E8EE.toInt())
+}
+
+private fun paperColors(palette: ThemePalette, isDark: Boolean) = paletteColors(palette, isDark).let { colors ->
+    val surface = Color(palette.surface)
+    val ink = Color(palette.onSurface)
+    colors.copy(
+        surfaceContainerLowest = surface,
+        surfaceContainerLow = surface,
+        surfaceContainer = surface,
+        surfaceContainerHigh = ink.copy(alpha = if (isDark) 0.07f else 0.04f).compositeOver(surface),
+        surfaceContainerHighest = ink.copy(alpha = if (isDark) 0.11f else 0.07f).compositeOver(surface),
+        outlineVariant = ink.copy(alpha = if (isDark) 0.16f else 0.1f).compositeOver(surface),
+    )
+}
+
 private fun builtInDarkColors(theme: AppTheme) = when (theme) {
+    AppTheme.Paper, AppTheme.Mint, AppTheme.Lavender, AppTheme.Midnight, AppTheme.Espresso ->
+        paperColors(paperDarkPalette(theme), true)
     AppTheme.Sirius -> SiriusColors
     AppTheme.Ocean -> OceanColors
     AppTheme.Forest -> ForestColors
@@ -415,6 +444,11 @@ fun defaultThemePalette(theme: AppTheme, isDark: Boolean): ThemePalette {
         AppTheme.Neon -> ThemePalette(0xFF567D00.toInt(), 0xFF006B62.toInt(), 0xFF925400.toInt(), 0xFFFBFFF1.toInt(), 0xFFF1F8E4.toInt(), 0xFF1A1D14.toInt())
         AppTheme.Fuchsia -> ThemePalette(0xFFB00073.toInt(), 0xFF4E5D96.toInt(), 0xFF9B3D29.toInt(), 0xFFFFF7FA.toInt(), 0xFFFFECF4.toInt(), 0xFF23191E.toInt())
         AppTheme.Electric -> ThemePalette(0xFF005AC6.toInt(), 0xFF006875.toInt(), 0xFFA60058.toInt(), 0xFFF8F9FF.toInt(), 0xFFEDF2FF.toInt(), 0xFF191C20.toInt())
+        AppTheme.Paper -> ThemePalette(0xFF2563EB.toInt(), 0xFF64748B.toInt(), 0xFFD97706.toInt(), 0xFFF4F5F8.toInt(), 0xFFFFFFFF.toInt(), 0xFF1A1D24.toInt())
+        AppTheme.Mint -> ThemePalette(0xFF0B8A68.toInt(), 0xFF4B6B60.toInt(), 0xFF3B6EA8.toInt(), 0xFFF1F8F5.toInt(), 0xFFFFFFFF.toInt(), 0xFF16201C.toInt())
+        AppTheme.Lavender -> ThemePalette(0xFF6D4ED1.toInt(), 0xFF6B6485.toInt(), 0xFFB5487A.toInt(), 0xFFF6F4FB.toInt(), 0xFFFFFFFF.toInt(), 0xFF1D1B24.toInt())
+        AppTheme.Midnight -> ThemePalette(0xFF3B5BDB.toInt(), 0xFF4C5A7A.toInt(), 0xFF7C4DDB.toInt(), 0xFFEEF1F8.toInt(), 0xFFFFFFFF.toInt(), 0xFF121726.toInt())
+        AppTheme.Espresso -> ThemePalette(0xFF8B5A3C.toInt(), 0xFF6F625A.toInt(), 0xFF4F7A5C.toInt(), 0xFFF7F3EF.toInt(), 0xFFFFFFFF.toInt(), 0xFF221B17.toInt())
         AppTheme.Custom -> error("Custom theme has no built-in palette")
     }
 }
@@ -532,8 +566,10 @@ fun LecturialTheme(
             )
             paletteColors(palette, darkTheme)
         }
-        builtInOverride != null -> paletteColors(builtInOverride, darkTheme)
+        builtInOverride != null ->
+            if (appTheme in PaperThemes) paperColors(builtInOverride, darkTheme) else paletteColors(builtInOverride, darkTheme)
         darkTheme -> builtInDarkColors(if (appTheme == AppTheme.Custom) AppTheme.default else appTheme)
+        appTheme in PaperThemes -> paperColors(defaultThemePalette(appTheme, false), false)
         else -> paletteColors(
             defaultThemePalette(if (appTheme == AppTheme.Custom) AppTheme.default else appTheme, false),
             false,

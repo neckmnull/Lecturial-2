@@ -8,7 +8,7 @@
 
 **An unofficial, offline-first Android schedule app for Sirius University.**
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.12.0/Lecturial-2-v1.12.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.12.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.12.0 APK" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.13.0-00E5FF?style=for-the-badge&logo=android&logoColor=07111F" alt="Download Lecturial 2 v1.13.0 APK" /></a>
 <a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/badge/Release_notes-111827?style=for-the-badge&logo=github&logoColor=white" alt="View release notes" /></a>
 
 </div>
@@ -56,15 +56,17 @@ keep common actions one tap away.
 
 | Area | What Lecturial provides |
 |---|---|
-| **Schedule** | Daily feed, week navigation, pull-to-refresh, current class, remaining time, and meaningful gaps |
+| **Schedule** | A daily feed or a day at a time with a week strip, week navigation, pull-to-refresh, current class, remaining time, and meaningful gaps; extracurricular events are left out of a group's schedule |
 | **Study context** | Group selection, foreign-language instructor selection, custom subject names, rooms, and instructors |
 | **Offline behavior** | Cache-first loading with previously fetched weeks stored in Room |
-| **Appearance** | Material You plus 11 built-in themes, custom palettes, light/dark modes, animated line wallpapers, gradient presets, font styles, sizing, spacing, and title wrapping |
+| **Personal account** | Grades, attendance, topics and homework from the Sirius student account (lks.siriusuniversity.ru) on the lessons and in a Study tab, with the session's exams and credits, notifications and news; new grades arrive as notifications |
+| **Day planner** | Homework, deadlines, getting ready for the next pairs and going over every subject fitted into the free time between lessons, re-planned as tasks are ticked off |
+| **Appearance** | Material You plus 16 built-in themes, flat “paper” palettes among them, custom palettes, light/dark modes, animated line wallpapers, gradient presets, font styles, sizing, spacing, and title wrapping |
 | **At a glance** | Resizable Today widget that mirrors the app’s background and cards, marks the current class, and can be tuned separately |
 | **Time awareness** | Reminders, start/end alerts, and a live notification for the current lesson |
 | **Calendar sync** | Lessons and plans in a “Lecturial 2” Outlook calendar after signing in with a Microsoft account, or in any Google calendar of the phone’s Google account |
 
-> **Current release:** `1.12.0` (`versionCode 39`) · minimum Android version:
+> **Current release:** `1.13.0` (`versionCode 40`) · minimum Android version:
 > Android 8.0 / API 26.
 
 ## `03. System map`
@@ -95,12 +97,12 @@ synchronize the widget and notifications. Read the full
 
 ### Install the signed release
 
-1. Download [`Lecturial-2-v1.12.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.12.0/Lecturial-2-v1.12.0.apk), or use **Settings → About → Updates** in an older version.
+1. Download [`Lecturial-2-v1.13.0.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk), or use **Settings → About → Updates** in an older version.
 2. Allow installation from your browser or file manager if Android requests it.
 3. Open the APK and install or update Lecturial 2.
 
 ```text
-SHA-256  d58a9191f7e3f49f6c15594c1d3f094cbce618dadeb906509c5bda2fbf840b69
+SHA-256  5e681708035f47758adff558d7eee453ae2b4f46c8644b1407df323f07e2d00d
 Package  com.rassvet.lecturial2
 ```
 

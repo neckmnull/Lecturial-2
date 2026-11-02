@@ -21,6 +21,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.rassvet.lecturial.model.LksMark
+import com.rassvet.lecturial.model.lksMarkFor
 
 private val ru = Locale.forLanguageTag("ru")
 private const val RestGapMinutes = 40
@@ -97,6 +99,8 @@ internal sealed class ScheduleRow {
         val liveLabel: String?,
         val liveProgress: Float? = null,
         val teachersIsGroup: Boolean = false,
+        /** The personal account's journal entry: grade, attendance, topic, homework. */
+        val lks: LksMark? = null,
     ) : ScheduleRow() {
         override val key = "lesson-$eventId"
         override val contentType = "lesson"
@@ -126,8 +130,10 @@ internal fun buildScheduleRows(
     aliases: Map<String, String>,
     plans: List<StudyPlan>,
     teacherMode: Boolean = false,
+    lksMarks: List<LksMark> = emptyList(),
 ): List<ScheduleRow> {
     val rows = ArrayList<ScheduleRow>(96)
+    val marksByDay = lksMarks.groupBy { it.date }
     if (errorMessage != null) rows += ScheduleRow.Banner(errorMessage, lastUpdatedMillis)
     val today = now.toLocalDate()
     val weeks = (scheduleWeeks.ifEmpty { listOfNotNull(week, nextWeek) })
@@ -168,7 +174,7 @@ internal fun buildScheduleRows(
         if (days.isEmpty()) {
             rows += ScheduleRow.EmptyWeek(start)
         } else {
-            rows.addDays(days, weekPlans, today, now, live, startSeparated = false, aliases = aliases, teacherMode = teacherMode)
+            rows.addDays(days, weekPlans, today, now, live, startSeparated = false, aliases = aliases, teacherMode = teacherMode, lksMarks = marksByDay)
             if (scheduleWeek.days.all { it.events.isEmpty() } && weekPlans.isEmpty()) {
                 rows += ScheduleRow.EmptyWeek(start)
             }
@@ -182,6 +188,33 @@ private fun weekSectionTitle(weekStart: LocalDate, currentWeekStart: LocalDate):
     currentWeekStart -> "Текущая неделя"
     currentWeekStart.plusWeeks(1) -> "Следующая неделя"
     else -> "Неделя"
+}
+
+/** A day of the schedule for the day-by-day layout: its heading and what goes under it. */
+internal data class DaySection(val day: ScheduleRow.Day, val items: List<ScheduleRow>)
+
+/** The rows split by day: lessons, plans and breaks under the heading of their day. */
+internal fun daySections(rows: List<ScheduleRow>): Map<LocalDate, DaySection> {
+    val sections = LinkedHashMap<LocalDate, DaySection>()
+    var current: Pair<LocalDate, ScheduleRow.Day>? = null
+    var items = ArrayList<ScheduleRow>()
+    fun close() {
+        current?.let { (date, day) -> sections[date] = DaySection(day, items) }
+        current = null
+        items = ArrayList()
+    }
+    rows.forEach { row ->
+        when (row) {
+            is ScheduleRow.Day -> {
+                close()
+                current = row.dateKey.toLocalDateOrNull()?.let { it to row }
+            }
+            is ScheduleRow.Lesson, is ScheduleRow.Plan, is ScheduleRow.Rest -> if (current != null) items += row
+            else -> close()
+        }
+    }
+    close()
+    return sections
 }
 
 internal fun scheduleInitialRowIndex(
@@ -262,6 +295,7 @@ private fun ArrayList<ScheduleRow>.addDays(
     startSeparated: Boolean,
     aliases: Map<String, String>,
     teacherMode: Boolean = false,
+    lksMarks: Map<LocalDate, List<LksMark>> = emptyMap(),
 ) {
     days.forEachIndexed { dayIndex, day ->
         val isToday = day.date == today
@@ -315,6 +349,9 @@ private fun ArrayList<ScheduleRow>.addDays(
                     liveLabel = live?.takeIf { it.eventKey == eventKey }?.label,
                     liveProgress = live?.takeIf { it.eventKey == eventKey }
                         ?.let { lessonProgressFraction(event, now) },
+                    lks = lksMarks[day.date]?.let { marks ->
+                        lksMarkFor(marks, day.date, event.discipline, event.type, parseMinutes(event.startTime))
+                    },
                 ),
             )
             val next = (timeline.getOrNull(index + 1) as? DayScheduleItem.Lesson)?.event
