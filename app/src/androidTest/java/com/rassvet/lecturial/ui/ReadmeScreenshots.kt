@@ -170,6 +170,12 @@ class ReadmeScreenshots {
         assumeTrue(InstrumentationRegistry.getArguments().getString("readmeDemo") == "true")
         var scene by mutableStateOf(0)
         var appState by mutableStateOf(state)
+        // From the very first frame, so the cards' entrance is in the clip.
+        compose.mainClock.autoAdvance = false
+        frames = File(context.cacheDir, "readme/frames").apply {
+            deleteRecursively()
+            mkdirs()
+        }
         compose.setContent {
             LecturialTheme {
                 AnimatedContent(
@@ -185,13 +191,7 @@ class ReadmeScreenshots {
                 }
             }
         }
-        compose.waitForIdle()
-        compose.mainClock.autoAdvance = false
-        frames = File(context.cacheDir, "readme/frames").apply {
-            deleteRecursively()
-            mkdirs()
-        }
-        hold(2500)
+        hold(3000)
         compose.onNodeWithTag("schedule-list").performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.4f, durationMillis = 700) }
         hold(1800)
         compose.onNodeWithTag("schedule-list").performTouchInput { swipeDown(startY = bottom * 0.3f, endY = bottom * 0.8f, durationMillis = 700) }

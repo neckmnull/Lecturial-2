@@ -65,7 +65,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.MutableState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -540,6 +540,8 @@ internal fun ScheduleScreen(
 }
 
 private const val FOCUS_TIMEOUT_MILLIS = 15_000L
+/** Long enough for the last staggered card of the entrance to settle. */
+private const val INTRO_MILLIS = 1_400L
 private const val FOCUS_VISIBLE_MILLIS = 4_000L
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -640,6 +642,15 @@ private fun ScheduleContent(
                         }
                     }
                 }
+                // The cards on screen rise in one after another when the schedule shows, as on
+                // the other tabs; rows scrolled to afterwards appear as they are.
+                var intro by remember(scrollSession) { mutableStateOf(true) }
+                LaunchedEffect(intro) {
+                    if (intro) {
+                        delay(INTRO_MILLIS)
+                        intro = false
+                    }
+                }
                 val scope = rememberCoroutineScope()
                 Box(Modifier.fillMaxSize()) {
                 LazyColumn(
@@ -660,11 +671,17 @@ private fun ScheduleContent(
                         bottom = 96.dp,
                     ),
                 ) {
-                    items(
+                    itemsIndexed(
                         items = rows,
-                        key = { it.key },
-                        contentType = { it.contentType },
-                    ) { row -> rowContent(row) }
+                        key = { _, row -> row.key },
+                        contentType = { _, row -> row.contentType },
+                    ) { index, row ->
+                        if (intro) {
+                            Box(Modifier.revealOnAppear((index - listState.firstVisibleItemIndex).coerceAtLeast(0))) { rowContent(row) }
+                        } else {
+                            rowContent(row)
+                        }
+                    }
                 }
                 JumpToTodayButton(
                     direction = todayDirection,
