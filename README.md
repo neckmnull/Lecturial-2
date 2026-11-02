@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./artwork/readme-header.svg" width="100%" alt="Lecturial 2 — расписание «Сириуса», оценки из личного кабинета и план дня" />
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/github/v/release/neckmnull/Lecturial-2?style=flat-square&amp;label=версия&amp;labelColor=11141A&amp;color=8AABFF" alt="Версия" /></a> <img src="https://img.shields.io/badge/Android-8.0%2B-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Android 8.0+" /> <a href="./LICENSE"><img src="https://img.shields.io/badge/лицензия-Apache%202.0-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Лицензия Apache 2.0" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/github/v/release/neckmnull/Lecturial-2?style=flat-square&amp;label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&amp;labelColor=11141A&amp;color=8AABFF" alt="Версия" /></a> <img src="https://img.shields.io/badge/Android-8.0%2B-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Android 8.0+" /> <a href="./LICENSE"><img src="https://img.shields.io/badge/лицензия-Apache%202.0-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Лицензия Apache 2.0" /></a>
 
 **Неофициальное приложение с расписанием Университета «Сириус» для Android.**<br />
 Работает без интернета, показывает оценки из личного кабинета и само раскладывает домашку по свободному времени.
