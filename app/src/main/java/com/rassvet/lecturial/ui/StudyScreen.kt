@@ -65,6 +65,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import com.rassvet.lecturial.data.lks.LksState
 import com.rassvet.lecturial.model.AssessmentKind
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.assessment
@@ -99,6 +100,27 @@ internal fun StudyScreen(modifier: Modifier = Modifier, scheduleEvents: List<Sch
         return
     }
     LaunchedEffect(state.connected) { if (state.connected) lks.refreshIfStale() }
+    StudyContent(
+        state = state,
+        scheduleEvents = scheduleEvents,
+        onSignIn = { signingIn = true },
+        onRefresh = lks::refresh,
+        onDisconnect = lks::disconnect,
+        modifier = modifier,
+    )
+}
+
+/** What the Study tab shows for [state]; apart from the account so it can be drawn with any data. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun StudyContent(
+    state: LksState,
+    scheduleEvents: List<ScheduleEvent>,
+    onSignIn: () -> Unit,
+    onRefresh: () -> Unit,
+    onDisconnect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var tab by rememberSaveable { mutableStateOf(StudyTab.Grades) }
     Column(
         modifier = modifier
@@ -118,7 +140,7 @@ internal fun StudyScreen(modifier: Modifier = Modifier, scheduleEvents: List<Sch
                 )
             }
             if (state.connected) {
-                IconButton(onClick = { lks.refresh() }, enabled = !state.refreshing) {
+                IconButton(onClick = onRefresh, enabled = !state.refreshing) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "Обновить из личного кабинета")
                 }
             }
@@ -127,11 +149,11 @@ internal fun StudyScreen(modifier: Modifier = Modifier, scheduleEvents: List<Sch
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         val snapshot = state.snapshot
         if (!state.connected && snapshot == null) {
-            ConnectCard(onConnect = { signingIn = true })
+            ConnectCard(onConnect = onSignIn)
             return@Column
         }
         if (!state.connected) {
-            OutlinedButton(onClick = { signingIn = true }, modifier = Modifier.fillMaxWidth()) { Text("Войти снова — показаны сохранённые данные") }
+            OutlinedButton(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) { Text("Войти снова — показаны сохранённые данные") }
         }
         ConnectedChoice(StudyTab.entries, tab, { it.title }) { tab = it }
         if (snapshot == null) {
@@ -146,7 +168,7 @@ internal fun StudyScreen(modifier: Modifier = Modifier, scheduleEvents: List<Sch
         }
         if (state.connected) {
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = lks::disconnect, modifier = Modifier.fillMaxWidth()) { Text("Выйти из личного кабинета") }
+            OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) { Text("Выйти из личного кабинета") }
         }
     }
 }

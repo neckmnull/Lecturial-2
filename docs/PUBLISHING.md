@@ -63,6 +63,33 @@ Do not change the Lecturial 2 package ID again after its first store publication
    approval of the unknown-apps permission.
 
 The full updater contract, state model, security boundaries, and troubleshooting guide are in
-[UPDATER.md](UPDATER.md). Build commands are listed in the [README](../README.md). Preparing
+[UPDATER.md](UPDATER.md). Build commands are listed in [CONTRIBUTING.md](../CONTRIBUTING.md). Preparing
 the repository does not by itself verify UI behavior, notifications, widgets, or installation on
 a physical device.
+
+## Required updates
+
+A release can make older versions update before they can be used again. Add a hidden line to
+the release notes on GitHub:
+
+```html
+<!-- lecturial-min-version: 1.13.0 -->
+```
+
+Installed versions older than that show only an update screen with a download button, on the
+next start (the app checks about every four hours) or from the update notification. Keep the
+line in later releases while the requirement matters: the app reads the latest release only.
+Without the line, updates stay optional.
+
+## Calendar sync setup
+
+Google Calendar sync needs no setup: the app writes events through Android's calendar provider
+into a calendar the user picks, and the phone's Google account sync takes them on to Google
+Calendar. It only asks for the calendar permission.
+
+Outlook sync signs in with the app registration whose client ID is set as
+`lecturial.msClientId` in `gradle.properties`; an empty value turns the sync off. A fork
+registers its own app in Microsoft Entra ID as a public client for any organisation and
+personal Microsoft accounts, with the redirect URIs `<applicationId>://oauth` and the delegated
+Microsoft Graph permission `Calendars.ReadWrite`. Work and school accounts may need their
+administrator's approval until the publisher is verified.
