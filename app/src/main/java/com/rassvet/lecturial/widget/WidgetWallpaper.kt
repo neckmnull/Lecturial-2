@@ -42,6 +42,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import androidx.core.graphics.createBitmap
+import com.rassvet.lecturial.ui.renderMotifTile
 
 internal data class WidgetAppearance(
     val palette: ThemePalette,
@@ -201,7 +202,7 @@ internal fun renderWidgetWallpaper(
     val options = appearance.options
     when {
         options.backgroundStyle == AppBackgroundStyle.Dynamic -> drawTonalFields(canvas, appearance, size)
-        options.backgroundStyle.linePattern != null -> runCatching { drawLineWallpaper(canvas, context, appearance, size) }
+        options.backgroundStyle.drawsLines -> runCatching { drawLineWallpaper(canvas, context, appearance, size) }
             .onFailure { error -> Log.e("TodayScheduleWidget", "Unable to draw the line wallpaper", error) }
     }
     canvas.restoreToCount(layer)
@@ -267,13 +268,18 @@ private fun linearGradient(size: WidgetBitmapSize, angleDegrees: Int, colors: In
  */
 private fun drawLineWallpaper(canvas: Canvas, context: Context, appearance: WidgetAppearance, size: WidgetBitmapSize) {
     val options = appearance.options
-    val pattern = options.backgroundStyle.linePattern ?: return
-    val field = WallpaperFieldCache.field(context, pattern, options.backgroundLineDensityPercent / 100f)
+    val density = options.backgroundLineDensityPercent / 100f
     // A multiple of 4 keeps the ALPHA_8 rows unpadded.
     val tilePx = ((WALLPAPER_TILE_DP * size.pxPerDp) / 4).roundToInt().coerceAtLeast(16) * 4
     val lineWidthPx = (options.backgroundLineWeight.coerceIn(1, 5) * 0.75f * size.pxPerDp).coerceAtLeast(1f)
-    val mask = createBitmap(tilePx, tilePx, Bitmap.Config.ALPHA_8).apply {
-        copyPixelsFromBuffer(ByteBuffer.wrap(WallpaperPatterns.render(field, tilePx, lineWidthPx)))
+    val pattern = options.backgroundStyle.linePattern
+    val mask = when {
+        pattern != null -> createBitmap(tilePx, tilePx, Bitmap.Config.ALPHA_8).apply {
+            val field = WallpaperFieldCache.field(context, pattern, density)
+            copyPixelsFromBuffer(ByteBuffer.wrap(WallpaperPatterns.render(field, tilePx, lineWidthPx)))
+        }
+        options.backgroundMotif.isEmpty -> return
+        else -> renderMotifTile(options.backgroundMotif, density, lineWidthPx, tilePx, order = false)
     }
     val intensity = options.backgroundIntensityPercent.coerceIn(25, 150) / 100f
     val lineAlpha = ((if (appearance.isDark) 0.5f else 0.38f) * intensity).coerceAtMost(0.9f)

@@ -64,9 +64,11 @@ internal fun MaterialYouBackground(
         contentColor = colors.onBackground,
     ) {
         Box(Modifier.fillMaxSize()) {
-            options.backgroundStyle.linePattern?.let { pattern ->
+            val drawn = options.backgroundStyle == AppBackgroundStyle.Drawn
+            if (options.backgroundStyle.drawsLines && !(drawn && options.backgroundMotif.isEmpty)) {
                 LinePatternLayer(
-                    pattern = pattern,
+                    pattern = options.backgroundStyle.linePattern,
+                    motif = options.backgroundMotif.takeIf { drawn },
                     colors = customGradientColors ?: listOf(colors.primary, colors.primary.analogous(), colors.secondary),
                     angleDegrees = options.backgroundGradientAngleDegrees,
                     lineAlpha = ((if (isDark) 0.5f else 0.38f) * intensity).coerceAtMost(0.9f),

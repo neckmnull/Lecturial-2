@@ -352,7 +352,8 @@ private fun LookStep(
         }
         SettingsSection("Фон") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppBackgroundStyle.entries.forEach { style ->
+                // Drawing a pattern needs the editor in Settings, so the setup offers the ready ones.
+                AppBackgroundStyle.entries.filter { it != AppBackgroundStyle.Drawn }.forEach { style ->
                     FilterChip(
                         selected = state.appDisplayOptions.backgroundStyle == style,
                         onClick = { onAppDisplayOptionsChanged(state.appDisplayOptions.copy(backgroundStyle = style)) },

@@ -78,10 +78,15 @@ enum class AppBackgroundStyle(
     Maze("maze", "Лабиринт", LinePattern.Maze),
     Fingerprint("fingerprint", "Отпечаток", LinePattern.Fingerprint),
     Topography("topography", "Топография", LinePattern.Topography),
-    Waves("waves", "Волны", LinePattern.Waves);
+    Waves("waves", "Волны", LinePattern.Waves),
+    /** The user's own pattern, see [AppDisplayOptions.backgroundMotif]. */
+    Drawn("drawn", "Свой рисунок");
 
     /** Styles that paint colour over the theme background and so use the gradient. */
     val isColorful: Boolean get() = this != Classic
+
+    /** Line wallpapers: a generated pattern or the user's drawing. */
+    val drawsLines: Boolean get() = linePattern != null || this == Drawn
 
     companion object {
         val default = Classic
@@ -134,6 +139,8 @@ data class AppDisplayOptions(
     /** Line thickness for line wallpapers, 1–5. */
     val backgroundLineWeight: Int = 2,
     val scheduleLayout: ScheduleLayout = ScheduleLayout.default,
+    /** The pattern drawn for [AppBackgroundStyle.Drawn]. */
+    val backgroundMotif: WallpaperMotif = WallpaperMotif(),
 ) {
     /** Default schedule-card settings with the current background kept: what a reset leaves. */
     fun withDefaultCards(): AppDisplayOptions = AppDisplayOptions(
@@ -147,6 +154,7 @@ data class AppDisplayOptions(
         backgroundLineDensityPercent = backgroundLineDensityPercent,
         backgroundLineWeight = backgroundLineWeight,
         scheduleLayout = scheduleLayout,
+        backgroundMotif = backgroundMotif,
     )
 }
 

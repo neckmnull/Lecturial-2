@@ -405,6 +405,9 @@ private fun AppBackgroundSettings(
                 )
             }
         }
+        if (style == AppBackgroundStyle.Drawn) {
+            MotifEditor(options.backgroundMotif) { onOptionsChanged(options.copy(backgroundMotif = it)) }
+        }
         if (!style.isColorful) {
             Text(
                 "Однотонный фон темы без градиентов и анимации, как до появления динамического фона.",
@@ -485,10 +488,10 @@ private fun AppBackgroundSettings(
             unit = "°",
             showSteps = false,
         ) { onOptionsChanged(options.copy(backgroundGradientAngleDegrees = it)) }
-        if (style.linePattern != null) {
+        if (style.drawsLines) {
             BackgroundMotionSlider(
-                title = "Плотность линий",
-                description = "Сколько линий помещается на экране",
+                title = if (style == AppBackgroundStyle.Drawn) "Плотность узора" else "Плотность линий",
+                description = if (style == AppBackgroundStyle.Drawn) "Сколько копий рисунка в ряд: 2, 4 или 6" else "Сколько линий помещается на экране",
                 value = options.backgroundLineDensityPercent,
                 range = 50..150,
             ) { onOptionsChanged(options.copy(backgroundLineDensityPercent = it)) }
@@ -502,13 +505,13 @@ private fun AppBackgroundSettings(
         }
         BackgroundMotionSlider(
             title = "Интенсивность фона",
-            description = if (style.linePattern != null) "Яркость линий" else "Насыщенность цветовых полей",
+            description = if (style.drawsLines) "Яркость линий" else "Насыщенность цветовых полей",
             value = options.backgroundIntensityPercent,
             range = 25..150,
         ) { onOptionsChanged(options.copy(backgroundIntensityPercent = it)) }
         BackgroundMotionSlider(
-            title = if (style.linePattern != null) "Скорость линий" else "Скорость фона",
-            description = if (style.linePattern != null) {
+            title = if (style.drawsLines) "Скорость линий" else "Скорость фона",
+            description = if (style.drawsLines) {
                 "Как быстро линии прорисовываются и переливаются; 0 % — готовый неподвижный узор"
             } else {
                 "0 % полностью останавливает движение"

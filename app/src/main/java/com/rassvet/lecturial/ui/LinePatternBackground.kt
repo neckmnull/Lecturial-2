@@ -49,6 +49,7 @@ import androidx.core.graphics.createBitmap
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.drawscope.translate
+import com.rassvet.lecturial.model.WallpaperMotif
 
 /**
  * Line wallpaper that draws itself: lines appear in the pattern's growth order (the
@@ -59,21 +60,27 @@ import androidx.compose.ui.graphics.drawscope.translate
  */
 @Composable
 internal fun LinePatternLayer(
-    pattern: LinePattern,
+    pattern: LinePattern?,
     colors: List<Color>,
     angleDegrees: Int,
     lineAlpha: Float,
     densityPercent: Int,
     weight: Int,
     speedPercent: Int,
+    /** Drawn instead of [pattern]: the user's own motif. */
+    motif: WallpaperMotif? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
     // A multiple of 4 keeps the ALPHA_8 bitmap rows unpadded.
     val tilePx = with(density) { (TileSize.toPx() / 4).toInt().coerceAtLeast(16) * 4 }
     val lineWidthPx = with(density) { (weight.coerceIn(1, 5) * 0.75f).dp.toPx() }
-    val tile by produceState<PatternTile?>(null, pattern, densityPercent, weight, tilePx) {
-        value = WallpaperTiles.tile(context.applicationContext, pattern, densityPercent / 100f, lineWidthPx, tilePx)
+    val tile by produceState<PatternTile?>(null, pattern, motif, densityPercent, weight, tilePx) {
+        value = when {
+            motif != null -> WallpaperTiles.tile(motif, densityPercent / 100f, lineWidthPx, tilePx)
+            pattern != null -> WallpaperTiles.tile(context.applicationContext, pattern, densityPercent / 100f, lineWidthPx, tilePx)
+            else -> null
+        }
     }
     val animates = Build.VERSION.SDK_INT >= 33 && speedPercent > 0
     val progress = remember(tile) { Animatable(if (animates) 0f else 1f) }
@@ -240,6 +247,20 @@ private object WallpaperTiles {
                 PatternTile(
                     lineMask = alphaBitmap(WallpaperPatterns.render(field, sizePx, lineWidthPx), sizePx),
                     orderMask = alphaBitmap(WallpaperPatterns.renderArrival(field, sizePx), sizePx),
+                    sizePx = sizePx,
+                ).also { tiles.put(key, it) }
+            }
+        }
+    }
+
+    suspend fun tile(motif: WallpaperMotif, density: Float, lineWidthPx: Float, sizePx: Int): PatternTile {
+        val key = "motif/${motif.hashCode()}/$density/$lineWidthPx/$sizePx"
+        tiles.get(key)?.let { return it }
+        return mutex.withLock {
+            tiles.get(key) ?: withContext(Dispatchers.Default) {
+                PatternTile(
+                    lineMask = renderMotifTile(motif, density, lineWidthPx, sizePx, order = false),
+                    orderMask = renderMotifTile(motif, density, lineWidthPx, sizePx, order = true),
                     sizePx = sizePx,
                 ).also { tiles.put(key, it) }
             }

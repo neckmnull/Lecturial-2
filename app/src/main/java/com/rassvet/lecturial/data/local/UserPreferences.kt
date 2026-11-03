@@ -15,6 +15,8 @@ import com.rassvet.lecturial.model.WidgetDisplayOptions
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.ScheduleLayout
+import com.rassvet.lecturial.model.encodeMotif
+import com.rassvet.lecturial.model.parseMotif
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.CustomAppTheme
@@ -499,6 +501,7 @@ internal fun encodeAppDisplayOptions(options: AppDisplayOptions): String = org.j
     .put("backgroundLineDensityPercent", options.backgroundLineDensityPercent)
     .put("backgroundLineWeight", options.backgroundLineWeight)
     .put("scheduleLayout", options.scheduleLayout.storageId)
+    .put("backgroundMotif", encodeMotif(options.backgroundMotif))
     .toString()
 
 /**
@@ -547,6 +550,7 @@ internal fun parseAppDisplayOptions(raw: String?): AppDisplayOptions {
             backgroundLineDensityPercent = item.optInt("backgroundLineDensityPercent", 100).coerceIn(50, 150),
             backgroundLineWeight = item.optInt("backgroundLineWeight", 2).coerceIn(1, 5),
             scheduleLayout = ScheduleLayout.fromStorageId(item.optString("scheduleLayout")),
+            backgroundMotif = parseMotif(item.optString("backgroundMotif")),
         )
     }.getOrDefault(AppDisplayOptions())
 }
