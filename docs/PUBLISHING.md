@@ -6,7 +6,7 @@ The source tree includes Gradle Wrapper, README, architecture and design documen
 
 ## Before public distribution
 
-1. Verify the right to redistribute `onboarding_sirius_logo.png`. No evidence of permission is bundled with this repository; obtain permission or replace it with original artwork. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+1. Verify the right to redistribute `onboarding_sirius_logo.png`. No evidence of permission is bundled with this repository; obtain permission or replace it with original artwork. See [third-party notices](THIRD_PARTY_NOTICES.md).
 2. Confirm that Apache License 2.0 is the intended license. It permits commercial use and closed-source derivatives subject to its terms.
 3. Make sure you own or have permission to distribute all submitted code. The attribution notice uses the neutral name `Lecturial 2 contributors`; update README and NOTICE if a specific person or organization should be named.
 4. Review staged files before every release. `.gitignore` does not remove secrets that have already been tracked.
@@ -15,7 +15,7 @@ The source tree includes Gradle Wrapper, README, architecture and design documen
 
 Recommended repository name: `Lecturial-2`.
 
-Recommended description: `Unofficial Android schedule app for Sirius University with Jetpack Compose, offline cache, widget, and notifications.`
+Recommended description: `Неофициальное Android-приложение Университета «Сириус»: расписание без интернета, оценки и посещаемость из личного кабинета, план дня и виджет.` Set the website to the latest release and upload `artwork/social-preview.png` under Settings → Social preview.
 
 Recommended topics: `android`, `kotlin`, `jetpack-compose`, `material3`, `schedule`, `room`, `datastore`, `android-widget`.
 

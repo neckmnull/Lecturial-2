@@ -1,6 +1,6 @@
 # Contributing to Lecturial 2
 
-Read the [README](README.md), [architecture overview](docs/ARCHITECTURE.md), and [interface guidelines](DESIGN.md). Discuss substantial changes in an Issue before implementation.
+Read the [README](README.md), [architecture overview](docs/ARCHITECTURE.md), and [interface guidelines](docs/DESIGN.md). Discuss substantial changes in an Issue before implementation.
 
 ## Pull requests
 

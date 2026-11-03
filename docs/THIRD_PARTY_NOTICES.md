@@ -9,7 +9,7 @@ Files matching `app/src/main/res/font/manrope_*.ttf` contain the Manrope typefac
 - Copyright: Copyright 2018 The Manrope Project Authors.
 - Source: https://github.com/googlefonts/manrope.
 - License: SIL Open Font License 1.1.
-- Full text: [licenses/Manrope-OFL.txt](licenses/Manrope-OFL.txt).
+- Full text: [licenses/Manrope-OFL.txt](../licenses/Manrope-OFL.txt).
 
 ## Sirius names, logo, and schedule data
 

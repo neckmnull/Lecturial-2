@@ -1,13 +1,13 @@
 <div align="center">
   <img src="./artwork/readme-header.svg" width="100%" alt="Lecturial 2 — расписание «Сириуса», оценки из личного кабинета и план дня" />
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/github/v/release/neckmnull/Lecturial-2?style=flat-square&amp;label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&amp;labelColor=11141A&amp;color=8AABFF" alt="Версия" /></a> <img src="https://img.shields.io/badge/Android-8.0%2B-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Android 8.0+" /> <a href="./LICENSE"><img src="https://img.shields.io/badge/лицензия-Apache%202.0-8AABFF?style=flat-square&amp;labelColor=11141A" alt="Лицензия Apache 2.0" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/latest"><img src="https://img.shields.io/github/v/release/neckmnull/Lecturial-2?style=flat-square&amp;label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&amp;labelColor=11141A&amp;color=345EBC" alt="Версия" /></a> <img src="https://img.shields.io/badge/Android-8.0%2B-345EBC?style=flat-square&amp;labelColor=11141A" alt="Android 8.0+" /> <a href="./LICENSE"><img src="https://img.shields.io/badge/лицензия-Apache%202.0-345EBC?style=flat-square&amp;labelColor=11141A" alt="Лицензия Apache 2.0" /></a>
 
 **Неофициальное приложение с расписанием Университета «Сириус» для Android.**<br />
 Работает без интернета, показывает оценки из личного кабинета и само раскладывает домашку по свободному времени.
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.0-8AABFF?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.0" /></a>
-<a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram-@lecturial__2-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram-канал @lecturial_2" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.0-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.0" /></a>
+<a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram--канал-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram-канал @lecturial_2" /></a>
 
 <sub><a href="./README.en.md">English version</a></sub>
 
@@ -17,13 +17,18 @@
   <img src="./artwork/demo.gif" width="300" alt="Короткий ролик: текущая пара в ленте, свайп по дням, оценки и план дня" />
 </p>
 
+<details>
+<summary><b>Скриншоты</b></summary>
+<br />
 <p align="center">
-  <img src="./artwork/screenshots/1-schedule.png" width="24%" alt="Расписание лентой: текущая пара с полосой прогресса" />
-  <img src="./artwork/screenshots/2-by-day.png" width="24%" alt="Расписание по дням: полоса недели и пары выбранного дня" />
-  <img src="./artwork/screenshots/3-study.png" width="24%" alt="Вкладка «Учёба»: средний балл, посещаемость и оценки по предметам" />
-  <img src="./artwork/screenshots/4-day-plan.png" width="24%" alt="План дня: пары, домашка и свободное время" />
+<img src="./artwork/screenshots/1-schedule.png" width="48%" alt="Расписание лентой: текущая пара с полосой прогресса" /> <img src="./artwork/screenshots/2-by-day.png" width="48%" alt="Расписание по дням: полоса недели и пары выбранного дня" />
 </p>
-<p align="center"><sub>На скриншотах выдуманные группа, преподаватели и оценки.</sub></p>
+<p align="center">
+<img src="./artwork/screenshots/3-study.png" width="48%" alt="Вкладка «Учёба»: средний балл, посещаемость и оценки по предметам" /> <img src="./artwork/screenshots/4-day-plan.png" width="48%" alt="План дня: пары, домашка и свободное время" />
+</p>
+</details>
+
+<p align="center"><sub>В ролике и на скриншотах выдуманные группа, преподаватели и оценки.</sub></p>
 
 ## Что умеет
 
@@ -85,7 +90,7 @@ cd Lecturial-2
 ```
 
 Сборка, проверки и требования к изменениям — в [CONTRIBUTING.md](./CONTRIBUTING.md).
-Как устроено приложение — в [архитектуре](./docs/ARCHITECTURE.md), правила интерфейса — в [DESIGN.md](./DESIGN.md),
+Как устроено приложение — в [архитектуре](./docs/ARCHITECTURE.md), правила интерфейса — в [DESIGN.md](./docs/DESIGN.md),
 выпуск релизов и встроенное обновление — в [PUBLISHING.md](./docs/PUBLISHING.md) и [UPDATER.md](./docs/UPDATER.md).
 
 ---
@@ -93,7 +98,7 @@ cd Lecturial-2
 <div align="center">
 <sub>
 Код и документация — под лицензией <a href="./LICENSE">Apache 2.0</a>, шрифт Manrope — SIL OFL 1.1,
-сторонние материалы — в <a href="./THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.<br />
+сторонние материалы — в <a href="./docs/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.<br />
 <a href="https://t.me/lecturial_2">Telegram</a> · <a href="https://github.com/neckmnull">@neckmnull</a>
 </sub>
 </div>

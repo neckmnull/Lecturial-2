@@ -4,8 +4,8 @@
 **An unofficial Android schedule app for Sirius University.**<br />
 It works offline, shows grades from the student account and fits homework into your free time.
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.13.0-8AABFF?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Download Lecturial 2 v1.13.0" /></a>
-<a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram-@lecturial__2-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram channel @lecturial_2" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.0/Lecturial-2-v1.13.0.apk"><img src="https://img.shields.io/badge/Download_APK-v1.13.0-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Download Lecturial 2 v1.13.0" /></a>
+<a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram_channel-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram channel @lecturial_2" /></a>
 
 <sub><a href="./README.md">Русская версия</a></sub>
 
@@ -15,13 +15,18 @@ It works offline, shows grades from the student account and fits homework into y
   <img src="./artwork/demo.gif" width="300" alt="Short clip: the current class in the feed, swiping by day, grades and the day plan" />
 </p>
 
+<details>
+<summary><b>Screenshots</b></summary>
+<br />
 <p align="center">
-  <img src="./artwork/screenshots/1-schedule.png" width="24%" alt="Schedule as a feed with the current class" />
-  <img src="./artwork/screenshots/2-by-day.png" width="24%" alt="Schedule by day with a week strip" />
-  <img src="./artwork/screenshots/3-study.png" width="24%" alt="Study tab with grades and attendance" />
-  <img src="./artwork/screenshots/4-day-plan.png" width="24%" alt="Day planner with lessons, homework and free time" />
+<img src="./artwork/screenshots/1-schedule.png" width="48%" alt="Schedule as a feed with the current class" /> <img src="./artwork/screenshots/2-by-day.png" width="48%" alt="Schedule by day with a week strip" />
 </p>
-<p align="center"><sub>The group, teachers and grades in the screenshots are made up. The app itself is in Russian.</sub></p>
+<p align="center">
+<img src="./artwork/screenshots/3-study.png" width="48%" alt="Study tab with grades and attendance" /> <img src="./artwork/screenshots/4-day-plan.png" width="48%" alt="Day planner with lessons, homework and free time" />
+</p>
+</details>
+
+<p align="center"><sub>The group, teachers and grades in the clip and screenshots are made up. The app itself is in Russian.</sub></p>
 
 ## Features
 
@@ -43,6 +48,6 @@ Lecturial 2 is an independent project, not an official Sirius University app. It
 
 ## Developers
 
-Kotlin, Jetpack Compose and Material 3, Room, DataStore, OkHttp. Build with `./gradlew assembleDebug`; checks, requirements and the toolchain are in [CONTRIBUTING.md](./CONTRIBUTING.md), the design in [ARCHITECTURE.md](./docs/ARCHITECTURE.md) and [DESIGN.md](./DESIGN.md), releases and the in-app updater in [PUBLISHING.md](./docs/PUBLISHING.md) and [UPDATER.md](./docs/UPDATER.md).
+Kotlin, Jetpack Compose and Material 3, Room, DataStore, OkHttp. Build with `./gradlew assembleDebug`; checks, requirements and the toolchain are in [CONTRIBUTING.md](./CONTRIBUTING.md), the design in [ARCHITECTURE.md](./docs/ARCHITECTURE.md) and [DESIGN.md](./docs/DESIGN.md), releases and the in-app updater in [PUBLISHING.md](./docs/PUBLISHING.md) and [UPDATER.md](./docs/UPDATER.md).
 
-Licensed under [Apache 2.0](./LICENSE); Manrope under SIL OFL 1.1; third-party material in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Licensed under [Apache 2.0](./LICENSE); Manrope under SIL OFL 1.1; third-party material in [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md).
