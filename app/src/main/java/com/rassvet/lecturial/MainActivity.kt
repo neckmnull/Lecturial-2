@@ -22,6 +22,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.rassvet.lecturial.data.network.isSameAppUpdate
 import com.rassvet.lecturial.notify.LessonAlerts
 import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.ui.LecturialApp
@@ -254,6 +255,11 @@ class MainActivity : ComponentActivity() {
             val updatesDirectory = (application as LecturialApplication).updatesDirectory.canonicalFile
             val apk = File(update.apkPath).canonicalFile
             require(apk.isFile && apk.parentFile == updatesDirectory) { "APK-файл обновления недоступен" }
+            // Debug builds have their own key and a .debug package, so no release APK is theirs.
+            if (!BuildConfig.DEBUG && !isSameAppUpdate(this, apk)) {
+                apk.delete()
+                error("Файл обновления подписан не ключом Lecturial 2, установка отменена")
+            }
             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
             startActivity(
                 Intent(Intent.ACTION_VIEW)

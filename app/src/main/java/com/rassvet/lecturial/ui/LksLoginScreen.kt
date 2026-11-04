@@ -1,11 +1,15 @@
 package com.rassvet.lecturial.ui
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Bitmap
+import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.rassvet.lecturial.data.lks.LksClient
 
 /**
@@ -45,6 +51,12 @@ internal fun LksLoginScreen(onSignedIn: (cookies: String) -> Unit, onClose: () -
     var loading by remember { mutableStateOf(true) }
     var done by remember { mutableStateOf(false) }
     BackHandler(onBack = onClose)
+    // The sign-in page stays out of screenshots, screen recordings and the recent apps preview.
+    val window = LocalActivity.current?.window
+    DisposableEffect(window) {
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
     Column(modifier.fillMaxSize().statusBarsPadding()) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column {
@@ -73,7 +85,21 @@ internal fun LksLoginScreen(onSignedIn: (cookies: String) -> Unit, onClose: () -
                     WebView(context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        // No taps through an overlay another app draws over the password form.
+                        filterTouchesWhenObscured = true
                         webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                val url = request.url
+                                if (!request.isForMainFrame || (url.scheme == "https" && isUniversityHost(url.host))) return false
+                                // Other sites open in the browser, away from the sign-in page and its cookies.
+                                if (url.scheme == "https" || url.scheme == "http") {
+                                    runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, url)) }
+                                }
+                                return true
+                            }
+
                             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                                 loading = true
                             }
@@ -81,7 +107,7 @@ internal fun LksLoginScreen(onSignedIn: (cookies: String) -> Unit, onClose: () -
                             override fun onPageFinished(view: WebView, url: String?) {
                                 loading = false
                                 val address = url.orEmpty()
-                                if (!address.startsWith(LksClient.BASE) || done) return
+                                if (address.toUri().host != LksClient.BASE.toUri().host || done) return
                                 if (address.contains("/login") || address.contains("password")) {
                                     // "Remember me" keeps the session for weeks instead of hours.
                                     view.evaluateJavascript(
@@ -93,7 +119,9 @@ internal fun LksLoginScreen(onSignedIn: (cookies: String) -> Unit, onClose: () -
                                 val cookies = CookieManager.getInstance().getCookie(LksClient.BASE).orEmpty()
                                 if (cookies.isNotBlank()) {
                                     done = true
-                                    CookieManager.getInstance().flush()
+                                    // The pages seen after sign-in hold the student's data; none of it stays in the WebView.
+                                    view.clearCache(true)
+                                    view.clearHistory()
                                     onSignedIn(cookies)
                                 }
                             }
@@ -106,3 +134,9 @@ internal fun LksLoginScreen(onSignedIn: (cookies: String) -> Unit, onClose: () -
         }
     }
 }
+
+/** The university's own sites: the account's pages may move between them while signing in. */
+private fun isUniversityHost(host: String?): Boolean =
+    host != null && (host == UNIVERSITY_DOMAIN || host.endsWith(".$UNIVERSITY_DOMAIN"))
+
+private const val UNIVERSITY_DOMAIN = "siriusuniversity.ru"

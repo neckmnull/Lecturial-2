@@ -6,7 +6,7 @@
 **Неофициальное приложение с расписанием Университета «Сириус» для Android.**<br />
 Работает без интернета, показывает оценки из личного кабинета и само раскладывает домашку по свободному времени.
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.1/Lecturial-2-v1.13.1.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.1-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.1" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.2/Lecturial-2-v1.13.2.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.2-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.2" /></a>
 <a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram--канал-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram-канал @lecturial_2" /></a>
 
 <sub><a href="./README.en.md">English version</a></sub>
@@ -43,7 +43,7 @@
 
 ## Установка
 
-1. Скачай [`Lecturial-2-v1.13.1.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.1/Lecturial-2-v1.13.1.apk). Если приложение уже стоит, обнови его прямо в нём: **Настройки → О приложении → Обновления**.
+1. Скачай [`Lecturial-2-v1.13.2.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.2/Lecturial-2-v1.13.2.apk). Если приложение уже стоит, обнови его прямо в нём: **Настройки → О приложении → Обновления**.
 2. Если Android спросит, разреши установку из браузера или файлового менеджера.
 3. Открой APK и установи. При первом запуске приложение поможет выбрать группу и всё настроить.
 
@@ -51,7 +51,7 @@
 <summary>Как проверить, что APK настоящий</summary>
 
 ```text
-SHA-256  355dc550e883c1a8522a28cb35c6be40f64f758f1e1ca0d1ff2dafb8b80ff563
+SHA-256  007786e1c5e4d748a3bc298aad03aaa2ecda278fee6aac3d0e237fd0dde15e88
 Пакет    com.rassvet.lecturial2
 ```
 
@@ -64,9 +64,12 @@ Lecturial 1 (`com.rassvet.lecturial`) — отдельное приложени�
 
 ## Вопросы
 
+Подробно обо всех функциях — в [руководстве пользователя](./docs/USER_GUIDE.md).
+
 **Безопасно ли входить в личный кабинет?**
 Вход идёт на странице lks.siriusuniversity.ru внутри приложения, пароль видит только сайт университета.
-Приложение хранит лишь сессию, в зашифрованном виде на телефоне. Выйти можно во вкладке «Учёба».
+Сессия хранится на телефоне в зашифрованном виде, оценки — только на телефоне. Выйти можно во вкладке «Учёба»,
+подробности — в [SECURITY.md](./docs/SECURITY.md).
 
 **Это официальное приложение?**
 Нет, это независимый проект. Расписание берётся с сайта университета, и если сайт изменится,
@@ -89,9 +92,10 @@ cd Lecturial-2
 ./gradlew assembleDebug
 ```
 
-Сборка, проверки и требования к изменениям — в [CONTRIBUTING.md](./CONTRIBUTING.md).
-Как устроено приложение — в [архитектуре](./docs/ARCHITECTURE.md), правила интерфейса — в [DESIGN.md](./docs/DESIGN.md),
+Как всё устроено и где что менять — в [руководстве разработчика](./docs/DEVELOPER_GUIDE.md).
+Сборка, проверки и требования к изменениям — в [CONTRIBUTING.md](./CONTRIBUTING.md), правила интерфейса — в [DESIGN.md](./docs/DESIGN.md),
 выпуск релизов и встроенное обновление — в [PUBLISHING.md](./docs/PUBLISHING.md) и [UPDATER.md](./docs/UPDATER.md).
+Какие данные хранятся, куда уходят и как защищены — в [SECURITY.md](./docs/SECURITY.md).
 
 ---
 

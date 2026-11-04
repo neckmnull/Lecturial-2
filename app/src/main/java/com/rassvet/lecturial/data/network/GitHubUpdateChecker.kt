@@ -1,5 +1,9 @@
 package com.rassvet.lecturial.data.network
 
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import com.rassvet.lecturial.model.AppUpdateState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
@@ -181,6 +185,32 @@ class GitHubUpdateChecker(
 
 private fun File.hasZipHeader(): Boolean = inputStream().use { input ->
     input.read() == 'P'.code && input.read() == 'K'.code && input.read() == 3 && input.read() == 4
+}
+
+/**
+ * Whether [apk] is this app signed with the installed copy's key, i.e. a real update and not a
+ * substitute. Checked before the installer opens, so a foreign APK never reaches the user.
+ */
+@Suppress("DEPRECATION")
+internal fun isSameAppUpdate(context: Context, apk: File): Boolean {
+    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+    val packageManager = context.packageManager
+    val offered = packageManager.getPackageArchiveInfo(apk.path, flags) ?: return false
+    if (offered.packageName != context.packageName) return false
+    val installed = packageManager.getPackageInfo(context.packageName, flags)
+    return acceptsUpdate(installed.signers(withHistory = false), offered.signers(withHistory = true))
+}
+
+/** Every key the installed app is signed with must be among the update's signers or, after a key rotation, their history. */
+internal fun acceptsUpdate(installed: List<String>, offered: List<String>): Boolean =
+    installed.isNotEmpty() && offered.containsAll(installed)
+
+@Suppress("DEPRECATION")
+private fun PackageInfo.signers(withHistory: Boolean): List<String> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return signatures.orEmpty().map { it.toCharsString() }
+    val info = signingInfo ?: return emptyList()
+    val certificates = if (withHistory && !info.hasMultipleSigners()) info.signingCertificateHistory else info.apkContentsSigners
+    return certificates.orEmpty().map { it.toCharsString() }
 }
 
 /**

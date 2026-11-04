@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -171,6 +172,16 @@ class GitHubUpdateCheckerTest {
             directory.deleteRecursively()
         }
         Unit
+    }
+
+    @Test
+    fun `an update must carry the installed app's key`() {
+        assertTrue(acceptsUpdate(installed = listOf("release"), offered = listOf("release")))
+        // After a key rotation the new APK lists the old key in its history.
+        assertTrue(acceptsUpdate(installed = listOf("old"), offered = listOf("old", "new")))
+        assertFalse(acceptsUpdate(installed = listOf("release"), offered = listOf("stranger")))
+        assertFalse(acceptsUpdate(installed = listOf("release"), offered = emptyList()))
+        assertFalse(acceptsUpdate(installed = emptyList(), offered = listOf("release")))
     }
 
     private fun checker() = GitHubUpdateChecker(

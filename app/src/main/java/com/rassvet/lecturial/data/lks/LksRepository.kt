@@ -7,11 +7,14 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.WebStorage
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.rassvet.lecturial.LecturialApplication
 import com.rassvet.lecturial.MainActivity
@@ -65,6 +68,8 @@ class LksRepository(private val app: LecturialApplication) {
     /** Called by the sign-in screen with the WebView's cookies for the site. */
     fun connect(cookieHeader: String) {
         prefs.edit { putString(KEY_COOKIES, secrets.encrypt(cookieHeader)) }
+        // The WebView keeps its cookies in a plain database; the encrypted copy above is the only one needed.
+        forgetWebSession()
         _state.update { it.copy(connected = true, error = null) }
         schedule(app)
         refresh(force = true)
@@ -74,14 +79,19 @@ class LksRepository(private val app: LecturialApplication) {
     fun disconnect() {
         prefs.edit { clear() }
         cacheFile.delete()
+        forgetWebSession()
+        cancel(app)
+        _state.value = LksState()
+    }
+
+    private fun forgetWebSession() {
         runCatching {
             CookieManager.getInstance().apply {
                 removeAllCookies(null)
                 flush()
             }
+            WebStorage.getInstance().deleteAllData()
         }
-        cancel(app)
-        _state.value = LksState()
     }
 
     /** A refresh unless the data is fresher than [maxAgeMillis]. */
@@ -140,6 +150,10 @@ class LksRepository(private val app: LecturialApplication) {
     }
 
     private fun notify(manager: NotificationManagerCompat, id: Int, title: String, text: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(app, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
         val open = PendingIntent.getActivity(
             app,
             id,
@@ -153,6 +167,15 @@ class LksRepository(private val app: LecturialApplication) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)
             .setAutoCancel(true)
+            // Grades stay off the lock screen; it only says that something new arrived.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(app, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_lecturial)
+                    .setContentTitle("Личный кабинет")
+                    .setContentText("Есть новые данные")
+                    .build(),
+            )
             .build()
         runCatching { manager.notify(id, notification) }
     }
@@ -167,14 +190,22 @@ class LksRepository(private val app: LecturialApplication) {
 
     // ------------------------------------------------------------------ cache
 
+    /** Sealed with the session's key: grades and attendance are no easier to read off the phone than the session. */
     private fun saveCache(snapshot: LksSnapshot) {
         cacheFile.parentFile?.mkdirs()
         val partial = File(cacheFile.path + ".part")
-        partial.writeText(snapshot.toJson().toString())
+        partial.writeText(secrets.encrypt(snapshot.toJson().toString()))
         partial.renameTo(cacheFile)
     }
 
-    private fun loadCache(): LksSnapshot? = runCatching { JSONObject(cacheFile.readText()).toSnapshot() }.getOrNull()
+    private fun loadCache(): LksSnapshot? = runCatching {
+        val stored = cacheFile.readText()
+        // Up to 1.13.1 the cache was plain JSON: read it once more and seal it.
+        val legacy = stored.startsWith("{")
+        val snapshot = JSONObject(if (legacy) stored else secrets.decrypt(stored) ?: return null).toSnapshot()
+        if (legacy) saveCache(snapshot)
+        snapshot
+    }.getOrNull()
 
     companion object {
         private const val TAG = "LksRepository"
