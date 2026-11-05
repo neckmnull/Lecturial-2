@@ -6,8 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.network.ScheduleRemoteDataSource
+import com.rassvet.lecturial.model.ExtracurricularChoice
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
+import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.ScheduleWeek
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
@@ -52,6 +54,46 @@ class ScheduleRepositoryTest {
         assertNotNull(repository.cachedWeek("ИОП-ИТ-26/1", start))
         assertEquals(1, repository.cachedWeek("ИОП-ИТ-26/1", start)?.week?.days?.first()?.events?.size)
         assertEquals(null, repository.cachedWeek("ИОП-ИТ-26/2", start))
+    }
+
+    @Test
+    fun extracurricularEventsFollowTheChoiceWithoutANewLoad() = runBlocking {
+        val start = LocalDate.of(2026, 8, 31)
+        fun event(id: String, name: String, type: String) =
+            ScheduleEvent(id, start, "08:45", "10:05", 1, name, type, null, null, emptyList(), null, null)
+        val remote = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate) = ScheduleWeek(
+                group,
+                start,
+                (0L..6L).map { offset ->
+                    ScheduleDay(start.plusDays(offset), if (offset == 0L) listOf(event("a", "Физика", "Лекции"), event("b", "Тьюторский час", "Внеучебное")) else emptyList())
+                },
+            )
+        }
+        var choice = ExtracurricularChoice()
+        val repository = ScheduleRepository(database, remote, extracurricularChoice = { choice })
+        val group = "ИОП-ИТ-26/1"
+        val teacher = ScheduleTarget.teacherKey("7")
+        repository.refreshWeek(group, start)
+        repository.refreshWeek(teacher, start)
+        suspend fun shown(key: String) = repository.cachedWeek(key, start)!!.week.days.first().events.map { it.discipline }
+        suspend fun between(key: String) = repository.eventsBetween(key, start, start).map { it.discipline }
+
+        assertEquals(listOf("Физика", "Тьюторский час"), shown(group).sorted().reversed())
+        assertEquals(2, between(group).size)
+
+        choice = ExtracurricularChoice(show = false)
+        assertEquals(listOf("Физика"), shown(group))
+        assertEquals(listOf("Физика"), between(group))
+        assertEquals("A teacher's schedule keeps everything", 2, shown(teacher).size)
+        assertEquals("The choice still lists what is hidden", listOf("Тьюторский час"), repository.extracurricularNames(group, start))
+
+        choice = ExtracurricularChoice(hiddenNames = setOf("Тьюторский час"))
+        assertEquals(listOf("Физика"), shown(group))
+        assertEquals(listOf("Физика"), between(group))
+
+        choice = ExtracurricularChoice(hiddenNames = setOf("Разговоры о важном"))
+        assertEquals(2, shown(group).size)
     }
 
     @Test

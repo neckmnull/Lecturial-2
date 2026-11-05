@@ -10,6 +10,7 @@ import com.rassvet.lecturial.model.ScheduleWeek
 import com.rassvet.lecturial.model.displayAddress
 import com.rassvet.lecturial.model.displayComment
 import com.rassvet.lecturial.model.displayEventType
+import com.rassvet.lecturial.model.isExtracurricular
 import com.rassvet.lecturial.model.liveLessonState
 import com.rassvet.lecturial.model.shortenTeachers
 import com.rassvet.lecturial.model.renamedDiscipline
@@ -140,7 +141,7 @@ internal fun buildScheduleRows(
         .distinctBy(ScheduleWeek::weekStart)
         .sortedBy(ScheduleWeek::weekStart)
     val todayCount = weeks.firstOrNull { today in it.weekStart..it.weekStart.plusDays(6) }
-        ?.eventsFor(today)?.size ?: 0
+        ?.eventsFor(today)?.count { !isExtracurricular(it.type, it.discipline) } ?: 0
     val todaySubtitle = if (todayCount == 0) "сегодня • нет пар" else "сегодня • ${pairCountText(todayCount)}"
     rows += ScheduleRow.Header(group, todaySubtitle)
     val sections = weeks.map { scheduleWeek ->

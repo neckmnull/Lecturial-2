@@ -3,6 +3,7 @@ package com.rassvet.lecturial.ui
 import com.rassvet.lecturial.model.TeacherInfo
 import androidx.compose.material.icons.outlined.AccountBox
 import com.rassvet.lecturial.model.LessonAlertPause
+import com.rassvet.lecturial.model.ExtracurricularChoice
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -204,6 +205,7 @@ internal fun ScheduleScreen(
     onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
     onScheduleWeeksForwardChanged: (Int) -> Unit,
+    onExtracurricularChoiceChanged: (ExtracurricularChoice) -> Unit,
     onCheckForUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit,
@@ -425,6 +427,13 @@ internal fun ScheduleScreen(
                         onAliasChanged = onLessonAliasChanged,
                         onBack = { settingsSection = null },
                     )
+                    SettingsDestination.Extracurricular -> ExtracurricularScreen(
+                        modifier = nestedModifier,
+                        group = state.selectedGroup,
+                        choice = state.extracurricularChoice,
+                        onChoiceChanged = onExtracurricularChoiceChanged,
+                        onBack = { settingsSection = null },
+                    )
                     SettingsDestination.Outlook -> OutlookSettingsScreen(
                         modifier = nestedModifier,
                         onBack = { settingsSection = null },
@@ -468,6 +477,7 @@ internal fun ScheduleScreen(
                         onLessonAlertsPause = onLessonAlertsPause,
                         onScheduleWeeksBackChanged = onScheduleWeeksBackChanged,
                         onScheduleWeeksForwardChanged = onScheduleWeeksForwardChanged,
+                        onOpenExtracurricular = { settingsSection = SettingsDestination.Extracurricular },
                     )
                 }
             } else if (selectedSection == MainSection.Statistics) {

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.rassvet.lecturial.model.WidgetStripeColors
 import com.rassvet.lecturial.model.WidgetStripePalette
@@ -23,6 +24,7 @@ import com.rassvet.lecturial.model.CustomAppTheme
 import com.rassvet.lecturial.model.BuiltInThemeOverride
 import com.rassvet.lecturial.model.ThemePalette
 import com.rassvet.lecturial.model.DeadlineReminder
+import com.rassvet.lecturial.model.ExtracurricularChoice
 import com.rassvet.lecturial.notify.DeadlineAlerts
 import com.rassvet.lecturial.widget.TodayScheduleWidget
 import kotlinx.coroutines.flow.Flow
@@ -74,6 +76,8 @@ class UserPreferences(private val context: Context) {
     private val scheduleWeeksBackKey = intPreferencesKey("schedule_weeks_back")
     private val scheduleWeeksForwardKey = intPreferencesKey("schedule_weeks_forward")
     private val requiredUpdateKey = stringPreferencesKey("required_update_version")
+    private val showExtracurricularKey = booleanPreferencesKey("show_extracurricular")
+    private val hiddenExtracurricularKey = stringSetPreferencesKey("hidden_extracurricular")
 
     private val safePreferences = context.dataStore.data
         .catch { failure ->
@@ -128,6 +132,21 @@ class UserPreferences(private val context: Context) {
 
     val scheduleWeeksForward: Flow<Int> = safePreferences.map { preferences ->
         (preferences[scheduleWeeksForwardKey] ?: DEFAULT_SCHEDULE_WEEKS_FORWARD).coerceIn(SCHEDULE_WEEKS_RANGE)
+    }
+
+    /** Which tutor hours, meetings and other events outside the curriculum a group's schedule shows. */
+    val extracurricularChoice: Flow<ExtracurricularChoice> = safePreferences.map { preferences ->
+        ExtracurricularChoice(
+            show = preferences[showExtracurricularKey] ?: true,
+            hiddenNames = preferences[hiddenExtracurricularKey].orEmpty(),
+        )
+    }
+
+    suspend fun setExtracurricularChoice(choice: ExtracurricularChoice) {
+        context.dataStore.edit {
+            it[showExtracurricularKey] = choice.show
+            it[hiddenExtracurricularKey] = choice.hiddenNames
+        }
     }
 
     /** A newer version the latest release requires; kept so the block also holds offline. */

@@ -24,6 +24,7 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.Dns
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -403,6 +404,9 @@ internal object LivewireGroupParser {
         runCatching { String(Character.toChars(codePoint)) }.getOrDefault("")
 }
 
+/** A lesson link comes from the site and opens another app on a tap, so only https gets through. */
+internal fun httpsUrlOrNull(url: String?): String? = url?.takeIf { it.toHttpUrlOrNull()?.isHttps == true }
+
 internal object LivewireEventParser {
     private val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
@@ -491,7 +495,7 @@ internal object LivewireEventParser {
             address = displayAddress(normalizeDuplicatedText(optNullableString("address"))),
             teachers = teachers,
             comment = displayComment(optNullableString("comment")),
-            onlineUrl = optNullableString("urlOnline"),
+            onlineUrl = httpsUrlOrNull(optNullableString("urlOnline")),
             studentGroup = optNullableString("group"),
         )
     }

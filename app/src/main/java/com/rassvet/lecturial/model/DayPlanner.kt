@@ -56,7 +56,9 @@ fun studyTasks(
     lastStudied: Map<String, LocalDate>,
     settings: DayPlannerSettings = DayPlannerSettings(),
 ): List<StudyTask> {
-    val pairs = events.sortedWith(compareBy({ it.date }, { parseEventMinutes(it.startTime) }))
+    // Events outside the curriculum take up time in the plan, but there is nothing to study for them.
+    val studied = events.filterNot { isExtracurricular(it.type, it.discipline) }
+    val pairs = studied.sortedWith(compareBy({ it.date }, { parseEventMinutes(it.startTime) }))
     val upcoming = pairs.filter { it.date.isAfter(date) }
     // Searched in all pairs: homework is due at the first pair after it was set, even if that is today.
     fun nextPair(discipline: String, after: LocalDate) = pairs.firstOrNull { it.date.isAfter(after) && sameDisciplineName(it.discipline, discipline) }
@@ -120,7 +122,7 @@ fun studyTasks(
 
     val horizon = date.plusDays(REVIEW_DAYS)
     val stats = lksStats(marks).associateBy { normalizeDisciplineName(it.name) }
-    events.filter { it.date.isAfter(date.minusDays(1)) && !it.date.isAfter(horizon) }
+    studied.filter { it.date.isAfter(date.minusDays(1)) && !it.date.isAfter(horizon) }
         .distinctBy { normalizeDisciplineName(it.discipline) }
         .forEach { event ->
             val name = normalizeDisciplineName(event.discipline)

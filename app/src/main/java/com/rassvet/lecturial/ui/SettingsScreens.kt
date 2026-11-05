@@ -17,6 +17,14 @@ import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.runtime.produceState
+import com.rassvet.lecturial.LecturialApplication
+import com.rassvet.lecturial.model.ExtracurricularChoice
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.graphics.Shape
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -115,6 +123,7 @@ internal fun AppSettingsScreen(
     onLessonAlertsPause: (LessonAlertPause?) -> Unit,
     onScheduleWeeksBackChanged: (Int) -> Unit,
     onScheduleWeeksForwardChanged: (Int) -> Unit,
+    onOpenExtracurricular: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -157,6 +166,21 @@ internal fun AppSettingsScreen(
                     icon = Icons.Rounded.Person,
                     onClick = onOpenLanguageTeacher,
                     accessibilityLabel = "Открыть: Преподаватель иностранного языка",
+                )
+            }
+            if (!state.isTeacherMode) item { shape ->
+                val choice = state.extracurricularChoice
+                SettingsListItem(
+                    title = "Внеучебные мероприятия",
+                    subtitle = when {
+                        !choice.show -> "Скрыты"
+                        choice.hiddenNames.isNotEmpty() -> "Скрыто: ${choice.hiddenNames.size}"
+                        else -> "Показываются"
+                    },
+                    shape = shape,
+                    icon = Icons.Rounded.Star,
+                    onClick = onOpenExtracurricular,
+                    accessibilityLabel = "Открыть: Внеучебные мероприятия",
                 )
             }
             item { shape ->
@@ -788,6 +812,72 @@ private fun PrivacySection(title: String, text: String) {
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** Events outside the curriculum: all of them off at once, or each one by its name. */
+@Composable
+internal fun ExtracurricularScreen(
+    modifier: Modifier = Modifier,
+    group: String?,
+    choice: ExtracurricularChoice,
+    onChoiceChanged: (ExtracurricularChoice) -> Unit,
+    onBack: () -> Unit,
+) {
+    val repository = (LocalContext.current.applicationContext as LecturialApplication).repository
+    // Read from the cache, which keeps them all: the schedule's own weeks lack what is switched off.
+    val cached by produceState(emptyList<String>(), group) {
+        value = group?.let { repository.extracurricularNames(it, LocalDate.now().minusWeeks(2)) }.orEmpty()
+    }
+    val names = (cached + choice.hiddenNames).distinct().sorted()
+    SettingsPage(title = "Внеучебные мероприятия", onBack = onBack, modifier = modifier) {
+        Text(
+            "Тьюторские часы, встречи и другие события вне учебного плана. Выбор действует в расписании, виджете, напоминаниях и календарях.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SettingsGroup {
+            item { shape ->
+                ChoiceRow("Показывать мероприятия", "Выключите, чтобы скрыть все сразу", choice.show, shape) { show ->
+                    onChoiceChanged(choice.copy(show = show))
+                }
+            }
+        }
+        when {
+            !choice.show -> Unit
+            names.isEmpty() -> Text(
+                "В загруженных неделях мероприятий нет. Новые появятся здесь и будут показываться, пока не выключите.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> SettingsGroup(title = "Какие показывать") {
+                names.forEach { name ->
+                    item { shape ->
+                        ChoiceRow(name, null, name !in choice.hiddenNames, shape) { shown ->
+                            val hidden = if (shown) choice.hiddenNames - name else choice.hiddenNames + name
+                            onChoiceChanged(choice.copy(hiddenNames = hidden))
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun ChoiceRow(title: String, subtitle: String?, checked: Boolean, shape: RoundedCornerShape, onChanged: (Boolean) -> Unit) {
+    SettingsListItem(
+        title = title,
+        subtitle = subtitle,
+        shape = shape,
+        icon = null,
+        // One touch target announced as a switch, as in WidgetSettingSwitch.
+        modifier = Modifier.clip(shape).toggleable(value = checked, role = Role.Switch, onValueChange = onChanged),
+        trailing = {
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = checked, onCheckedChange = null)
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

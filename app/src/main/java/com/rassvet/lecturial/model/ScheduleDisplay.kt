@@ -36,7 +36,7 @@ fun displayEventType(type: String): String {
 
 /**
  * Tutor hours, meetings with the project group, excursions, festivals and other events outside
- * the curriculum. They are not pairs, so a group's schedule leaves them out.
+ * the curriculum. They are not pairs, so a group can leave them out of its schedule.
  */
 fun isExtracurricular(type: String, discipline: String): Boolean {
     val kind = type.lowercase(ru)
@@ -50,9 +50,18 @@ private val ExtracurricularNames = listOf(
     "мероприятие", "внеурочное мероприятие", "лекция по теме", "экскурсия", "фестиваль", "встреча с ", "встречи с ", "тьюторский час",
 )
 
-/** [week] without the events outside the curriculum, for a group's schedule. */
-fun ScheduleWeek.withoutExtracurricular(): ScheduleWeek =
-    copy(days = days.map { day -> day.copy(events = day.events.filterNot { isExtracurricular(it.type, it.discipline) }) })
+/**
+ * Which events outside the curriculum a group's schedule shows: none at all, or all except the
+ * ones switched off by name. A name not seen before is shown.
+ */
+data class ExtracurricularChoice(val show: Boolean = true, val hiddenNames: Set<String> = emptySet()) {
+    fun hides(type: String, discipline: String): Boolean =
+        isExtracurricular(type, discipline) && (!show || discipline.trim() in hiddenNames)
+}
+
+/** This week without what [choice] switches off. */
+fun ScheduleWeek.following(choice: ExtracurricularChoice): ScheduleWeek =
+    copy(days = days.map { day -> day.copy(events = day.events.filterNot { choice.hides(it.type, it.discipline) }) })
 
 fun displayAddress(address: String?): String? {
     val value = address?.trim()?.takeIf { it.isNotEmpty() } ?: return null

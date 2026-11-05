@@ -79,7 +79,12 @@ class AssessmentTest {
             listOf(ScheduleDay(day, listOf(event("Тьюторский час", "Внеучебное"), event("Физика", "Практика")))),
         )
 
-        assertEquals(listOf("Физика"), week.withoutExtracurricular().days.single().events.map { it.discipline })
+        fun shown(choice: ExtracurricularChoice) = week.following(choice).days.single().events.map { it.discipline }
+        assertEquals(listOf("Тьюторский час", "Физика"), shown(ExtracurricularChoice()))
+        assertEquals(listOf("Физика"), shown(ExtracurricularChoice(show = false)))
+        assertEquals(listOf("Физика"), shown(ExtracurricularChoice(hiddenNames = setOf("Тьюторский час"))))
+        assertEquals("Another event stays shown", listOf("Тьюторский час", "Физика"), shown(ExtracurricularChoice(hiddenNames = setOf("Разговоры о важном"))))
+        assertFalse("A pair with a hidden name is not an event", ExtracurricularChoice(hiddenNames = setOf("Физика")).hides("Практика", "Физика"))
         assertTrue(ScheduleTarget.isGroup("ИОП-ИТ-26/1"))
         assertFalse(ScheduleTarget.isGroup(ScheduleTarget.teacherKey("x")))
     }

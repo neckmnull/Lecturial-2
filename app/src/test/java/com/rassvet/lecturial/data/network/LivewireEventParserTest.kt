@@ -69,6 +69,27 @@ class LivewireEventParserTest {
         assertEquals(2, events.map { it.id }.distinct().size)
     }
 
+    @Test
+    fun `keeps only https lesson links`() {
+        val kept = "https://conf.siriusuniversity.ru/room?id=1"
+        assertEquals(kept, onlineUrlOf(kept))
+        assertEquals("HTTPS://conf.siriusuniversity.ru/1", onlineUrlOf("HTTPS://conf.siriusuniversity.ru/1"))
+        listOf(
+            "http://conf.siriusuniversity.ru/1",
+            "intent://scan/#Intent;scheme=zxing;end",
+            "javascript:alert(1)",
+            "file:///data/data/x",
+            "conf.siriusuniversity.ru/1",
+            "https://",
+        ).forEach { assertNull(it, onlineUrlOf(it)) }
+    }
+
+    private fun onlineUrlOf(url: String): String? {
+        val raw = event("Физика", null, JSONObject()).put("urlOnline", url)
+        val data = JSONObject().put("events", JSONObject().put("0", JSONArray().put(raw)))
+        return LivewireEventParser.parse(data, "ИОП-ИТ-26/1", weekStart).days.first().events.single().onlineUrl
+    }
+
     private fun event(discipline: String, classroom: String?, teachers: JSONObject) = JSONObject()
         .put("date", "31.08.2026")
         .put("startTime", "08:45")

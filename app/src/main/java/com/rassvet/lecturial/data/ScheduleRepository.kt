@@ -5,6 +5,7 @@ import com.rassvet.lecturial.data.local.LecturialDatabase
 import com.rassvet.lecturial.data.local.ScheduleEventEntity
 import com.rassvet.lecturial.data.local.WeekCacheEntity
 import com.rassvet.lecturial.data.network.ScheduleRemoteDataSource
+import com.rassvet.lecturial.data.network.httpsUrlOrNull
 import com.rassvet.lecturial.model.CachedSchedule
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
@@ -23,12 +24,14 @@ import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.isExtracurricular
-import com.rassvet.lecturial.model.withoutExtracurricular
+import com.rassvet.lecturial.model.ExtracurricularChoice
+import com.rassvet.lecturial.model.following
 
 class ScheduleRepository(
     private val database: LecturialDatabase,
     private val remote: ScheduleRemoteDataSource,
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val extracurricularChoice: suspend () -> ExtracurricularChoice = { ExtracurricularChoice() },
     private val onCacheUpdated: () -> Unit = {},
 ) {
     private val refreshMutex = Mutex()
@@ -39,11 +42,23 @@ class ScheduleRepository(
 
     suspend fun teachers(query: String): List<TeacherInfo> = remote.fetchTeachers(query)
 
-    suspend fun eventsBetween(group: String, start: LocalDate, end: LocalDate): List<ScheduleEvent> =
-        database.scheduleDao()
+    suspend fun eventsBetween(group: String, start: LocalDate, end: LocalDate): List<ScheduleEvent> {
+        val choice = if (ScheduleTarget.isGroup(group)) extracurricularChoice() else ExtracurricularChoice()
+        return database.scheduleDao()
             .eventsForWeek(group, start.toString(), end.toString())
             .map { it.toDomain() }
-            .filterNot { ScheduleTarget.isGroup(group) && isExtracurricular(it.type, it.discipline) }
+            .filterNot { choice.hides(it.type, it.discipline) }
+    }
+
+    /** What the schedule shows changed without new data: the widget, reminders and calendars follow. */
+    fun displayChanged() = onCacheUpdated()
+
+    /** Names of the events outside the curriculum cached for [group] from [from] on, to choose among. */
+    suspend fun extracurricularNames(group: String, from: LocalDate): List<String> =
+        database.scheduleDao().disciplinesSince(group, from.toString())
+            .filter { isExtracurricular(it.type, it.discipline) }
+            .map { it.discipline.trim() }
+            .distinct()
 
     suspend fun cachedWeek(group: String, weekStart: LocalDate): CachedSchedule? {
         val start = weekStart.toString()
@@ -117,9 +132,9 @@ class ScheduleRepository(
         missing?.let { throw it }
     }
 
-    /** The cache keeps everything (rooms and statistics need it); a group's schedule shows only pairs. */
-    private fun CachedSchedule.forShowing(): CachedSchedule =
-        if (ScheduleTarget.isGroup(week.group)) copy(week = week.withoutExtracurricular()) else this
+    /** The cache keeps everything (rooms and statistics need it); a group can leave out what isn't a pair. */
+    private suspend fun CachedSchedule.forShowing(): CachedSchedule =
+        if (ScheduleTarget.isGroup(week.group)) copy(week = week.following(extracurricularChoice())) else this
 
     private suspend fun fetchAndCache(group: String, weekStart: LocalDate): CachedSchedule {
         val week = remote.fetchWeek(group, weekStart)
@@ -159,6 +174,7 @@ internal fun ScheduleEvent.toEntity(group: String) = ScheduleEventEntity(
     studentGroup = studentGroup,
 )
 
+// Rows cached by versions before 1.13.3 may hold any link the site sent.
 internal fun ScheduleEventEntity.toDomain() = ScheduleEvent(
     id = id,
     date = LocalDate.parse(date),
@@ -171,6 +187,6 @@ internal fun ScheduleEventEntity.toDomain() = ScheduleEvent(
     address = address,
     teachers = teachers.split("\u001F").filter { it.isNotBlank() },
     comment = comment,
-    onlineUrl = onlineUrl,
+    onlineUrl = httpsUrlOrNull(onlineUrl),
     studentGroup = studentGroup,
 )

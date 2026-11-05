@@ -156,6 +156,7 @@ class MainActivity : ComponentActivity() {
                     onLessonAlertsPause = viewModel::pauseLessonAlerts,
                     onScheduleWeeksBackChanged = viewModel::setScheduleWeeksBack,
                     onScheduleWeeksForwardChanged = viewModel::setScheduleWeeksForward,
+                    onExtracurricularChoiceChanged = viewModel::setExtracurricularChoice,
                     onCheckForUpdates = viewModel::checkForUpdates,
                     onDownloadUpdate = viewModel::downloadUpdate,
                     onInstallUpdate = { update ->

@@ -17,6 +17,7 @@ import com.rassvet.lecturial.notify.UpdateNotifier
 import com.rassvet.lecturial.widget.TodayScheduleWidget
 import java.io.File
 import com.rassvet.lecturial.data.local.DayPlannerStore
+import kotlinx.coroutines.flow.first
 
 class LecturialApplication : Application() {
     val preferences by lazy { UserPreferences(this) }
@@ -38,6 +39,7 @@ class LecturialApplication : Application() {
         ScheduleRepository(
             database = database,
             remote = SiriusScheduleDataSource(),
+            extracurricularChoice = { preferences.extracurricularChoice.first() },
             onCacheUpdated = {
                 TodayScheduleWidget.updateAll(this)
                 LessonAlerts.sync(this)

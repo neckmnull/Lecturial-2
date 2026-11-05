@@ -9,6 +9,7 @@ import com.rassvet.lecturial.data.local.UserPreferences
 import com.rassvet.lecturial.data.network.GitHubUpdateChecker
 import com.rassvet.lecturial.data.network.compareVersions
 import com.rassvet.lecturial.BuildConfig
+import com.rassvet.lecturial.model.ExtracurricularChoice
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
 import com.rassvet.lecturial.model.WidgetStripePalette
@@ -69,6 +70,7 @@ data class ScheduleUiState(
     val scheduleWeeks: List<ScheduleWeek> = emptyList(),
     val scheduleWeeksBack: Int = UserPreferences.DEFAULT_SCHEDULE_WEEKS_BACK,
     val scheduleWeeksForward: Int = UserPreferences.DEFAULT_SCHEDULE_WEEKS_FORWARD,
+    val extracurricularChoice: ExtracurricularChoice = ExtracurricularChoice(),
     val events: List<ScheduleEvent> = emptyList(),
     val availableGroups: List<String> = emptyList(),
     val groupSearchQuery: String = "",
@@ -157,6 +159,7 @@ class ScheduleViewModel(
             val lessonAlertsPausedUntil = preferences.lessonAlertsPausedUntil.first()
             val scheduleWeeksBack = preferences.scheduleWeeksBack.first()
             val scheduleWeeksForward = preferences.scheduleWeeksForward.first()
+            val extracurricularChoice = preferences.extracurricularChoice.first()
             val validCustomThemeId = selectedCustomThemeId?.takeIf { id -> customThemes.any { it.id == id } }
             val date = today()
             _state.update {
@@ -171,6 +174,7 @@ class ScheduleViewModel(
                     lessonAlertsPausedUntil = lessonAlertsPausedUntil,
                     scheduleWeeksBack = scheduleWeeksBack,
                     scheduleWeeksForward = scheduleWeeksForward,
+                    extracurricularChoice = extracurricularChoice,
                     selectedGroup = group,
                     scheduleTargetName = targetName,
                     searchMode = if (ScheduleTarget.isTeacher(group)) ScheduleSearchMode.Teacher else ScheduleSearchMode.Group,
@@ -562,6 +566,16 @@ class ScheduleViewModel(
             if (current.scheduleWeeksForward != weeksForward) preferences.setScheduleWeeksForward(weeksForward)
         }
         loadCurrentWeek()
+    }
+
+    fun setExtracurricularChoice(choice: ExtracurricularChoice) {
+        _state.update { it.copy(extracurricularChoice = choice) }
+        viewModelScope.launch {
+            preferences.setExtracurricularChoice(choice)
+            repository.displayChanged()
+            // The cache keeps these events, so the schedule changes without asking the site.
+            loadCurrentWeek()
+        }
     }
 
     fun setAppTheme(theme: AppTheme) {

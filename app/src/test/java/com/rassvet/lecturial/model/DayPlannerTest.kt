@@ -106,6 +106,20 @@ class DayPlannerTest {
     }
 
     @Test
+    fun `events outside the curriculum take up time but are nothing to study for`() {
+        val meeting = pair(monday, "12:00", "13:00", "Встречи с проектной группой", "Внеучебное")
+        val tutorHour = pair(monday.plusDays(1), "15:00", "16:00", "Тьюторский час", "Внеучебное")
+        val events = week + meeting + tutorHour
+
+        val tasks = studyTasks(monday, events, emptyList(), emptyList(), emptyMap())
+        val day = planDay(monday, monday.atTime(7, 0), events, emptyList(), tasks, done = emptySet())
+
+        assertTrue(tasks.none { it.discipline == meeting.discipline || it.discipline == tutorHour.discipline })
+        assertTrue(day.any { it.kind == DayBlockKind.Lesson && it.start == LocalTime.of(12, 0) })
+        assertTrue(day.none { it.kind == DayBlockKind.Study && it.start.isBefore(LocalTime.of(13, 0)) && it.end.isAfter(LocalTime.of(12, 0)) })
+    }
+
+    @Test
     fun `physical education is never something to prepare or go over`() {
         val pe = listOf(
             pair(monday.plusDays(1), "08:45", "10:05", "Физическая культура и спорт"),

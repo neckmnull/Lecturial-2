@@ -37,6 +37,8 @@ data class WeekCacheEntity(
     val updatedAtMillis: Long,
 )
 
+data class DisciplineKind(val discipline: String, val type: String)
+
 @Dao
 interface ScheduleDao {
     @Query("SELECT * FROM schedule_events WHERE groupName = :group AND date BETWEEN :start AND :end ORDER BY date, startTime, pairNumber")
@@ -44,6 +46,9 @@ interface ScheduleDao {
 
     @Query("SELECT * FROM schedule_events WHERE groupName = :group AND date = :date ORDER BY startTime, pairNumber")
     suspend fun eventsForDay(group: String, date: String): List<ScheduleEventEntity>
+
+    @Query("SELECT DISTINCT discipline, type FROM schedule_events WHERE groupName = :group AND date >= :from")
+    suspend fun disciplinesSince(group: String, from: String): List<DisciplineKind>
 
     @Query("SELECT * FROM week_cache WHERE groupName = :group AND weekStart = :weekStart LIMIT 1")
     suspend fun weekCache(group: String, weekStart: String): WeekCacheEntity?

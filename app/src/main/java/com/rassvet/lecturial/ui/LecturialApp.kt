@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.rassvet.lecturial.model.ExtracurricularChoice
 import com.rassvet.lecturial.model.forLanguageTeacher
 import com.rassvet.lecturial.model.AppTheme
 import com.rassvet.lecturial.model.AppDisplayOptions
@@ -75,7 +76,7 @@ data class OpenLessonRequest(val key: Long, val date: LocalDate, val eventId: St
     val rowKey: String get() = "lesson-$date-$eventId"
 }
 
-internal enum class SettingsDestination { LanguageTeacher, Appearance, Widget, Names, Outlook, GoogleCalendar, Testing, About, Privacy }
+internal enum class SettingsDestination { LanguageTeacher, Appearance, Widget, Names, Extracurricular, Outlook, GoogleCalendar, Testing, About, Privacy }
 internal enum class MainSection { Schedule, Study, Plans, Statistics, Settings }
 internal enum class AppearanceSection { Settings, BuiltInEditor, CustomEditor }
 
@@ -135,6 +136,7 @@ fun LecturialApp(
     onLessonAlertsPause: (LessonAlertPause?) -> Unit = {},
     onScheduleWeeksBackChanged: (Int) -> Unit = {},
     onScheduleWeeksForwardChanged: (Int) -> Unit = {},
+    onExtracurricularChoiceChanged: (ExtracurricularChoice) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},
     onInstallUpdate: (AppUpdateState.ReadyToInstall) -> Unit = {},
@@ -289,6 +291,7 @@ fun LecturialApp(
                         onLessonAlertsPause,
                         onScheduleWeeksBackChanged,
                         onScheduleWeeksForwardChanged,
+                        onExtracurricularChoiceChanged,
                         onCheckForUpdates,
                         onDownloadUpdate,
                         onInstallUpdate,

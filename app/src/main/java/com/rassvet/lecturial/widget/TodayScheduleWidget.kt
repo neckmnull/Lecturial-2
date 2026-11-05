@@ -168,7 +168,7 @@ class TodayScheduleWidget : AppWidgetProvider() {
                         context = context,
                         appWidgetId = id,
                         outerPaddingDp = outerPaddingDp,
-                        lessonCount = lessons.size,
+                        lessonCount = lessons.count { !com.rassvet.lecturial.model.isExtracurricular(it.type, it.discipline) },
                         activePlanCount = todayPlanCount,
                         nearestPlan = nearestPlanLabel,
                         nearestPlanId = nearestPlan?.id,
@@ -361,9 +361,10 @@ internal fun Context.dpToPx(dp: Int): Int = (dp * resources.displayMetrics.densi
 internal suspend fun todayLessons(app: LecturialApplication): List<ScheduleEventEntity> {
     val group = app.preferences.selectedGroup.first() ?: return emptyList()
     val teacher = app.preferences.languageTeacher(group).first()
+    val choice = if (ScheduleTarget.isGroup(group)) app.preferences.extracurricularChoice.first() else com.rassvet.lecturial.model.ExtracurricularChoice()
     return app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
         com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers.split("\u001F"), teacher) &&
-            !(ScheduleTarget.isGroup(group) && com.rassvet.lecturial.model.isExtracurricular(it.type, it.discipline))
+            !choice.hides(it.type, it.discipline)
     }
 }
 
