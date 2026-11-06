@@ -23,8 +23,8 @@ android {
         applicationId = "com.rassvet.lecturial2"
         minSdk = 26
         targetSdk = 37
-        versionCode = 43
-        versionName = "1.13.3"
+        versionCode = 44
+        versionName = "1.13.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Application (client) ID of the app registered in Microsoft Entra for the Outlook sync.

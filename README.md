@@ -6,7 +6,7 @@
 **Неофициальное приложение с расписанием Университета «Сириус» для Android.**<br />
 Работает без интернета, показывает оценки из личного кабинета и само раскладывает домашку по свободному времени.
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.3/Lecturial-2-v1.13.3.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.3-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.3" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.4/Lecturial-2-v1.13.4.apk"><img src="https://img.shields.io/badge/Скачать_APK-v1.13.4-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Скачать Lecturial 2 v1.13.4" /></a>
 <a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram--канал-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram-канал @lecturial_2" /></a>
 
 <sub><a href="./README.en.md">English version</a></sub>
@@ -43,7 +43,7 @@
 
 ## Установка
 
-1. Скачай [`Lecturial-2-v1.13.3.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.3/Lecturial-2-v1.13.3.apk). Если приложение уже стоит, обнови его прямо в нём: **Настройки → О приложении → Обновления**.
+1. Скачай [`Lecturial-2-v1.13.4.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.4/Lecturial-2-v1.13.4.apk). Если приложение уже стоит, обнови его прямо в нём: **Настройки → О приложении → Обновления**.
 2. Если Android спросит, разреши установку из браузера или файлового менеджера.
 3. Открой APK и установи. При первом запуске приложение поможет выбрать группу и всё настроить.
 
@@ -51,7 +51,7 @@
 <summary>Как проверить, что APK настоящий</summary>
 
 ```text
-SHA-256  e66ed3184b80a0cfe7abe70aec00505801f059bdf0c3efc336aadd130fa11d70
+SHA-256  ec91e1f312d57e97bb94cfd899152feda5961521fbda6e53ba1e995985397fa2
 Пакет    com.rassvet.lecturial2
 ```
 

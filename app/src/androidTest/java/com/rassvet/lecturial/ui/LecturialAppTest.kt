@@ -130,6 +130,19 @@ class LecturialAppTest {
     }
 
     @Test
+    fun continueStaysOnScreenOverALongGroupList() {
+        var selected: String? = null
+        render(
+            ScheduleUiState(availableGroups = (1..40).map { "Группа $it" }, isStarting = false),
+            onGroupSelected = { selected = it },
+        )
+
+        compose.onNodeWithText("Группа 1").performClick()
+        compose.onNodeWithText("Продолжить").assertIsDisplayed().performClick()
+        assertEquals("Группа 1", selected)
+    }
+
+    @Test
     fun groupSearchForwardsEnteredQuery() {
         var state by mutableStateOf(ScheduleUiState(isStarting = false))
         compose.setContent {

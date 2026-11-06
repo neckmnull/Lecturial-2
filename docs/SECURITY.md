@@ -1,7 +1,7 @@
 # Безопасность Lecturial 2
 
 Документ для специалистов по информационной безопасности: какие данные обрабатывает
-приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.3.
+приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.4.
 Все утверждения проверены по исходному коду; ссылки ведут на файлы, где это видно.
 
 ## Кратко
@@ -32,7 +32,7 @@
 | Подпись | Один долгосрочный release-ключ для всех версий, RSA 4096, схема APK Signature Scheme v2. SHA-256 сертификата: `01dcdc24591d5a269f64a453ac03a6ac7775e302abdd8efdf7c46707d2e3ae3f`. SHA-256 APK публикуется в README |
 | Статус | Неофициальное приложение, университет его не сопровождает |
 | Сборка release | R8/ProGuard: `isMinifyEnabled = true`, `isShrinkResources = true`, не `debuggable` |
-| Зависимости | AndroidX (Compose, Room, DataStore, Browser), OkHttp 5, jsoup, kotlinx-serialization. Полный список в [`app/build.gradle.kts`](../app/build.gradle.kts). В release-сборку входит 136 модулей; по базе OSV на 05.11.2026 известных уязвимостей в них нет, постоянной автоматической проверки пока нет |
+| Зависимости | AndroidX (Compose, Room, DataStore, Browser), OkHttp 5, jsoup, kotlinx-serialization. Полный список в [`app/build.gradle.kts`](../app/build.gradle.kts). В release-сборку входит 136 модулей; по базе OSV на 06.11.2026 известных уязвимостей в них нет, постоянной автоматической проверки пока нет |
 | Сборочная цепочка | Контрольная сумма дистрибутива Gradle закреплена в `gradle-wrapper.properties` (`distributionSha256Sum`) |
 
 ## Какие данные обрабатываются
@@ -260,20 +260,20 @@ WebView и отменяет фоновое обновление.
 Подпись и хеш скачанного APK:
 
 ```bash
-apksigner verify --print-certs Lecturial-2-v1.13.3.apk
-sha256sum Lecturial-2-v1.13.3.apk
+apksigner verify --print-certs Lecturial-2-v1.13.4.apk
+sha256sum Lecturial-2-v1.13.4.apk
 ```
 
 Разрешения:
 
 ```bash
-aapt2 dump permissions Lecturial-2-v1.13.3.apk
+aapt2 dump permissions Lecturial-2-v1.13.4.apk
 ```
 
 Манифест целиком, с флагами `exported`:
 
 ```bash
-aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.3.apk
+aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.4.apk
 ```
 
 Сетевой трафик можно смотреть через прокси с пользовательским сертификатом только

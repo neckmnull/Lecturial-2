@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -184,13 +185,16 @@ internal fun GroupSelectionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                // Room for the floating button, so the last row can scroll clear of it.
+                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = ButtonDefaults.MediumContainerHeight + 32.dp),
             verticalArrangement = Arrangement.Center,
         ) {
         Image(
@@ -296,14 +300,32 @@ internal fun GroupSelectionScreen(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Выбор можно изменить позже в настройках.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        }
         Button(
             onClick = {
                 if (teacherSearch) selectedTeacher?.let(onTeacherSelected) else selectedGroup?.let(onGroupSelected)
             },
             enabled = hasSelection,
-            modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .fillMaxWidth()
+                .height(ButtonDefaults.MediumContainerHeight),
             contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+            // The list scrolls behind this button, and the default disabled colours are see-through.
+            colors = ButtonDefaults.buttonColors(
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, disabledElevation = 6.dp),
         ) {
             AnimatedContent(
                 targetState = hasSelection,
@@ -319,15 +341,6 @@ internal fun GroupSelectionScreen(
                     style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight),
                 )
             }
-        }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "Выбор можно изменить позже в настройках.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
         }
     }
 }

@@ -4,7 +4,7 @@
 **An unofficial Android schedule app for Sirius University.**<br />
 It works offline, shows grades from the student account and fits homework into your free time.
 
-<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.3/Lecturial-2-v1.13.3.apk"><img src="https://img.shields.io/badge/Download_APK-v1.13.3-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Download Lecturial 2 v1.13.3" /></a>
+<a href="https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.4/Lecturial-2-v1.13.4.apk"><img src="https://img.shields.io/badge/Download_APK-v1.13.4-345EBC?style=for-the-badge&amp;logo=android&amp;logoColor=11141A&amp;labelColor=EEF1F7" alt="Download Lecturial 2 v1.13.4" /></a>
 <a href="https://t.me/lecturial_2"><img src="https://img.shields.io/badge/Telegram_channel-11141A?style=for-the-badge&amp;logo=telegram&amp;logoColor=8AABFF" alt="Telegram channel @lecturial_2" /></a>
 
 <sub><a href="./README.md">Русская версия</a></sub>
@@ -41,7 +41,7 @@ It works offline, shows grades from the student account and fits homework into y
 
 ## Install
 
-Download [`Lecturial-2-v1.13.3.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.3/Lecturial-2-v1.13.3.apk), allow installs from your browser if Android asks, and open it. Installed versions update from **Settings → About → Updates**.
+Download [`Lecturial-2-v1.13.4.apk`](https://github.com/neckmnull/Lecturial-2/releases/download/v1.13.4/Lecturial-2-v1.13.4.apk), allow installs from your browser if Android asks, and open it. Installed versions update from **Settings → About → Updates**.
 The SHA-256 of every release is in the [Russian README](./README.md#установка) and the release notes. Android 8.0 or newer.
 
 Lecturial 2 is an independent project, not an official Sirius University app. It reads the university's schedule website, so a change there can break loading until the next update.
