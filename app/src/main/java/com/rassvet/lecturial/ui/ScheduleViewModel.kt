@@ -37,10 +37,10 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
-import java.time.ZoneId
 import com.rassvet.lecturial.model.LessonAlertPause
 import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.TeacherInfo
+import com.rassvet.lecturial.model.UniversityZone
 
 enum class ScheduleSearchMode { Group, Teacher }
 
@@ -63,8 +63,8 @@ data class ScheduleUiState(
     val availableTeachers: List<TeacherInfo> = emptyList(),
     val languageTeacher: String? = null,
     val choosingLanguageTeacher: Boolean = false,
-    val selectedDate: LocalDate = LocalDate.now(),
-    val weekStart: LocalDate = LocalDate.now().with(DayOfWeek.MONDAY),
+    val selectedDate: LocalDate = LocalDate.now(UniversityZone),
+    val weekStart: LocalDate = LocalDate.now(UniversityZone).with(DayOfWeek.MONDAY),
     val week: ScheduleWeek? = null,
     val nextWeek: ScheduleWeek? = null,
     val scheduleWeeks: List<ScheduleWeek> = emptyList(),
@@ -109,7 +109,7 @@ data class ScheduleUiState(
     val appUpdateState: AppUpdateState = AppUpdateState.Idle,
     /** A newer version the releases require; while set, the app shows only the update screen. */
     val requiredUpdateVersion: String? = null,
-    val now: LocalDateTime = LocalDateTime.now(),
+    val now: LocalDateTime = LocalDateTime.now(UniversityZone),
 )
 
 class ScheduleViewModel(
@@ -118,8 +118,9 @@ class ScheduleViewModel(
     private val studyPlanRepository: StudyPlanRepository,
     private val updateChecker: GitHubUpdateChecker,
     private val updatesDirectory: File,
-    private val today: () -> LocalDate = LocalDate::now,
-    private val now: () -> LocalDateTime = LocalDateTime::now,
+    // Lessons run by the university's clock, wherever the phone is.
+    private val today: () -> LocalDate = { LocalDate.now(UniversityZone) },
+    private val now: () -> LocalDateTime = { LocalDateTime.now(UniversityZone) },
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ScheduleUiState())
@@ -206,6 +207,7 @@ class ScheduleViewModel(
                     lessonAliases = aliases,
                 )
             }
+            launch { runCatching { repository.trimCache(group.orEmpty(), date.minusDays(CACHE_KEEP_DAYS)) } }
             if (group != null) {
                 loadCurrentWeek(showIndicator = entryRefreshPending)
                 entryRefreshPending = false
@@ -307,11 +309,7 @@ class ScheduleViewModel(
             try {
                 val result = updateChecker.check(BuildConfig.VERSION_NAME)
                 _state.update { it.copy(appUpdateState = result) }
-                when (result) {
-                    is AppUpdateState.Available -> if (result.required) preferences.setRequiredUpdateVersion(result.version)
-                    is AppUpdateState.UpToDate -> preferences.setRequiredUpdateVersion(null)
-                    else -> Unit
-                }
+                preferences.followUpdateCheck(result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
@@ -530,7 +528,7 @@ class ScheduleViewModel(
 
     /** Mutes lesson alerts for [pause], or resumes them when it is null. */
     fun pauseLessonAlerts(pause: LessonAlertPause?) {
-        val until = pause?.until(now(), ZoneId.systemDefault())
+        val until = pause?.until(now(), UniversityZone)
         _state.update { it.copy(lessonAlertsPausedUntil = until) }
         viewModelScope.launch { preferences.setLessonAlertsPausedUntil(until) }
     }
@@ -916,6 +914,9 @@ class ScheduleViewModel(
             ScheduleViewModel(repository, preferences, studyPlanRepository, updateChecker, updatesDirectory) as T
     }
 }
+
+/** How long the weeks that statistics cached for other schedules stay on the phone. */
+private const val CACHE_KEEP_DAYS = 60L
 
 /** How long a fetched week counts as current: automatic loads don't ask the site sooner. */
 internal const val AUTO_REFRESH_MILLIS = 4 * 60 * 60 * 1000L

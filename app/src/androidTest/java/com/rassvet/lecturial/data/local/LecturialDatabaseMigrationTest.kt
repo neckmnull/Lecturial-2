@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -27,6 +28,48 @@ class LecturialDatabaseMigrationTest {
     fun tearDown() {
         database?.close()
         context.deleteDatabase(databaseName)
+    }
+
+    @Test
+    fun theOldestDatabaseOpensWithItsLessons() {
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(databaseName), null).use { sqlite ->
+            sqlite.execSQL(
+                """
+                CREATE TABLE `schedule_events` (
+                    `groupName` TEXT NOT NULL, `id` TEXT NOT NULL, `date` TEXT NOT NULL,
+                    `startTime` TEXT NOT NULL, `endTime` TEXT NOT NULL, `pairNumber` INTEGER,
+                    `discipline` TEXT NOT NULL, `type` TEXT NOT NULL, `classroom` TEXT,
+                    `address` TEXT, `teachers` TEXT NOT NULL, `comment` TEXT, `onlineUrl` TEXT,
+                    PRIMARY KEY(`groupName`, `id`)
+                )
+                """.trimIndent(),
+            )
+            sqlite.execSQL(
+                """
+                CREATE TABLE `week_cache` (
+                    `groupName` TEXT NOT NULL, `weekStart` TEXT NOT NULL,
+                    `updatedAtMillis` INTEGER NOT NULL,
+                    PRIMARY KEY(`groupName`, `weekStart`)
+                )
+                """.trimIndent(),
+            )
+            sqlite.execSQL(
+                "INSERT INTO `schedule_events` VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("ИТ", "e1", "2026-11-12", "08:45", "10:05", 1, "Физика", "Лекция", null, null, "", null, null),
+            )
+            sqlite.version = 1
+        }
+
+        // Room checks the result against the current tables when it opens, so a wrong step fails here.
+        val opened = Room.databaseBuilder(context, LecturialDatabase::class.java, databaseName)
+            .addMigrations(LecturialDatabase.MIGRATION_1_2, LecturialDatabase.MIGRATION_2_3, LecturialDatabase.MIGRATION_3_4, LecturialDatabase.MIGRATION_4_5)
+            .build()
+        database = opened
+
+        val lesson = runBlocking { opened.scheduleDao().eventsForDay("ИТ", "2026-11-12") }.single()
+        assertEquals("Физика", lesson.discipline)
+        assertNull(lesson.studentGroup)
+        assertEquals(0, runBlocking { opened.studyPlanDao().all() }.size)
     }
 
     @Test

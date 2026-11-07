@@ -5,6 +5,9 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
+/** The university's clock: the site gives lesson times by it without saying so. */
+val UniversityZone: ZoneId = ZoneId.of("Europe/Moscow")
+
 enum class LessonAlarmKind { REMIND, START, END }
 
 enum class LessonLivePhase { UPCOMING, CURRENT }

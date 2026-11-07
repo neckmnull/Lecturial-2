@@ -1,7 +1,7 @@
 # Безопасность Lecturial 2
 
 Документ для специалистов по информационной безопасности: какие данные обрабатывает
-приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.4.
+приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.5.
 Все утверждения проверены по исходному коду; ссылки ведут на файлы, где это видно.
 
 ## Кратко
@@ -169,7 +169,6 @@ WebView и отменяет фоновое обновление.
 | `POST_NOTIFICATIONS`, `POST_PROMOTED_NOTIFICATIONS` | Напоминания, текущая пара, новые оценки, дедлайны, обновления |
 | `SCHEDULE_EXACT_ALARM` | Напоминания точно ко времени пары |
 | `RECEIVE_BOOT_COMPLETED` | Восстановить напоминания и фоновое обновление ЛКС после перезагрузки |
-| `VIBRATE`, `WAKE_LOCK` | Уведомления и короткая фоновая работа по будильнику |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | Уведомление с текущей парой (`LessonLiveService`) |
 | `REQUEST_INSTALL_PACKAGES` | Установка скачанного обновления. Android всё равно спрашивает пользователя |
 | `com.rassvet.lecturial2.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Добавляет библиотека AndroidX Core в итоговый манифест для своих внутренних приёмников, пользователю не показывается |
@@ -260,20 +259,20 @@ WebView и отменяет фоновое обновление.
 Подпись и хеш скачанного APK:
 
 ```bash
-apksigner verify --print-certs Lecturial-2-v1.13.4.apk
-sha256sum Lecturial-2-v1.13.4.apk
+apksigner verify --print-certs Lecturial-2-v1.13.5.apk
+sha256sum Lecturial-2-v1.13.5.apk
 ```
 
 Разрешения:
 
 ```bash
-aapt2 dump permissions Lecturial-2-v1.13.4.apk
+aapt2 dump permissions Lecturial-2-v1.13.5.apk
 ```
 
 Манифест целиком, с флагами `exported`:
 
 ```bash
-aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.4.apk
+aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.5.apk
 ```
 
 Сетевой трафик можно смотреть через прокси с пользовательским сертификатом только

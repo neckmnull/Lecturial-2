@@ -23,6 +23,13 @@ import org.jsoup.nodes.Document
 /** The personal account no longer accepts the saved session: the user has to sign in again. */
 class LksSignedOutException : IOException("Сессия личного кабинета истекла. Войдите заново")
 
+internal const val LKS_MAX_BLOCK_MILLIS = 60 * 60 * 1000L
+
+/** The site answered 429, too many requests. It says how long to wait, or five minutes are assumed. */
+class LksThrottledException(retryAfterSeconds: Long?) : IOException("Личный кабинет просит подождать. Обновим позже") {
+    val waitMillis: Long = ((retryAfterSeconds ?: 300L) * 1000L).coerceIn(60_000L, LKS_MAX_BLOCK_MILLIS)
+}
+
 /**
  * Reads the student's personal account (lks.siriusuniversity.ru) with the cookies of a
  * sign-in made in a WebView. The site is Laravel with Livewire: the journal and trajectory
@@ -64,8 +71,12 @@ class LksClient(
         http.newCall(request).execute().use { response ->
             // A lapsed session ends on the sign-in form.
             if (response.request.url.encodedPath.startsWith("/login")) throw LksSignedOutException()
+            if (response.code == 429) throw LksThrottledException(response.header("Retry-After")?.toLongOrNull())
             if (!response.isSuccessful) throw IOException("Личный кабинет ответил ${response.code}")
-            return Jsoup.parse(response.body.string(), BASE)
+            val document = Jsoup.parse(response.body.string(), BASE)
+            // A maintenance page answers 200 too; without this it would read as an account with no grades.
+            if (document.select("[wire:initial-data]").isEmpty()) throw IOException("Личный кабинет вернул неожиданную страницу")
+            return document
         }
     }
 

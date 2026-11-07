@@ -1,14 +1,18 @@
 package com.rassvet.lecturial.data.outlook
 
 import com.rassvet.lecturial.model.CalendarEntry
+import com.rassvet.lecturial.model.LESSON_MARK
 import com.rassvet.lecturial.model.SyncPlan
 import com.rassvet.lecturial.model.SyncedEntry
+import com.rassvet.lecturial.model.adoptMarked
+import com.rassvet.lecturial.model.planSync
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -78,5 +82,54 @@ class OutlookClientTest {
         assertEquals("DELETE", batch.getJSONObject(2).getString("method"))
         assertEquals(Triple(1, 1, 1), Triple(result.created, result.updated, result.deleted))
         assertEquals(setOf("lesson:a" to "r1", "lesson:b" to "r2"), result.synced.map { it.key to it.remoteId }.toSet())
+    }
+
+    private fun graph() = GraphCalendar(OkHttpClient(), { "token" }, server.url("/v1.0").toString().trimEnd('/'), ZoneId.of("Europe/Moscow"))
+
+    private fun calendarEvent(id: String, subject: String, text: String) = JSONObject()
+        .put("id", id)
+        .put("subject", subject)
+        .put("body", JSONObject().put("contentType", "text").put("content", text))
+        .put("start", JSONObject().put("dateTime", "2026-10-22T05:45:00.0000000").put("timeZone", "UTC"))
+        .put("end", JSONObject().put("dateTime", "2026-10-22T07:05:00.0000000").put("timeZone", "UTC"))
+
+    @Test
+    fun `events of an earlier sign-in are taken over, extra copies go and the user's own stay`() = runBlocking {
+        val graph = graph()
+        val entry = CalendarEntry("lesson:a", "МатАнал", day, day.atTime(8, 45), day.atTime(10, 5), false, null, "Тип\n$LESSON_MARK", null)
+        server.enqueue(
+            MockResponse.Builder().body(
+                JSONObject()
+                    .put("value", JSONArray().put(calendarEvent("kept", "МатАнал", "Тип\r\n$LESSON_MARK\r\n")).put(calendarEvent("mine", "Встреча", "Моё")))
+                    .put("@odata.nextLink", server.url("/v1.0/next").toString())
+                    .toString(),
+            ).build(),
+        )
+        server.enqueue(MockResponse.Builder().body(JSONObject().put("value", JSONArray().put(calendarEvent("copy", "МатАнал", LESSON_MARK))).toString()).build())
+
+        val marked = graph.markedEvents("cal", day, day)
+        val adoption = adoptMarked(listOf(entry), emptyList(), marked, graph::look)
+
+        assertEquals(listOf("kept", "copy"), marked.map { it.remoteId })
+        assertEquals(listOf("kept"), adoption.tracked.map { it.remoteId })
+        assertEquals(listOf("copy"), adoption.strays)
+        assertTrue(planSync(listOf(entry), adoption.tracked, day).create.isEmpty())
+    }
+
+    @Test
+    fun `a next page on another host is not followed with the token`() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder().body(JSONObject().put("value", JSONArray()).put("@odata.nextLink", "https://example.com/next").toString()).build(),
+        )
+
+        assertTrue(graph().markedEvents("cal", day, day).isEmpty())
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `a calendar deleted in Outlook is reported as gone`() = runBlocking {
+        server.enqueue(MockResponse.Builder().code(404).body("""{"error":{"message":"The specified object was not found"}}""").build())
+
+        assertTrue(runCatching { graph().markedEvents("cal", day, day) }.exceptionOrNull() is GraphNotFoundException)
     }
 }

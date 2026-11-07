@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.rassvet.lecturial.LecturialApplication
+import com.rassvet.lecturial.notify.LessonAlerts
 import com.rassvet.lecturial.model.AppBackgroundStyle
 import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.AppTheme
@@ -302,7 +303,10 @@ private fun NotificationsStep(onNext: () -> Unit) {
     fun granted() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     var allowed by rememberSaveable { mutableStateOf(granted()) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        allowed = it
+        LessonAlerts.sync(context)
+    }
     StepPage(
         title = "Уведомления",
         text = "Напомним о паре заранее, покажем, сколько осталось до конца, и сообщим о новых оценках и обновлениях.",

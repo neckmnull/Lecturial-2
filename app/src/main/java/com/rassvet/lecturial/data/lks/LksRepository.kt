@@ -55,7 +55,10 @@ data class LksState(
  * the trajectory, notifications and news, caches them for offline use and tells about new
  * notifications and grades. Refreshes when the app opens and every few hours in the background.
  */
-class LksRepository(private val app: LecturialApplication) {
+class LksRepository(
+    private val app: LecturialApplication,
+    private val newClient: (cookieHeader: String) -> LksClient = { LksClient(it) },
+) {
     private val prefs = app.getSharedPreferences("lks", Context.MODE_PRIVATE)
     private val secrets = SecretBox("lecturial_lks_session")
     private val cacheFile = File(app.filesDir, "lks/snapshot.json")
@@ -67,21 +70,37 @@ class LksRepository(private val app: LecturialApplication) {
 
     /** Called by the sign-in screen with the WebView's cookies for the site. */
     fun connect(cookieHeader: String) {
-        prefs.edit { putString(KEY_COOKIES, secrets.encrypt(cookieHeader)) }
-        // The WebView keeps its cookies in a plain database; the encrypted copy above is the only one needed.
+        // The WebView keeps its cookies in a plain database; the encrypted copy below is the only one needed.
         forgetWebSession()
         _state.update { it.copy(connected = true, error = null) }
         schedule(app)
-        refresh(force = true)
+        scope.launch {
+            // After any sign-out still waiting for the lock, so it can't wipe this new session.
+            mutex.withLock {
+                prefs.edit {
+                    putString(KEY_COOKIES, secrets.encrypt(cookieHeader))
+                    // A new session may load at once; a pause the site asked for still holds.
+                    remove(KEY_LAST_ATTEMPT)
+                }
+                _state.update { it.copy(connected = true, error = null) }
+            }
+            refreshNow(notify = false, manual = true)
+        }
     }
 
     /** Forgets the session here and in the WebView; the cache goes too. */
     fun disconnect() {
-        prefs.edit { clear() }
-        cacheFile.delete()
         forgetWebSession()
         cancel(app)
         _state.value = LksState()
+        // Behind a running refresh, which would otherwise write the session and the grades back.
+        scope.launch {
+            mutex.withLock {
+                prefs.edit { clear() }
+                cacheFile.delete()
+                _state.value = LksState()
+            }
+        }
     }
 
     private fun forgetWebSession() {
@@ -101,15 +120,31 @@ class LksRepository(private val app: LecturialApplication) {
     }
 
     fun refresh(force: Boolean = true) {
-        scope.launch { refreshNow(notify = !force) }
+        scope.launch { refreshNow(notify = !force, manual = force) }
     }
 
-    /** Loads everything; with [notify], new notifications and grades become system notifications. */
-    suspend fun refreshNow(notify: Boolean) = mutex.withLock {
+    /**
+     * Loads everything; with [notify], new notifications and grades become system notifications.
+     * The one way to the site, so the rate limit holds for every caller: a [manual] refresh is told
+     * how long to wait, an automatic one just doesn't happen.
+     */
+    suspend fun refreshNow(notify: Boolean, manual: Boolean = false) = mutex.withLock {
         val header = cookies() ?: return@withLock
+        val now = System.currentTimeMillis()
+        val wait = lksRefreshWaitMillis(
+            now = now,
+            lastAttempt = prefs.getLong(KEY_LAST_ATTEMPT, 0L),
+            blockedUntil = prefs.getLong(KEY_BLOCKED_UNTIL, 0L),
+            minInterval = if (manual) MANUAL_INTERVAL_MILLIS else AUTO_INTERVAL_MILLIS,
+        )
+        if (wait > 0) {
+            if (manual) _state.update { it.copy(error = "Обновить можно будет через ${waitLabel(wait)}") }
+            return@withLock
+        }
+        prefs.edit { putLong(KEY_LAST_ATTEMPT, now) }
         _state.update { it.copy(refreshing = true, error = null) }
         try {
-            val client = LksClient(header)
+            val client = newClient(header)
             val previous = _state.value.snapshot
             val fresh = client.snapshot()
             prefs.edit { putString(KEY_COOKIES, secrets.encrypt(client.cookieHeader)) }
@@ -122,6 +157,9 @@ class LksRepository(private val app: LecturialApplication) {
         } catch (signedOut: LksSignedOutException) {
             prefs.edit { remove(KEY_COOKIES) }
             _state.update { it.copy(refreshing = false, connected = false, error = signedOut.message) }
+        } catch (throttled: LksThrottledException) {
+            prefs.edit { putLong(KEY_BLOCKED_UNTIL, now + throttled.waitMillis) }
+            _state.update { it.copy(refreshing = false, error = throttled.message) }
         } catch (failure: Throwable) {
             Log.w(TAG, "LKS refresh failed", failure)
             _state.update { it.copy(refreshing = false, error = failure.message ?: "Не удалось обновить данные личного кабинета") }
@@ -210,6 +248,10 @@ class LksRepository(private val app: LecturialApplication) {
     companion object {
         private const val TAG = "LksRepository"
         private const val KEY_COOKIES = "cookies"
+        private const val KEY_LAST_ATTEMPT = "last_attempt"
+        private const val KEY_BLOCKED_UNTIL = "blocked_until"
+        private const val MANUAL_INTERVAL_MILLIS = 60 * 1000L
+        private const val AUTO_INTERVAL_MILLIS = 5 * 60 * 1000L
         private const val CHANNEL_ID = "lks"
         private const val GRADES_NOTIFICATION_ID = 0x4C4B53
         private const val MAX_NOTIFICATIONS = 3
@@ -239,6 +281,22 @@ class LksRepository(private val app: LecturialApplication) {
     }
 }
 
+/**
+ * How long a refresh must still wait: [minInterval] since the last attempt, failed or not, and until
+ * the time the site itself asked for. Times far ahead of the clock are ignored: the clock was moved
+ * back, and that must not stop refreshes for days.
+ */
+internal fun lksRefreshWaitMillis(now: Long, lastAttempt: Long, blockedUntil: Long, minInterval: Long): Long {
+    val afterLastAttempt = if (lastAttempt <= now) lastAttempt + minInterval else 0L
+    val afterBlock = if (blockedUntil - now <= LKS_MAX_BLOCK_MILLIS) blockedUntil else 0L
+    return (maxOf(afterLastAttempt, afterBlock) - now).coerceAtLeast(0L)
+}
+
+private fun waitLabel(millis: Long): String {
+    val seconds = (millis + 999) / 1000
+    return if (seconds < 60) "$seconds сек." else "${(seconds + 59) / 60} мин."
+}
+
 /** The background refresh: new notifications and grades arrive even with the app closed. */
 class LksRefreshReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -256,7 +314,7 @@ class LksRefreshReceiver : BroadcastReceiver() {
 
 // ---------------------------------------------------------------------- JSON for the cache
 
-private fun LksSnapshot.toJson(): JSONObject = JSONObject()
+internal fun LksSnapshot.toJson(): JSONObject = JSONObject()
     .put("loadedAt", loadedAtMillis)
     .put("unread", unreadNotifications)
     .put("marks", JSONArray(marks.map { mark ->
@@ -274,7 +332,7 @@ private fun LksSnapshot.toJson(): JSONObject = JSONObject()
     .put("notifications", JSONArray(notifications.map { JSONObject().put("id", it.id).put("title", it.title).put("text", it.text).put("time", it.time) }))
     .put("news", JSONArray(news.map { JSONObject().put("id", it.id).put("title", it.title).put("date", it.date) }))
 
-private fun JSONObject.toSnapshot(): LksSnapshot = LksSnapshot(
+internal fun JSONObject.toSnapshot(): LksSnapshot = LksSnapshot(
     loadedAtMillis = optLong("loadedAt"),
     unreadNotifications = optInt("unread"),
     marks = optJSONArray("marks").objects().map { item ->

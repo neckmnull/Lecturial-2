@@ -3,7 +3,6 @@ package com.rassvet.lecturial.ui
 import com.rassvet.lecturial.model.TeacherInfo
 import androidx.compose.material.icons.outlined.AccountBox
 import com.rassvet.lecturial.model.LessonAlertPause
-import java.time.ZoneId
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
@@ -21,6 +20,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.runtime.produceState
 import com.rassvet.lecturial.LecturialApplication
 import com.rassvet.lecturial.model.ExtracurricularChoice
+import com.rassvet.lecturial.model.UniversityZone
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Switch
 import androidx.compose.ui.draw.clip
@@ -207,7 +207,7 @@ internal fun AppSettingsScreen(
             selectedDays = state.deadlineReminderDays,
             onSelectedDaysChanged = onDeadlineReminderDaysChanged,
             pausedUntil = state.lessonAlertsPausedUntil
-                ?.takeIf { it > state.now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() },
+                ?.takeIf { it > state.now.atZone(UniversityZone).toInstant().toEpochMilli() },
             onPause = onLessonAlertsPause,
         )
         SettingsGroup(title = "Приложение") {
@@ -479,12 +479,12 @@ private fun LessonAlertPauseItem(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val lastMutedDay = pausedUntil?.takeIf { it != LessonAlertPause.FOREVER_MILLIS }?.let {
-        java.time.Instant.ofEpochMilli(it - 1).atZone(ZoneId.systemDefault()).toLocalDate()
+        java.time.Instant.ofEpochMilli(it - 1).atZone(UniversityZone).toLocalDate()
     }
     val subtitle = when {
         pausedUntil == LessonAlertPause.FOREVER_MILLIS -> "Выключены, пока не включишь снова"
         lastMutedDay == null -> "Отключить на время или навсегда"
-        lastMutedDay == LocalDate.now() -> "Выключены до конца дня"
+        lastMutedDay == LocalDate.now(UniversityZone) -> "Выключены до конца дня"
         else -> "Выключены по ${lastMutedDay.format(dayMonthFormatter)} включительно"
     }
     SettingsListItem(

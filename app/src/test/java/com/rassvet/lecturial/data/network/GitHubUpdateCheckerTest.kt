@@ -155,6 +155,7 @@ class GitHubUpdateCheckerTest {
         )
         val directory = Files.createTempDirectory("lecturial-update-test").toFile()
         val destination = directory.resolve("update.apk")
+        val earlier = directory.resolve("Lecturial-2-1.4.0.apk").apply { writeBytes(apkBytes) }
         val update = AppUpdateState.Available(
             "1.5.0",
             "https://github.com/neckmnull/Lecturial-2/releases/tag/v1.5.0",
@@ -168,6 +169,7 @@ class GitHubUpdateCheckerTest {
             assertTrue(destination.readBytes().contentEquals(apkBytes))
             assertTrue(progress.contains(100))
             assertEquals(false, directory.resolve("update.apk.part").exists())
+            assertEquals("An earlier download goes", false, earlier.exists())
         } finally {
             directory.deleteRecursively()
         }

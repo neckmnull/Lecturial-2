@@ -82,8 +82,9 @@ class GitHubUpdateChecker(
             throw IOException("GitHub вернул недоверенную ссылку на APK")
         }
         destination.parentFile?.mkdirs()
+        // Only the newest download is worth keeping: earlier ones are installed or abandoned.
+        destination.parentFile?.listFiles()?.forEach { it.delete() }
         val temporary = File(destination.parentFile, "${destination.name}.part")
-        temporary.delete()
         val request = Request.Builder()
             .url(update.apkUrl)
             .header("Accept", APK_MIME_TYPE)

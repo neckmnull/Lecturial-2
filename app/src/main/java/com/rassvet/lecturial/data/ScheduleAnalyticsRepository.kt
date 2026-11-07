@@ -10,6 +10,7 @@ import com.rassvet.lecturial.model.normalizePersonName
 import org.json.JSONObject
 import com.rassvet.lecturial.model.weekStartsOf
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.core.content.edit
@@ -81,17 +82,23 @@ class ScheduleAnalyticsRepository(
         val queue = ArrayDeque(ROOM_SEEDS)
         val asked = mutableSetOf<String>()
         var budget = ROOM_QUERY_BUDGET
+        var complete = true
         while (queue.isNotEmpty() && budget-- > 0) {
             val query = queue.removeFirst()
             if (!asked.add(query)) continue
-            val rooms = runCatching { searchRemote.fetchClassrooms(query) }.getOrDefault(emptyList())
+            val rooms = runCatching { searchRemote.fetchClassrooms(query) }.getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                complete = false
+                emptyList()
+            }
             found += rooms
             onProgress(found.size)
             if (rooms.size >= SEARCH_LIMIT && query.length < 8) {
                 REFINEMENTS.forEach { queue.addLast(query + it) }
             }
         }
-        if (found.isNotEmpty()) {
+        // A query that failed may have hidden rooms: such a list is used now but not kept for the week.
+        if (complete && found.isNotEmpty()) {
             withContext(Dispatchers.IO) {
                 prefs.edit {
                     putStringSet(KEY_ROOMS, found)

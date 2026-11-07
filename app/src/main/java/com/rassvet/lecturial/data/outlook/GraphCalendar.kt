@@ -1,9 +1,13 @@
 package com.rassvet.lecturial.data.outlook
 
 import com.rassvet.lecturial.model.CalendarEntry
+import com.rassvet.lecturial.model.LESSON_MARK
+import com.rassvet.lecturial.model.MarkedEvent
+import com.rassvet.lecturial.model.PLAN_MARK
 import com.rassvet.lecturial.model.SyncPlan
 import com.rassvet.lecturial.model.SyncedEntry
 import java.io.IOException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -19,6 +23,9 @@ import org.json.JSONObject
 
 /** The signed-in account, as Outlook shows it. */
 data class GraphAccount(val name: String, val email: String)
+
+/** Graph no longer knows the calendar: it was deleted in Outlook. */
+class GraphNotFoundException : IOException("Календарь удалён в Outlook. Создадим его при следующей синхронизации")
 
 /** What a sync did; [failed] changes are retried by the next sync. */
 data class GraphSyncResult(val created: Int, val updated: Int, val deleted: Int, val failed: Int, val synced: List<SyncedEntry>)
@@ -51,6 +58,42 @@ class GraphCalendar(
         }
         return send("POST", "/me/calendars", JSONObject().put("name", name).put("color", "lightBlue")).getString("id")
     }
+
+    /**
+     * The app's events in the calendar between [from] and [to]: those with its mark at the end of
+     * their text, so anything the user added there by hand is left alone.
+     */
+    suspend fun markedEvents(calendarId: String, from: LocalDate, to: LocalDate): List<MarkedEvent> {
+        val start = from.atStartOfDay(zone).toInstant()
+        val end = to.plusDays(1).atStartOfDay(zone).toInstant()
+        var path: String? = "/me/calendars/$calendarId/calendarView?startDateTime=$start&endDateTime=$end" +
+            "&\$select=id,subject,start,end,body&\$top=$PAGE_SIZE"
+        val events = ArrayList<MarkedEvent>()
+        while (path != null) {
+            val page = get(path)
+            val items = page.optJSONArray("value") ?: JSONArray()
+            for (index in 0 until items.length()) {
+                val event = items.getJSONObject(index)
+                val text = event.optJSONObject("body")?.optString("content").orEmpty().trimEnd()
+                if (!text.endsWith(LESSON_MARK) && !text.endsWith(PLAN_MARK)) continue
+                val startsAt = event.optJSONObject("start")?.optString("dateTime").orEmpty()
+                val endsAt = event.optJSONObject("end")?.optString("dateTime").orEmpty()
+                events += MarkedEvent(event.getString("id"), key = null, look(event.optString("subject"), startsAt, endsAt))
+            }
+            // Followed only on Graph itself: the request carries the account's token.
+            path = page.optString("@odata.nextLink").takeIf { it.startsWith(baseUrl) }?.removePrefix(baseUrl)
+        }
+        return events
+    }
+
+    /** Subject and times as the calendar gives them back, to match an event with the entry it shows. */
+    fun look(entry: CalendarEntry): String = look(
+        entry.subject,
+        time(entry.start, entry.allDay).getString("dateTime"),
+        time(entry.end, entry.allDay).getString("dateTime"),
+    )
+
+    private fun look(subject: String, start: String, end: String) = "$subject|${start.take(19)}|${end.take(19)}"
 
     /** Applies [plan] to the calendar in batches; returns what is in the calendar afterwards. */
     suspend fun apply(calendarId: String, plan: SyncPlan, before: List<SyncedEntry>): GraphSyncResult {
@@ -138,6 +181,7 @@ class GraphCalendar(
         var response = call(method, path, body, token(false))
         if (response.first == 401) response = call(method, path, body, token(true))
         val (status, text) = response
+        if (status == 404) throw GraphNotFoundException()
         if (status !in 200..299) {
             val message = runCatching { JSONObject(text).getJSONObject("error").optString("message") }.getOrNull()
             throw IOException(
@@ -156,6 +200,7 @@ class GraphCalendar(
         val request = Request.Builder()
             .url(baseUrl + path)
             .header("Authorization", "Bearer $accessToken")
+            .header("Prefer", "outlook.timezone=\"UTC\", outlook.body-content-type=\"text\"")
             .method(method, requestBody)
             .build()
         return try {
@@ -174,6 +219,7 @@ class GraphCalendar(
     private companion object {
         /** Microsoft Graph takes at most 20 requests per batch. */
         const val BATCH_LIMIT = 20
+        const val PAGE_SIZE = 200
         val GraphTime: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
         val JsonType = "application/json; charset=utf-8".toMediaType()
     }

@@ -27,7 +27,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -161,7 +164,7 @@ private fun TeacherChoiceCard(title: String, selected: Boolean, onClick: () -> U
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun GroupSelectionScreen(
     state: ScheduleUiState,
@@ -182,6 +185,8 @@ internal fun GroupSelectionScreen(
     }
     val hasSelection = if (teacherSearch) selectedTeacher != null else selectedGroup != null
     val nothingLoaded = if (teacherSearch) state.availableTeachers.isEmpty() else state.availableGroups.isEmpty()
+    val buttonSpace = ButtonDefaults.MediumContainerHeight + 32.dp
+    val typing = WindowInsets.isImeVisible
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -192,9 +197,11 @@ internal fun GroupSelectionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // While typing the list stops above the button, so the search field can't end up behind it.
+                .padding(bottom = if (typing) buttonSpace else 0.dp)
                 .verticalScroll(rememberScrollState())
-                // Room for the floating button, so the last row can scroll clear of it.
-                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = ButtonDefaults.MediumContainerHeight + 32.dp),
+                // Otherwise it scrolls under the floating button, and the last row can clear it.
+                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = if (typing) 20.dp else buttonSpace),
             verticalArrangement = Arrangement.Center,
         ) {
         Image(

@@ -57,7 +57,8 @@ class LessonLiveService : Service() {
         )
         states.value = state
         if (updateJob?.isActive != true) updateJob = scope.launch { runUpdates() }
-        return START_REDELIVER_INTENT
+        // No restart by the system: Android 12+ may refuse it from the background, and the next lesson alarm starts this anyway.
+        return START_NOT_STICKY
     }
 
     private suspend fun CoroutineScope.runUpdates() {

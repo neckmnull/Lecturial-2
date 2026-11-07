@@ -2,6 +2,7 @@ package com.rassvet.lecturial.model
 
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,6 +38,15 @@ class CalendarSyncTest {
         assertFalse(entry.allDay)
         assertEquals(15, entry.reminderMinutes)
         assertTrue("Криворотько" in entry.body)
+    }
+
+    @Test
+    fun `a lesson keeps the university's time on a phone in another zone`() {
+        val entry = lessonEntries(listOf(lesson("a")), emptyMap(), null, ZoneId.of("Asia/Novosibirsk")).single()
+
+        // 08:45 in Sochi is 12:45 in Novosibirsk.
+        assertEquals(day.atTime(12, 45), entry.start)
+        assertEquals(day.atTime(14, 5), entry.end)
     }
 
     @Test

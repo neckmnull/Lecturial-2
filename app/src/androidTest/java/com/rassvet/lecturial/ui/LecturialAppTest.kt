@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
@@ -978,6 +979,8 @@ class LecturialAppTest {
         }
 
         compose.onNodeWithText("Планы").performClick()
+        // The day's plan stands above it, and how long that is depends on the time of day.
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Сдать лабораторную"))
         compose.onNodeWithText("Сдать лабораторную").assertIsDisplayed()
         compose.onNodeWithContentDescription("Отметить выполненным").performClick()
         compose.runOnIdle { assertEquals("deadline-1" to true, completed) }

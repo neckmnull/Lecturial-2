@@ -56,6 +56,12 @@ interface ScheduleDao {
     @Query("DELETE FROM schedule_events WHERE groupName = :group AND date BETWEEN :start AND :end")
     suspend fun deleteWeek(group: String, start: String, end: String)
 
+    @Query("DELETE FROM schedule_events WHERE groupName != :keep AND date < :before")
+    suspend fun deleteOldEvents(keep: String, before: String)
+
+    @Query("DELETE FROM week_cache WHERE groupName != :keep AND weekStart < :before")
+    suspend fun deleteOldWeeks(keep: String, before: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEvents(events: List<ScheduleEventEntity>)
 
@@ -73,7 +79,7 @@ abstract class LecturialDatabase : RoomDatabase() {
     abstract fun studyPlanDao(): StudyPlanDao
 
     companion object {
-        private val migration1To2 = object : Migration(1, 2) {
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
@@ -92,7 +98,7 @@ abstract class LecturialDatabase : RoomDatabase() {
             }
         }
 
-        private val migration2To3 = object : Migration(2, 3) {
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `study_plans` ADD COLUMN `dueTime` TEXT")
             }
@@ -122,6 +128,6 @@ abstract class LecturialDatabase : RoomDatabase() {
             context,
             LecturialDatabase::class.java,
             "lecturial.db",
-        ).addMigrations(migration1To2, migration2To3, MIGRATION_3_4, MIGRATION_4_5).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
     }
 }

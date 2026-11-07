@@ -10,6 +10,8 @@ import com.rassvet.lecturial.data.SyncedEntriesFile
 import com.rassvet.lecturial.data.calendarEntries
 import com.rassvet.lecturial.data.syncSummary
 import com.rassvet.lecturial.model.CalendarSyncSettings
+import com.rassvet.lecturial.model.SyncedEntry
+import com.rassvet.lecturial.model.adoptMarked
 import com.rassvet.lecturial.model.planSync
 import java.io.File
 import java.time.LocalDate
@@ -50,8 +52,7 @@ data class OutlookState(
  * after every schedule refresh or plan change it creates, updates and removes events so
  * the calendar matches. Past events are left as they were.
  */
-class OutlookSync(private val app: LecturialApplication) {
-    private val http = OkHttpClient()
+class OutlookSync(private val app: LecturialApplication, private val http: OkHttpClient = OkHttpClient()) {
     private val auth = MicrosoftAuth(BuildConfig.MS_CLIENT_ID, http)
     private val vault = TokenVault(app)
     private val prefs = app.getSharedPreferences("outlook_sync", Context.MODE_PRIVATE)
@@ -121,11 +122,19 @@ class OutlookSync(private val app: LecturialApplication) {
     /** Forgets the account here; the events already in Outlook stay there. */
     fun signOut() {
         pending?.cancel()
-        vault.clear()
-        prefs.edit().remove(KEY_ACCOUNT).remove(KEY_CALENDAR).remove(KEY_LAST_SYNC).remove(KEY_SUMMARY).apply()
-        synced.delete()
-        _state.update { it.copy(account = null, syncing = false, lastSyncMillis = null, lastSummary = null, error = null) }
+        _state.update { it.signedOut() }
+        // Behind a running sync, which would otherwise save renewed tokens and its record again.
+        scope.launch {
+            mutex.withLock {
+                vault.clear()
+                prefs.edit().remove(KEY_ACCOUNT).remove(KEY_CALENDAR).remove(KEY_LAST_SYNC).remove(KEY_SUMMARY).apply()
+                synced.delete()
+                _state.update { it.signedOut() }
+            }
+        }
     }
+
+    private fun OutlookState.signedOut() = copy(account = null, syncing = false, lastSyncMillis = null, lastSummary = null, error = null)
 
     fun updateSettings(settings: CalendarSyncSettings) {
         prefs.edit()
@@ -159,9 +168,13 @@ class OutlookSync(private val app: LecturialApplication) {
             val calendar = prefs.getString(KEY_CALENDAR, null) ?: graph.calendarId(CALENDAR_NAME).also {
                 prefs.edit().putString(KEY_CALENDAR, it).apply()
             }
-            val before = synced.load()
-            val plan = planSync(entries, before, windowStart)
-            val result = graph.apply(calendar, plan, before)
+            // The calendar has the last word: events of an earlier sign-in or a broken-off sync are
+            // taken over instead of created again, and extra copies of a lesson go.
+            val adoption = adoptMarked(entries, synced.load(), graph.markedEvents(calendar, windowStart, windowEnd), graph::look)
+            val plan = planSync(entries, adoption.tracked, windowStart).let { plan ->
+                plan.copy(delete = plan.delete + adoption.strays.map { SyncedEntry("stray:$it", it, "", windowStart) })
+            }
+            val result = graph.apply(calendar, plan, adoption.tracked)
             synced.save(result.synced)
             val summary = syncSummary(
                 inCalendar = result.synced.count { !it.date.isBefore(windowStart) },
@@ -178,8 +191,11 @@ class OutlookSync(private val app: LecturialApplication) {
             throw cancelled
         } catch (failure: Throwable) {
             Log.e(TAG, "Outlook sync failed", failure)
-            // The app's calendar may have been deleted in Outlook: find or create it next time.
-            if (failure.message?.contains("not found", ignoreCase = true) == true) prefs.edit().remove(KEY_CALENDAR).apply()
+            // The app's calendar was deleted in Outlook: next time it is found or created, and filled anew.
+            if (failure is GraphNotFoundException) {
+                prefs.edit().remove(KEY_CALENDAR).apply()
+                synced.delete()
+            }
             _state.update { it.copy(syncing = false, error = failure.message ?: "Синхронизация не удалась") }
         }
     }
@@ -195,6 +211,8 @@ class OutlookSync(private val app: LecturialApplication) {
         val renewed = try {
             auth.refresh(tokens.refreshToken)
         } catch (rejected: MicrosoftAuthException) {
+            // A passing failure at Microsoft keeps the sign-in: the next sync tries again.
+            if (rejected.code in PASSING_ERRORS) throw rejected
             // The account revoked access or the sign-in expired: ask to sign in again.
             vault.clear()
             prefs.edit().remove(KEY_ACCOUNT).apply()
@@ -221,5 +239,6 @@ class OutlookSync(private val app: LecturialApplication) {
         const val KEY_SUMMARY = "summary"
         const val KEY_VERIFIER = "pkce_verifier"
         const val KEY_STATE = "pkce_state"
+        val PASSING_ERRORS = setOf("temporarily_unavailable", "server_error")
     }
 }

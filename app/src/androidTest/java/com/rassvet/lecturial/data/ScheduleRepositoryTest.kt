@@ -13,7 +13,9 @@ import com.rassvet.lecturial.model.ScheduleTarget
 import com.rassvet.lecturial.model.ScheduleWeek
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -115,6 +117,51 @@ class ScheduleRepositoryTest {
         second.await()
 
         assertEquals(1, calls.get())
+    }
+
+    @Test
+    fun aRefreshGivenUpOnDoesNotAnswerTheNextOne() = runBlocking {
+        val start = LocalDate.of(2026, 8, 31)
+        val calls = AtomicInteger()
+        val remote = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek {
+                calls.incrementAndGet()
+                delay(100)
+                return ScheduleWeek(group, start, (0L..6L).map { ScheduleDay(start.plusDays(it), emptyList()) })
+            }
+        }
+        val repository = ScheduleRepository(database, remote)
+
+        val givenUp = launch { repository.refreshWeek("ИОП-ИТ-26/1", start) }
+        delay(20)
+        givenUp.cancelAndJoin()
+        delay(300)
+        repository.refreshWeek("ИОП-ИТ-26/1", start)
+
+        assertEquals(2, calls.get())
+    }
+
+    @Test
+    fun oldWeeksOfOtherSchedulesLeaveTheCache() = runBlocking {
+        val old = LocalDate.of(2026, 8, 31)
+        val recent = old.plusWeeks(20)
+        val remote = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek {
+                val event = ScheduleEvent("$group-$weekStart", weekStart, "08:45", "10:05", 1, group, "Лекции", null, null, emptyList(), null, null)
+                return ScheduleWeek(group, weekStart, (0L..6L).map { ScheduleDay(weekStart.plusDays(it), if (it == 0L) listOf(event) else emptyList()) })
+            }
+        }
+        val repository = ScheduleRepository(database, remote)
+        for (group in listOf("ИОП-ИТ-26/1", "Чужая группа")) {
+            for (week in listOf(old, recent)) repository.refreshWeek(group, week)
+        }
+
+        repository.trimCache(keep = "ИОП-ИТ-26/1", before = recent)
+
+        assertNotNull("Your own schedule stays", repository.cachedWeek("ИОП-ИТ-26/1", old))
+        assertEquals(null, repository.cachedWeek("Чужая группа", old))
+        assertEquals(0, database.scheduleDao().eventsForWeek("Чужая группа", old.toString(), old.plusDays(6).toString()).size)
+        assertEquals(1, repository.cachedWeek("Чужая группа", recent)?.week?.days?.first()?.events?.size)
     }
 
     @Test

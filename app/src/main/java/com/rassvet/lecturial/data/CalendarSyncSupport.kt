@@ -10,6 +10,7 @@ import com.rassvet.lecturial.model.matchesLanguageTeacher
 import com.rassvet.lecturial.model.planEntries
 import java.io.File
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,7 +25,7 @@ internal suspend fun LecturialApplication.calendarEntries(
     from: LocalDate,
     to: LocalDate,
 ): List<CalendarEntry> = buildList {
-    if (settings.lessons) addAll(lessonEntries(scheduleLessons(from, to), preferences.lessonAliases.first(), settings.reminderMinutes))
+    if (settings.lessons) addAll(lessonEntries(scheduleLessons(from, to), preferences.lessonAliases.first(), settings.reminderMinutes, ZoneId.systemDefault()))
     if (settings.plans) addAll(planEntries(studyPlanRepository.plans.first(), from, to, settings.reminderMinutes))
 }
 

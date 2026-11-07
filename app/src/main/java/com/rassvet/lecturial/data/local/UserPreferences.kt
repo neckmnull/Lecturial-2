@@ -15,6 +15,7 @@ import com.rassvet.lecturial.model.WidgetStripePalette
 import com.rassvet.lecturial.model.WidgetDisplayOptions
 import com.rassvet.lecturial.model.WidgetFontStyles
 import com.rassvet.lecturial.model.AppTheme
+import com.rassvet.lecturial.model.AppUpdateState
 import com.rassvet.lecturial.model.ScheduleLayout
 import com.rassvet.lecturial.model.encodeMotif
 import com.rassvet.lecturial.model.parseMotif
@@ -154,7 +155,16 @@ class UserPreferences(private val context: Context) {
         preferences[requiredUpdateKey]?.takeIf { it.isNotBlank() }
     }
 
-    suspend fun setRequiredUpdateVersion(version: String?) {
+    /** Follows the latest release: what it requires stays remembered, and a release that requires nothing lifts the block. */
+    suspend fun followUpdateCheck(result: AppUpdateState) {
+        when (result) {
+            is AppUpdateState.Available -> setRequiredUpdateVersion(result.version.takeIf { result.required })
+            is AppUpdateState.UpToDate -> setRequiredUpdateVersion(null)
+            else -> Unit
+        }
+    }
+
+    private suspend fun setRequiredUpdateVersion(version: String?) {
         context.dataStore.edit { preferences ->
             if (version == null) preferences.remove(requiredUpdateKey) else preferences[requiredUpdateKey] = version
         }

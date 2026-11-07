@@ -7,7 +7,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -18,8 +17,10 @@ import com.rassvet.lecturial.MainActivity
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.data.local.ScheduleEventEntity
 import com.rassvet.lecturial.data.local.StudyPlanEntity
+import com.rassvet.lecturial.model.UniversityZone
 import com.rassvet.lecturial.model.parseEventMinutes
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,7 +30,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -115,6 +115,8 @@ class TodayScheduleWidget : AppWidgetProvider() {
                     val ids = manager.getAppWidgetIds(component)
                     updateWidgets(context, manager, ids)
                 }.onFailure { error ->
+                    // A newer update took over; that isn't a failure to show on the widget.
+                    if (error is CancellationException) throw error
                     Log.e(TAG, "Unable to update widgets", error)
                     runCatching {
                         val manager = AppWidgetManager.getInstance(context)
@@ -142,11 +144,11 @@ class TodayScheduleWidget : AppWidgetProvider() {
             scheduleNextRefresh(context, lessons)
             val activePlans = app.database.studyPlanDao().all()
                 .filterNot(StudyPlanEntity::isCompleted)
-            val today = LocalDate.now()
+            val today = LocalDate.now(UniversityZone)
             val todayPlanCount = activePlans.count { it.widgetOccursOn(today) }
             // The row of the current (or next) lesson, in the factory's time order, so the
             // list opens on it instead of on lessons that are already over.
-            val nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
+            val nowMinutes = LocalTime.now(UniversityZone).let { it.hour * 60 + it.minute }
             val currentRow = (
                 lessons.map { "$today-${it.startTime}" to (parseEventMinutes(it.endTime) ?: Int.MAX_VALUE) } +
                     activePlans.filter { it.widgetOccursOn(today) }.map { "$today-${it.dueTime ?: "23:59"}" to Int.MAX_VALUE }
@@ -215,12 +217,10 @@ class TodayScheduleWidget : AppWidgetProvider() {
             activePlanCount: Int,
             nearestPlan: String?,
             nearestPlanId: String? = null,
-            wallpaper: Bitmap? = null,
             appearance: WidgetAppearance? = null,
             emptyMessageRes: Int = R.string.widget_no_lessons,
         ): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_today_schedule).apply {
-                wallpaper?.let { setImageViewBitmap(R.id.widget_wallpaper, it) }
                 val openApp = Intent(context, MainActivity::class.java)
                 val openPendingIntent = PendingIntent.getActivity(
                     context,
@@ -248,7 +248,7 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.widget_header, openPendingIntent)
                 setTextViewText(
                     R.id.widget_date,
-                    LocalDate.now().format(HeaderDateFormatter),
+                    LocalDate.now(UniversityZone).format(HeaderDateFormatter),
                 )
                 setTextViewText(R.id.widget_lesson_count, pluralCount(lessonCount, "пара", "пары", "пар"))
                 setTextViewText(R.id.widget_plan_count, pluralCount(activePlanCount, "план", "плана", "планов"))
@@ -320,7 +320,7 @@ class TodayScheduleWidget : AppWidgetProvider() {
          * Not exact and not waking the phone: a widget nobody looks at can wait.
          */
         private fun scheduleNextRefresh(context: Context, lessons: List<ScheduleEventEntity>) {
-            val now = LocalDateTime.now()
+            val now = LocalDateTime.now(UniversityZone)
             val nowMinutes = now.hour * 60 + now.minute
             val nextMinutes = lessons
                 .flatMap { listOfNotNull(parseEventMinutes(it.startTime), parseEventMinutes(it.endTime)) }
@@ -340,7 +340,7 @@ class TodayScheduleWidget : AppWidgetProvider() {
             runCatching {
                 context.getSystemService(AlarmManager::class.java).setWindow(
                     AlarmManager.RTC,
-                    at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    at.atZone(UniversityZone).toInstant().toEpochMilli(),
                     REFRESH_WINDOW_MILLIS,
                     refresh,
                 )
@@ -362,7 +362,7 @@ internal suspend fun todayLessons(app: LecturialApplication): List<ScheduleEvent
     val group = app.preferences.selectedGroup.first() ?: return emptyList()
     val teacher = app.preferences.languageTeacher(group).first()
     val choice = if (ScheduleTarget.isGroup(group)) app.preferences.extracurricularChoice.first() else com.rassvet.lecturial.model.ExtracurricularChoice()
-    return app.database.scheduleDao().eventsForDay(group, LocalDate.now().toString()).filter {
+    return app.database.scheduleDao().eventsForDay(group, LocalDate.now(UniversityZone).toString()).filter {
         com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers.split("\u001F"), teacher) &&
             !choice.hides(it.type, it.discipline)
     }

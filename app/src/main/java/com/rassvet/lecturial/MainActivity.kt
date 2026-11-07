@@ -1,10 +1,8 @@
 package com.rassvet.lecturial
 
-import android.Manifest
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -17,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,7 +28,6 @@ import com.rassvet.lecturial.ui.theme.LecturialTheme
 import com.rassvet.lecturial.ui.OpenLessonRequest
 import java.io.File
 import java.time.LocalDate
-import androidx.core.content.edit
 import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
@@ -44,9 +40,6 @@ class MainActivity : ComponentActivity() {
     private var openOutlookKey by mutableLongStateOf(0L)
     private var openStudyKey by mutableLongStateOf(0L)
     private var openPlanSequence = 0L
-    private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { LessonAlerts.sync(this) }
     private val unknownSourcesSettings = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -212,21 +205,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // Fresh grades and notifications from the personal account, at most every half hour.
         (application as LecturialApplication).lks.refreshIfStale()
-        requestLessonNotifications()
         LessonAlerts.sync(this)
-    }
-
-    private fun requestLessonNotifications() {
-        if (Build.VERSION.SDK_INT < 33) return
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-        val prefs = getSharedPreferences("lesson_alerts", MODE_PRIVATE)
-        if (prefs.getBoolean("asked_notifications", false)) return
-        prefs.edit { putBoolean("asked_notifications", true) }
-        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun requestUpdateInstallation(

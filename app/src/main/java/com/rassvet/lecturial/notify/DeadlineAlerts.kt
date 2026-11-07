@@ -76,7 +76,7 @@ object DeadlineAlerts {
                 minutesBefore != null -> "Начнётся через ${minutesBefore / 60} ч."
                 daysBefore == 0 -> "Срок сегодня"
                 daysBefore == 1 -> "До срока остался 1 день"
-                else -> "До срока осталось $daysBefore дня"
+                else -> "До срока осталось $daysBefore ${if (daysBefore in 2..4) "дня" else "дней"}"
             }
             val openApp = PendingIntent.getActivity(
                 context,

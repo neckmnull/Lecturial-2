@@ -23,6 +23,7 @@ import com.rassvet.lecturial.model.AppDisplayOptions
 import com.rassvet.lecturial.model.StudyPlan
 import com.rassvet.lecturial.model.StudyPlanRecurrence
 import com.rassvet.lecturial.model.StudyPlanType
+import com.rassvet.lecturial.model.UniversityZone
 import com.rassvet.lecturial.model.nextOccurrenceDate
 import com.rassvet.lecturial.model.occursOn
 import com.rassvet.lecturial.model.renamedDiscipline
@@ -66,12 +67,12 @@ private class ScheduleWidgetFactory(
                     .getOrElse(::defaultWidgetAppearance)
                 widgetAppearance = appearance
                 look = appearance.look
-                nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
+                nowMinutes = LocalTime.now(UniversityZone).let { it.hour * 60 + it.minute }
                 lessonAliases = runCatching { app.preferences.lessonAliases.first() }.getOrDefault(emptyMap())
                 val lessons = todayLessons(app)
                 val plans = app.database.studyPlanDao().all()
                     .filterNot(StudyPlanEntity::isCompleted)
-                val today = LocalDate.now()
+                val today = LocalDate.now(UniversityZone)
                 buildList {
                     addAll(lessons.map(Item::Lesson))
                     addAll(plans.mapNotNull { plan ->

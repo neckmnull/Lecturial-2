@@ -1,18 +1,11 @@
 package com.rassvet.lecturial.data.outlook
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
+import com.rassvet.lecturial.data.local.SecretBox
 import java.io.IOException
 import java.net.URLEncoder
-import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -111,10 +104,11 @@ object Pkce {
  */
 internal class TokenVault(context: Context) {
     private val prefs = context.getSharedPreferences("outlook_auth", Context.MODE_PRIVATE)
+    private val box = SecretBox(KEY_ALIAS)
 
     fun load(): MicrosoftTokens? = runCatching {
         val stored = prefs.getString(KEY_TOKENS, null) ?: return null
-        val json = JSONObject(decrypt(stored))
+        val json = JSONObject(box.decrypt(stored) ?: return null)
         MicrosoftTokens(json.getString("access"), json.getString("refresh"), json.getLong("expires"))
     }.getOrNull()
 
@@ -123,46 +117,15 @@ internal class TokenVault(context: Context) {
             .put("access", tokens.accessToken)
             .put("refresh", tokens.refreshToken)
             .put("expires", tokens.expiresAtMillis)
-        prefs.edit().putString(KEY_TOKENS, encrypt(json.toString())).apply()
+        prefs.edit().putString(KEY_TOKENS, box.encrypt(json.toString())).apply()
     }
 
     fun clear() {
         prefs.edit().remove(KEY_TOKENS).apply()
     }
 
-    private fun key(): SecretKey {
-        val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE).apply {
-            init(
-                KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build(),
-            )
-        }.generateKey()
-    }
-
-    private fun encrypt(text: String): String {
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, key()) }
-        val sealed = cipher.iv + cipher.doFinal(text.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(sealed, Base64.NO_WRAP)
-    }
-
-    private fun decrypt(stored: String): String {
-        val sealed = Base64.decode(stored, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed, 0, IV_BYTES))
-        }
-        return String(cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES), Charsets.UTF_8)
-    }
-
     private companion object {
-        const val KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "lecturial_outlook_tokens"
         const val KEY_TOKENS = "tokens"
-        const val TRANSFORMATION = "AES/GCM/NoPadding"
-        const val IV_BYTES = 12
     }
 }

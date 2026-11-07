@@ -78,12 +78,7 @@ object UpdateNotifier {
         if (!force && now - prefs.getLong(KEY_LAST_CHECK, 0L) < minInterval) return
         val result = app.updateChecker.check(BuildConfig.VERSION_NAME)
         prefs.edit { putLong(KEY_LAST_CHECK, now) }
-        // Remember a required update, so the app stays blocked even without internet.
-        when (result) {
-            is AppUpdateState.Available -> if (result.required) app.preferences.setRequiredUpdateVersion(result.version)
-            is AppUpdateState.UpToDate -> app.preferences.setRequiredUpdateVersion(null)
-            else -> Unit
-        }
+        app.preferences.followUpdateCheck(result)
         val update = result as? AppUpdateState.Available ?: return
         if (prefs.getString(KEY_NOTIFIED_VERSION, null) == update.version) return
         if (notify(app, update)) prefs.edit { putString(KEY_NOTIFIED_VERSION, update.version) }

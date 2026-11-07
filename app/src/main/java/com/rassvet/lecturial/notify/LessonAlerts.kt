@@ -20,8 +20,8 @@ import com.rassvet.lecturial.MainActivity
 import com.rassvet.lecturial.R
 import com.rassvet.lecturial.model.LessonAlarmKind
 import com.rassvet.lecturial.model.LessonLivePhase
-import com.rassvet.lecturial.model.LessonRemindMinutes
 import com.rassvet.lecturial.model.ScheduleEvent
+import com.rassvet.lecturial.model.UniversityZone
 import com.rassvet.lecturial.model.VisibleLessonLive
 import com.rassvet.lecturial.model.displayEventType
 import com.rassvet.lecturial.model.formatCountdownMillis
@@ -33,7 +33,6 @@ import com.rassvet.lecturial.model.scheduledLessonAlarms
 import com.rassvet.lecturial.model.visibleLessonLive
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,14 +48,6 @@ object LessonAlerts {
     const val NOTIFICATION_ID = 16
     const val ACTION_ALARM = "com.rassvet.lecturial.LESSON_ALARM"
 
-    private const val EXTRA_KIND = "kind"
-    private const val EXTRA_DATE = "date"
-    private const val EXTRA_ID = "id"
-    private const val EXTRA_DISCIPLINE = "discipline"
-    private const val EXTRA_TYPE = "type"
-    private const val EXTRA_START = "start"
-    private const val EXTRA_END = "end"
-    private const val EXTRA_CLASSROOM = "classroom"
     private const val PREFS = "lesson_alerts"
     private const val KEY_CODES = "codes"
     private const val KEY_ALERTED = "alerted_event"
@@ -87,7 +78,6 @@ object LessonAlerts {
             context,
             event,
             alert = true,
-            now = LocalDateTime.now(),
             live = VisibleLessonLive(event, LessonLivePhase.UPCOMING, now + 15 * 60_000L, now + 105 * 60_000L, 15),
             isTest = true,
         )
@@ -101,7 +91,6 @@ object LessonAlerts {
             context,
             event,
             alert = false,
-            now = LocalDateTime.now(),
             live = VisibleLessonLive(event, LessonLivePhase.CURRENT, now - 15 * 60_000L, now + 75 * 60_000L, 75),
             isTest = true,
         )
@@ -172,20 +161,20 @@ object LessonAlerts {
             NotificationManagerCompat.from(app).cancel(NOTIFICATION_ID)
             return
         }
-        val today = LocalDate.now()
+        val now = LocalDateTime.now(UniversityZone)
+        val today = now.toLocalDate()
         val teacher = app.preferences.languageTeacher(group).first()
         val pausedUntil = app.preferences.lessonAlertsPausedUntil.first()
             ?.takeIf { it > System.currentTimeMillis() }
         val events = app.repository.eventsBetween(group, today, today.plusDays(13)).filter {
             com.rassvet.lecturial.model.matchesLanguageTeacher(it.discipline, it.teachers, teacher)
-        }.let { lessonsOutsidePause(it, pausedUntil) }
-        val now = LocalDateTime.now()
+        }.let { lessonsOutsidePause(it, pausedUntil, UniversityZone) }
         scheduleAlarms(app, events, now)
-        val live = visibleLessonLive(events, now)
+        val live = visibleLessonLive(events, now, UniversityZone)
         if (live == null) {
             stopLive(app)
         } else {
-            post(app, live.event, alert = claimAlert(app, live), now = now, live = live)
+            post(app, live.event, alert = claimAlert(app, live), live = live)
         }
     }
 
@@ -203,19 +192,12 @@ object LessonAlerts {
         context: Context,
         event: ScheduleEvent,
         alert: Boolean,
-        now: LocalDateTime,
-        live: VisibleLessonLive? = visibleLessonLive(listOf(event), now),
+        live: VisibleLessonLive,
         isTest: Boolean = false,
     ) {
-        val notification = buildNotification(context, event, alert, live ?: visibleLessonLive(listOf(event), now)) ?: return
+        val notification = buildNotification(context, event, alert, live) ?: return
         publish(context, notification)
-        LessonLiveService.start(
-            context,
-            event,
-            live ?: visibleLessonLive(listOf(event), now) ?: return,
-            notification,
-            isTest,
-        )
+        LessonLiveService.start(context, event, live, notification, isTest)
     }
 
     internal fun refreshFromService(
@@ -368,15 +350,6 @@ object LessonAlerts {
             .setProgress(elapsed.coerceIn(0, length))
     }
 
-    @RequiresApi(36)
-    private fun platformWavySegments(total: Int): List<Notification.ProgressStyle.Segment> {
-        val lengths = wavyLengths(total)
-        val colors = wavyColors(lengths.size)
-        return lengths.mapIndexed { index, length ->
-            Notification.ProgressStyle.Segment(length).setColor(colors[index])
-        }
-    }
-
     private fun compatWavySegments(total: Int): List<NotificationCompat.ProgressStyle.Segment> {
         val lengths = wavyLengths(total)
         val colors = wavyColors(lengths.size)
@@ -418,12 +391,12 @@ object LessonAlerts {
         val alarmManager = app.getSystemService(AlarmManager::class.java) ?: return
         val exact = Build.VERSION.SDK_INT < 31 || alarmManager.canScheduleExactAlarms()
         val codes = LinkedHashSet<Int>()
-        scheduledLessonAlarms(events, now, ZoneId.systemDefault()).forEach { alarm ->
+        scheduledLessonAlarms(events, now, UniversityZone).forEach { alarm ->
             val code = requestCode(alarm.kind, alarm.event)
             val pending = PendingIntent.getBroadcast(
                 app,
                 code,
-                alarmIntent(app, alarm.kind, alarm.event),
+                alarmIntent(app),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             if (exact) {
@@ -450,7 +423,7 @@ object LessonAlerts {
             val pending = PendingIntent.getBroadcast(
                 app,
                 code,
-                Intent(app, LessonAlertReceiver::class.java).setAction(ACTION_ALARM).setPackage(app.packageName),
+                alarmIntent(app),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             alarmManager.cancel(pending)
@@ -458,19 +431,8 @@ object LessonAlerts {
         prefs.edit { remove(KEY_CODES) }
     }
 
-    private fun alarmIntent(context: Context, kind: LessonAlarmKind, event: ScheduleEvent): Intent =
-        Intent(context, LessonAlertReceiver::class.java).apply {
-            action = ACTION_ALARM
-            setPackage(context.packageName)
-            putExtra(EXTRA_KIND, kind.name)
-            putExtra(EXTRA_DATE, event.date.toString())
-            putExtra(EXTRA_ID, event.id)
-            putExtra(EXTRA_DISCIPLINE, event.discipline)
-            putExtra(EXTRA_TYPE, event.type)
-            putExtra(EXTRA_START, event.startTime)
-            putExtra(EXTRA_END, event.endTime)
-            putExtra(EXTRA_CLASSROOM, event.classroom)
-        }
+    private fun alarmIntent(context: Context): Intent =
+        Intent(context, LessonAlertReceiver::class.java).setAction(ACTION_ALARM).setPackage(context.packageName)
 
     private fun requestCode(kind: LessonAlarmKind, event: ScheduleEvent): Int =
         31 * 31 * kind.name.hashCode() + 31 * event.date.toString().hashCode() + event.id.hashCode()

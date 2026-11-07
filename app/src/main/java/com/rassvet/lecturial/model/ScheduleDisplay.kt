@@ -163,24 +163,6 @@ fun formatCountdownMillis(millisLeft: Long, upcoming: Boolean = true): String {
     }
 }
 
-fun formatLiveChipMillis(millisLeft: Long, upcoming: Boolean = true): String {
-    val minutes = ((millisLeft + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
-    val prefix = if (upcoming) "через" else "ещё"
-    return "$prefix $minutes ${minutesWord(minutes)}"
-}
-
-fun minutesWord(count: Int): String {
-    val n = count.coerceAtLeast(0)
-    val n100 = n % 100
-    val n10 = n % 10
-    return when {
-        n100 in 11..14 -> "минут"
-        n10 == 1 -> "минуту"
-        n10 in 2..4 -> "минуты"
-        else -> "минут"
-    }
-}
-
 fun formatLiveChip(minutes: Int): String {
     val value = minutes.coerceAtLeast(1)
     return when {

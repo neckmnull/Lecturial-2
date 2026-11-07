@@ -4,6 +4,7 @@ import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 
 /** What the user chose to send to the calendar. */
 data class CalendarSyncSettings(
@@ -108,7 +109,11 @@ fun lessonEntries(
     events: List<ScheduleEvent>,
     aliases: Map<String, String>,
     reminderMinutes: Int?,
+    /** The zone the calendars write in; a lesson's time is the university's. */
+    phoneZone: ZoneId = UniversityZone,
 ): List<CalendarEntry> = events.mapNotNull { event ->
+    fun phoneTime(minutes: Int) = event.date.atTime(minutes / 60, minutes % 60)
+        .atZone(UniversityZone).withZoneSameInstant(phoneZone).toLocalDateTime()
     val start = parseEventMinutes(event.startTime) ?: return@mapNotNull null
     val end = parseEventMinutes(event.endTime) ?: return@mapNotNull null
     if (end <= start) return@mapNotNull null
@@ -119,8 +124,8 @@ fun lessonEntries(
         key = "lesson:${event.id}",
         subject = if (event.type.isNotBlank()) "$title · ${event.type}" else title,
         date = event.date,
-        start = event.date.atTime(start / 60, start % 60),
-        end = event.date.atTime(end / 60, end % 60),
+        start = phoneTime(start),
+        end = phoneTime(end),
         allDay = false,
         location = room,
         body = listOfNotNull(

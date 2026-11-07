@@ -72,19 +72,22 @@ class ScheduleRepository(
         return CachedSchedule(ScheduleWeek(group, weekStart, days), cache.updatedAtMillis).forShowing()
     }
 
+    /** Statistics fill the cache with other schedules: their weeks before [before] go, [keep]'s own stay. */
+    suspend fun trimCache(keep: String, before: LocalDate) = database.withTransaction {
+        database.scheduleDao().deleteOldEvents(keep, before.toString())
+        database.scheduleDao().deleteOldWeeks(keep, before.toString())
+    }
+
     suspend fun refreshWeek(group: String, weekStart: LocalDate): CachedSchedule {
         val key = "$group|$weekStart"
         val candidate = refreshScope.async(start = CoroutineStart.LAZY) {
             refreshMutex.withLock { fetchAndCache(group, weekStart) }
         }
         val active = inFlight.putIfAbsent(key, candidate) ?: candidate
-        if (active !== candidate) candidate.cancel()
+        // On completion, not after the wait: a waiter that gave up must not leave an old answer for the next one.
+        if (active === candidate) candidate.invokeOnCompletion { inFlight.remove(key, candidate) } else candidate.cancel()
         active.start()
-        return try {
-            active.await().forShowing()
-        } finally {
-            if (active.isCompleted) inFlight.remove(key, active)
-        }
+        return active.await().forShowing()
     }
 
     /**
