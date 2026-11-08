@@ -9,8 +9,11 @@ import com.rassvet.lecturial.data.network.ScheduleRemoteDataSource
 import com.rassvet.lecturial.model.ScheduleDay
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.ScheduleWeek
+import com.rassvet.lecturial.model.TeacherInfo
 import java.io.IOException
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -89,5 +92,40 @@ class ScheduleAnalyticsRepositoryTest {
         val secondRun = asked
         repository.allClassrooms()
         assertEquals("A complete list is kept", secondRun, asked)
+    }
+
+    @Test
+    fun twoTeachersResolvedAtTheSameTimeAreBothRemembered() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val entered = listOf(CompletableDeferred<Unit>(), CompletableDeferred<Unit>())
+        fun remoteFor(index: Int, teacher: TeacherInfo) = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek = error("not used")
+
+            override suspend fun fetchTeachers(query: String): List<TeacherInfo> {
+                entered[index].complete(Unit)
+                gate.await()
+                return listOf(teacher)
+            }
+        }
+        val petrov = TeacherInfo("t-101", "Петров Пётр Петрович", null)
+        val sidorova = TeacherInfo("t-202", "Сидорова Анна Сергеевна", "Кафедра физики")
+        val repository = ScheduleAnalyticsRepository(context, database, { error("not used") })
+
+        val first = async { repository.resolveTeacher("Петров Пётр Петрович", remoteFor(0, petrov)) }
+        val second = async { repository.resolveTeacher("Сидорова Анна Сергеевна", remoteFor(1, sidorova)) }
+        entered.forEach { it.await() } // both lookups are inside fetchTeachers before either may finish
+        gate.complete(Unit)
+
+        assertEquals(petrov, first.await())
+        assertEquals(sidorova, second.await())
+
+        val failing = object : ScheduleRemoteDataSource {
+            override suspend fun fetchWeek(group: String, weekStart: LocalDate): ScheduleWeek = error("not used")
+
+            override suspend fun fetchTeachers(query: String): List<TeacherInfo> = throw IOException("must come from the cache")
+        }
+        val fresh = ScheduleAnalyticsRepository(context, database, { failing })
+        assertEquals(petrov, fresh.resolveTeacher("Петров Пётр Петрович", failing))
+        assertEquals(sidorova, fresh.resolveTeacher("Сидорова Анна Сергеевна", failing))
     }
 }

@@ -317,6 +317,8 @@ internal fun ScheduleScreen(
     }
     val scheduleListState = rememberLazyListState()
     val scheduleScrolledFor = remember { mutableStateOf<String?>(null) }
+    // Also outside the transition: the cards' entrance plays once, not on every return or reload.
+    val scheduleIntro = remember { mutableStateOf(true) }
     PredictiveBackHandler(enabled = mainSection == MainSection.Settings) { backEvents ->
         try {
             backEvents.collect { event -> predictiveBackProgress.snapTo(event.progress) }
@@ -520,6 +522,7 @@ internal fun ScheduleScreen(
                         rows = scheduleRows,
                         listState = scheduleListState,
                         scrolledForState = scheduleScrolledFor,
+                        introState = scheduleIntro,
                         focusedLesson = focusedLesson,
                         onFocusShown = { focusShown = true },
                         lksMarks = lksMarks,
@@ -560,6 +563,7 @@ private fun ScheduleContent(
     rows: List<ScheduleRow>,
     listState: LazyListState,
     scrolledForState: MutableState<String?>,
+    introState: MutableState<Boolean>,
     focusedLesson: String? = null,
     onFocusShown: () -> Unit = {},
     lksMarks: List<LksMark> = emptyList(),
@@ -652,9 +656,9 @@ private fun ScheduleContent(
                         }
                     }
                 }
-                // The cards on screen rise in one after another when the schedule shows, as on
-                // the other tabs; rows scrolled to afterwards appear as they are.
-                var intro by remember(scrollSession) { mutableStateOf(true) }
+                // The cards on screen rise in one after another the first time the schedule
+                // shows; coming back from another tab, reloads and scrolling show them as they are.
+                var intro by introState
                 LaunchedEffect(intro) {
                     if (intro) {
                         delay(INTRO_MILLIS)
@@ -686,9 +690,8 @@ private fun ScheduleContent(
                         key = { _, row -> row.key },
                         contentType = { _, row -> row.contentType },
                     ) { index, row ->
-                        if (intro) {
-                            Box(Modifier.revealOnAppear((index - listState.firstVisibleItemIndex).coerceAtLeast(0))) { rowContent(row) }
-                        } else {
+                        // One structure throughout, so the end of the entrance doesn't rebuild the cards.
+                        Box(if (intro) Modifier.revealOnAppear((index - listState.firstVisibleItemIndex).coerceAtLeast(0)) else Modifier) {
                             rowContent(row)
                         }
                     }

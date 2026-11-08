@@ -186,13 +186,39 @@ class GitHubUpdateCheckerTest {
         assertFalse(acceptsUpdate(installed = emptyList(), offered = listOf("release")))
     }
 
-    private fun checker() = GitHubUpdateChecker(
+    @Test
+    fun `a release rebuilt under the same number is offered by its checksum`() = runBlocking {
+        val installed = Files.createTempFile("installed", ".apk").toFile().apply { writeText("first build") }
+        try {
+            server.enqueue(release("v1.4.5", digest = sha256("second build")))
+            val offered = checker(installed).check("1.4.5") as AppUpdateState.Available
+            assertEquals("1.4.5", offered.version)
+            assertFalse(offered.required)
+
+            server.enqueue(release("v1.4.5", digest = sha256("first build")))
+            assertEquals("The same file", AppUpdateState.UpToDate("1.4.5"), checker(installed).check("1.4.5"))
+
+            server.enqueue(release("v1.4.5"))
+            assertEquals("No checksum from GitHub", AppUpdateState.UpToDate("1.4.5"), checker(installed).check("1.4.5"))
+
+            server.enqueue(release("v1.4.5", digest = sha256("second build")))
+            assertEquals("Debug builds don't compare", AppUpdateState.UpToDate("1.4.5"), checker().check("1.4.5"))
+        } finally {
+            installed.delete()
+        }
+    }
+
+    private fun sha256(text: String) = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    private fun checker(installedApk: java.io.File? = null) = GitHubUpdateChecker(
         server.url("latest").toString(),
         OkHttpClient(),
         server.url("downloads/").toString(),
+        installedApk,
     )
 
-    private fun release(version: String, notes: String = "") = MockResponse().setBody(
+    private fun release(version: String, notes: String = "", digest: String? = null) = MockResponse().setBody(
         """
         {
           "tag_name": "$version",
@@ -202,7 +228,7 @@ class GitHubUpdateCheckerTest {
           "prerelease": false,
           "assets": [{
             "name": "Lecturial-2-$version.apk",
-            "browser_download_url": "${server.url("downloads/$version/Lecturial-2-$version.apk")}"
+            "browser_download_url": "${server.url("downloads/$version/Lecturial-2-$version.apk")}"${digest?.let { ",\n            \"digest\": \"sha256:$it\"" }.orEmpty()}
           }]
         }
         """.trimIndent(),

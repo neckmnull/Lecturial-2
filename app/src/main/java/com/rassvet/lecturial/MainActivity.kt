@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rassvet.lecturial.data.network.isSameAppUpdate
@@ -27,6 +28,8 @@ import com.rassvet.lecturial.ui.ScheduleViewModel
 import com.rassvet.lecturial.ui.theme.LecturialTheme
 import com.rassvet.lecturial.ui.OpenLessonRequest
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import androidx.core.net.toUri
 
@@ -65,6 +68,8 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         val app = application as LecturialApplication
+        // Keystore decrypt + snapshot parse happen in the lazy; do them off the main thread before the first frame.
+        lifecycleScope.launch(Dispatchers.IO) { app.lks }
         setContent {
             val viewModel: ScheduleViewModel = viewModel(
                 factory = ScheduleViewModel.Factory(
@@ -204,7 +209,9 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         // Fresh grades and notifications from the personal account, at most every half hour.
-        (application as LecturialApplication).lks.refreshIfStale()
+        // Off the main thread: the first lks access may still be constructing the repository.
+        val app = application as LecturialApplication
+        lifecycleScope.launch(Dispatchers.IO) { app.lks.refreshIfStale() }
         LessonAlerts.sync(this)
     }
 

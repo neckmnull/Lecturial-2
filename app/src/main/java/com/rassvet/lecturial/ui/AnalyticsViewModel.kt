@@ -362,12 +362,8 @@ class AnalyticsViewModel(
         if (participants.isEmpty()) return
         val week = _state.value.pairsDate.with(DayOfWeek.MONDAY).let { it..it.plusDays(6) }
         runWork { report ->
-            val schedules = linkedMapOf<String, List<ScheduleEvent>>()
-            participants.forEachIndexed { index, participant ->
-                report(AnalyticsProgress("Загружаем: ${participant.label}", index, participants.size))
-                schedules[participant.key] = repository.lessons(participant.key, week.start, week.endInclusive, today())
-            }
-            pairsWeek = week to schedules
+            val keys = participants.map { it.key }
+            pairsWeek = week to keys.zip(lessonsOf(keys, week, "Загружаем расписания", report)).toMap()
             showPairsFromLoadedWeek()
         }
     }
@@ -534,11 +530,8 @@ class AnalyticsViewModel(
         if (participants.isEmpty()) return
         val range = freeTimeRange(_state.value.freeRange)
         runWork { report ->
-            val schedules = linkedMapOf<String, List<ScheduleEvent>>()
-            participants.forEachIndexed { index, participant ->
-                report(AnalyticsProgress("Загружаем: ${participant.label}", index, participants.size))
-                schedules[participant.label] = repository.lessons(participant.key, range.start, range.endInclusive, today())
-            }
+            val loaded = lessonsOf(participants.map { it.key }, range, "Загружаем расписания", report)
+            val schedules = participants.map { it.label }.zip(loaded).toMap()
             val availability = slotAvailability(schedules, range)
             val moment = now()
             val upcoming = availability.filter { it.date.atTime(it.slot.start).isAfter(moment) }
@@ -562,20 +555,20 @@ class AnalyticsViewModel(
         val range = _state.value.loadPeriod.range(today())
         val weeks = weekStartsOf(range).size
         runWork { report ->
-            val groupLessons = linkedMapOf<String, List<ScheduleEvent>>()
-            groups.forEachIndexed { index, group ->
-                report(AnalyticsProgress("Расписание групп", index, groups.size))
-                groupLessons[group] = repository.lessons(group, range.start, range.endInclusive, today())
-            }
+            val groupLessons = groups.zip(lessonsOf(groups, range, "Расписание групп", report)).toMap()
             val names = courseTeacherNames(groupLessons.values.flatten())
             val teachers = linkedMapOf<String, AnalyticsParticipant>()
             val unresolved = mutableListOf<String>()
-            names.forEachIndexed { index, name ->
-                report(AnalyticsProgress("Ищем преподавателей", index, names.size))
-                val teacher = runCatching { repository.resolveTeacher(name) }.getOrElse { failure ->
+            val looked = AtomicInteger(0)
+            val resolved = names.inWorkers(WORKERS, repository::newRemote) { remote, name ->
+                val teacher = runCatching { repository.resolveTeacher(name, remote) }.getOrElse { failure ->
                     if (failure is CancellationException) throw failure
                     null
                 }
+                report(AnalyticsProgress("Ищем преподавателей", looked.incrementAndGet(), names.size))
+                teacher
+            }
+            names.zip(resolved).forEach { (name, teacher) ->
                 if (teacher == null) unresolved += name
                 else teachers[ScheduleTarget.teacherKey(teacher.id)] = AnalyticsParticipant(ScheduleTarget.teacherKey(teacher.id), teacher.name)
             }
@@ -583,20 +576,12 @@ class AnalyticsViewModel(
 
             val total = teachers.size * weeks
             val done = AtomicInteger(0)
-            val teacherLessons = java.util.concurrent.ConcurrentHashMap<String, List<ScheduleEvent>>()
-            val queues = teachers.values.withIndex().groupBy({ it.index % WORKERS }, { it.value })
-            coroutineScope {
-                queues.values.map { batch ->
-                    async {
-                        val remote = repository.newRemote()
-                        batch.forEach { teacher ->
-                            teacherLessons[teacher.key] = repository.lessons(
-                                teacher.key, range.start, range.endInclusive, today(), remote,
-                            ) { report(AnalyticsProgress("Нагрузка преподавателей", done.incrementAndGet(), total)) }
-                        }
-                    }
-                }.awaitAll()
+            val loads = teachers.values.toList().inWorkers(WORKERS, repository::newRemote) { remote, teacher ->
+                repository.lessons(teacher.key, range.start, range.endInclusive, today(), remote) {
+                    report(AnalyticsProgress("Нагрузка преподавателей", done.incrementAndGet(), total))
+                }
             }
+            val teacherLessons = teachers.keys.zip(loads).toMap()
 
             // Average over the weeks that have lessons at all, so an unpublished end of the
             // semester doesn't dilute everyone's load.
@@ -631,6 +616,21 @@ class AnalyticsViewModel(
             val loaded = loadRoomSchedules(range, report)
             val stats = roomLoads(loaded.schedules, range).map { load -> RoomStat(loaded.rooms.getValue(load.room), load) }
             _state.update { it.copy(roomsResult = RoomsResult(range, stats, notRooms = loaded.notRooms)) }
+        }
+    }
+
+    /** Lessons of every key over [range], [WORKERS] site sessions at a time, in the keys' order. */
+    private suspend fun lessonsOf(
+        keys: List<String>,
+        range: ClosedRange<LocalDate>,
+        text: String,
+        report: (AnalyticsProgress) -> Unit,
+    ): List<List<ScheduleEvent>> {
+        val done = AtomicInteger(0)
+        report(AnalyticsProgress(text, 0, keys.size))
+        return keys.inWorkers(WORKERS, repository::newRemote) { remote, key ->
+            repository.lessons(key, range.start, range.endInclusive, today(), remote)
+                .also { report(AnalyticsProgress(text, done.incrementAndGet(), keys.size)) }
         }
     }
 
@@ -729,4 +729,24 @@ class AnalyticsViewModel(
         const val ROOM_CANDIDATES = 6
         const val LOOKUP_DAYS = 6
     }
+}
+
+/**
+ * [load] for every item, [workers] at a time, each worker with a session of its own so they
+ * really run side by side; the results keep the items' order.
+ */
+internal suspend fun <I, S, T> List<I>.inWorkers(
+    workers: Int,
+    newSession: () -> S,
+    load: suspend (session: S, item: I) -> T,
+): List<T> = coroutineScope {
+    val results = arrayOfNulls<Any>(size)
+    indices.groupBy { it % workers }.values.map { batch ->
+        async {
+            val session = newSession()
+            batch.forEach { index -> results[index] = load(session, this@inWorkers[index]) }
+        }
+    }.awaitAll()
+    @Suppress("UNCHECKED_CAST")
+    results.asList() as List<T>
 }

@@ -812,26 +812,6 @@ private fun appThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.Custom -> "Пользовательская палитра"
 }
 
-private fun appThemePreviewColor(theme: AppTheme): Color = when (theme) {
-    AppTheme.Sirius -> Color(0xFF8AABFF)
-    AppTheme.Ocean -> Color(0xFF62D5E8)
-    AppTheme.Forest -> Color(0xFF8ED29A)
-    AppTheme.Sunset -> Color(0xFFFFB59D)
-    AppTheme.Amethyst -> Color(0xFFD0BCFF)
-    AppTheme.Burgundy -> Color(0xFFFFB0C8)
-    AppTheme.Amber -> Color(0xFFFFC107)
-    AppTheme.Graphite -> Color(0xFFC5C7CE)
-    AppTheme.Neon -> Color(0xFFB6FF00)
-    AppTheme.Fuchsia -> Color(0xFFFF3CAC)
-    AppTheme.Electric -> Color(0xFF2979FF)
-    AppTheme.Paper -> Color(0xFF2563EB)
-    AppTheme.Mint -> Color(0xFF5FD4AE)
-    AppTheme.Lavender -> Color(0xFFBBA6FF)
-    AppTheme.Midnight -> Color(0xFF8EA8FF)
-    AppTheme.Espresso -> Color(0xFFD9A27C)
-    AppTheme.Custom, AppTheme.Dynamic -> Color(0xFF8AABFF)
-}
-
 @Composable
 private fun AppDisplaySettings(
     options: AppDisplayOptions,

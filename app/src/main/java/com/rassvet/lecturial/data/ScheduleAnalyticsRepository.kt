@@ -12,6 +12,8 @@ import com.rassvet.lecturial.model.weekStartsOf
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import androidx.core.content.edit
 
@@ -29,6 +31,7 @@ class ScheduleAnalyticsRepository(
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val searchRemote by lazy { remoteFactory() }
+    private val teacherIdsLock = Mutex()
 
     fun newRemote(): ScheduleRemoteDataSource = remoteFactory()
 
@@ -113,7 +116,7 @@ class ScheduleAnalyticsRepository(
      * The site's teacher for a name seen in a group's schedule. Lessons only carry names,
      * so the name is looked up once and the match is remembered.
      */
-    suspend fun resolveTeacher(name: String): TeacherInfo? {
+    suspend fun resolveTeacher(name: String, remote: ScheduleRemoteDataSource = searchRemote): TeacherInfo? {
         val wanted = normalizePersonName(name)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val known = runCatching { JSONObject(prefs.getString(KEY_TEACHER_IDS, null) ?: "{}") }.getOrDefault(JSONObject())
@@ -122,10 +125,14 @@ class ScheduleAnalyticsRepository(
         }
         val surname = name.trim().substringBefore(' ')
         val match = sequenceOf(name.trim(), surname).distinct().firstNotNullOfOrNull { query ->
-            searchRemote.fetchTeachers(query).firstOrNull { normalizePersonName(it.name) == wanted }
+            remote.fetchTeachers(query).firstOrNull { normalizePersonName(it.name) == wanted }
         } ?: return null
-        known.put(wanted, JSONObject().put("id", match.id).put("name", match.name).put("department", match.department ?: ""))
-        withContext(Dispatchers.IO) { prefs.edit { putString(KEY_TEACHER_IDS, known.toString()) } }
+        // Names are resolved two at a time: read again under the lock so neither match is lost.
+        teacherIdsLock.withLock {
+            val latest = runCatching { JSONObject(prefs.getString(KEY_TEACHER_IDS, null) ?: "{}") }.getOrDefault(JSONObject())
+            latest.put(wanted, JSONObject().put("id", match.id).put("name", match.name).put("department", match.department ?: ""))
+            withContext(Dispatchers.IO) { prefs.edit { putString(KEY_TEACHER_IDS, latest.toString()) } }
+        }
         return match
     }
 

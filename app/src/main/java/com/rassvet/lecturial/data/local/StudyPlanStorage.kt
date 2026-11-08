@@ -55,16 +55,6 @@ interface StudyPlanDao {
     @Query("SELECT COUNT(*) FROM study_plans WHERE isCompleted = 0")
     suspend fun activeCount(): Int
 
-    @Query(
-        """
-        SELECT * FROM study_plans WHERE isCompleted = 0
-         ORDER BY CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END ASC, dueDate ASC,
-             CASE WHEN dueTime IS NULL THEN 1 ELSE 0 END ASC, dueTime ASC, createdAtMillis DESC
-        LIMIT 1
-        """,
-    )
-    suspend fun nearestActive(): StudyPlanEntity?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(plan: StudyPlanEntity)
 

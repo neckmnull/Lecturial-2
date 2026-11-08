@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -170,7 +171,10 @@ class SiriusScheduleDataSource(
             throw IOException("Расписание доступно в пределах двух лет от текущей недели")
         }
         val method = if (offset >= 0) "addWeek" else "minusWeek"
+        // The calls block, so a load that is no longer wanted stops here instead of
+        // walking up to two years of weeks while the next one waits for the session.
         repeat(kotlin.math.abs(offset).toInt()) {
+            ensureActive()
             data = state.call(method, JSONArray())
         }
 
@@ -178,6 +182,7 @@ class SiriusScheduleDataSource(
             var week = normalizedTarget
             repeat(count.coerceAtLeast(0)) { index ->
                 if (index > 0) {
+                    ensureActive()
                     data = state.call("addWeek", JSONArray())
                     week = week.plusWeeks(1)
                 }

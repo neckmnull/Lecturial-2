@@ -8,8 +8,10 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.rassvet.lecturial.R
 import com.rassvet.lecturial.model.LessonLivePhase
 import com.rassvet.lecturial.model.ScheduleEvent
 import com.rassvet.lecturial.model.VisibleLessonLive
@@ -39,22 +41,23 @@ class LessonLiveService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val state = intent?.toState() ?: run {
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        val initial = pendingNotification ?: LessonAlerts.refreshFromService(this, state.event, state.live)
-        if (initial == null) {
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
+        val state = intent?.toState()
+        val initial = pendingNotification ?: state?.let { LessonAlerts.refreshFromService(this, it.event, it.live) }
         pendingNotification = null
+        // Started with startForegroundService: stopping before startForeground kills the app,
+        // so this goes foreground first even when it is only going to leave.
         ServiceCompat.startForeground(
             this,
             LessonAlerts.NOTIFICATION_ID,
-            initial,
+            initial ?: NotificationCompat.Builder(this, LessonAlerts.CHANNEL_ID).setSmallIcon(R.drawable.ic_stat_lecturial).build(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
+        starting = false
+        if (state == null || initial == null || stopRequested) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         states.value = state
         if (updateJob?.isActive != true) updateJob = scope.launch { runUpdates() }
         // No restart by the system: Android 12+ may refuse it from the background, and the next lesson alarm starts this anyway.
@@ -139,6 +142,9 @@ class LessonLiveService : Service() {
 
         @Volatile private var pendingNotification: Notification? = null
         @Volatile private var running: LessonLiveService? = null
+        // A start still on its way, and a stop that came after it: onStartCommand settles both.
+        @Volatile private var starting = false
+        @Volatile private var stopRequested = false
 
         fun start(
             context: Context,
@@ -153,6 +159,7 @@ class LessonLiveService : Service() {
             } else {
                 clearTestState(context)
             }
+            stopRequested = false
             running?.let { service ->
                 service.states.value = State(event, live)
                 return
@@ -170,11 +177,13 @@ class LessonLiveService : Service() {
                 putExtra(EXTRA_START_MILLIS, live.startMillis)
                 putExtra(EXTRA_END_MILLIS, live.endMillis)
             }
+            starting = true
             try {
                 ContextCompat.startForegroundService(context, intent)
             } catch (refused: IllegalStateException) {
                 // Android 12+ refuses background starts without an exact-alarm exemption.
                 // The notification is already posted; it just won't tick until the app opens.
+                starting = false
                 pendingNotification = null
                 Log.w(TAG, "Live lesson service start refused", refused)
             }
@@ -183,7 +192,9 @@ class LessonLiveService : Service() {
         fun stop(context: Context) {
             pendingNotification = null
             clearTestState(context)
-            context.stopService(Intent(context, LessonLiveService::class.java))
+            stopRequested = true
+            // A start on its way may not be stopped before it goes foreground; it sees the request then.
+            if (!starting) context.stopService(Intent(context, LessonLiveService::class.java))
         }
 
         fun isTestActive(context: Context): Boolean {

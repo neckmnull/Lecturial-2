@@ -4,14 +4,18 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.rassvet.lecturial.R
 import com.rassvet.lecturial.eventually
 import com.rassvet.lecturial.grantNotifications
 import com.rassvet.lecturial.lesson
 import com.rassvet.lecturial.model.ExtracurricularChoice
 import com.rassvet.lecturial.model.LessonAlertPause
+import com.rassvet.lecturial.model.LessonLivePhase
 import com.rassvet.lecturial.model.UniversityZone
+import com.rassvet.lecturial.model.VisibleLessonLive
 import com.rassvet.lecturial.testApp
 import com.rassvet.lecturial.withTestSchedule
 import java.time.LocalDate
@@ -20,6 +24,7 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -88,6 +93,32 @@ class AlertsTest {
             LessonAlerts.clearTest(app)
             app.preferences.setLessonAlertsPausedUntil(pause)
             LessonAlerts.refreshNow(app)
+        }
+    }
+
+    @Test
+    fun theLiveNotificationCanBeStoppedTheMomentItStarts() = runBlocking {
+        grantNotifications()
+        assumeTrue(NotificationManagerCompat.from(app).areNotificationsEnabled())
+        // Creates the channel the service posts to.
+        LessonAlerts.refreshNow(app)
+        val now = System.currentTimeMillis()
+        val event = lesson("live", LocalDate.now(UniversityZone), "08:45", "10:05", "Физика")
+        val live = VisibleLessonLive(event, LessonLivePhase.CURRENT, now - 60_000L, now + 600_000L, 10)
+        val notification = NotificationCompat.Builder(app, LessonAlerts.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_lecturial)
+            .setContentTitle("Физика")
+            .build()
+        try {
+            // Stopped before it went foreground, the service used to take the whole app down with it.
+            repeat(5) {
+                LessonLiveService.start(app, event, live, notification, isTest = true)
+                LessonLiveService.stop(app)
+            }
+            Thread.sleep(3_000)
+            assertFalse(manager.activeNotifications.any { it.id == LessonAlerts.NOTIFICATION_ID })
+        } finally {
+            LessonAlerts.clearTest(app)
         }
     }
 

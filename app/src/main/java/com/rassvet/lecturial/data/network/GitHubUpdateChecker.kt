@@ -15,11 +15,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 
 class GitHubUpdateChecker(
     private val apiUrl: String = LATEST_RELEASE_API,
     private val client: OkHttpClient = OkHttpClient(),
     private val releaseDownloadPrefix: String = RELEASE_DOWNLOAD_PREFIX,
+    /** The installed release APK; with it, a release rebuilt under the same number is offered too. */
+    private val installedApk: File? = null,
 ) {
     suspend fun check(currentVersion: String): AppUpdateState = withContext(Dispatchers.IO) {
         val request = Request.Builder()
@@ -57,21 +60,27 @@ class GitHubUpdateChecker(
             throw IOException("В ответе GitHub нет данных о релизе")
         }
         val latestVersion = normalizedVersion(tag)
-        if (compareVersions(latestVersion, currentVersion) > 0) {
-            val apk = findApkAsset(release.optJSONArray("assets") ?: JSONArray())
-                ?: throw IOException("В релизе $tag не найден APK-файл")
+        val apk = findApkAsset(release.optJSONArray("assets") ?: JSONArray())
+        val comparison = compareVersions(latestVersion, currentVersion)
+        // Same number, another file: the release was rebuilt in place. GitHub gives each file's SHA-256.
+        val rebuilt = comparison == 0 && installedApk != null && apk?.digest != null &&
+            apk.digest != runCatching { sha256Of(installedApk) }.getOrNull()
+        if (comparison > 0 || rebuilt) {
+            apk ?: throw IOException("В релизе $tag не найден APK-файл")
             val minVersion = requiredMinVersion(release.optString("body"))
             AppUpdateState.Available(
                 version = latestVersion,
                 releaseUrl = releaseUrl,
-                apkUrl = apk.second,
-                apkName = apk.first,
+                apkUrl = apk.url,
+                apkName = apk.name,
                 required = minVersion != null && compareVersions(currentVersion, minVersion) < 0,
             )
         } else {
             AppUpdateState.UpToDate(latestVersion)
         }
     }
+
+    private class ApkAsset(val name: String, val url: String, val digest: String?)
 
     suspend fun downloadApk(
         update: AppUpdateState.Available,
@@ -155,13 +164,14 @@ class GitHubUpdateChecker(
         }
     }
 
-    private fun findApkAsset(assets: JSONArray): Pair<String, String>? {
+    private fun findApkAsset(assets: JSONArray): ApkAsset? {
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             val name = asset.optString("name").trim()
             val url = asset.optString("browser_download_url").trim()
             if (name.endsWith(".apk", ignoreCase = true) && isTrustedApkUrl(url)) {
-                return name to url
+                val digest = asset.optString("digest").trim().lowercase().removePrefix("sha256:")
+                return ApkAsset(name, url, digest.takeIf { it.matches(Regex("[0-9a-f]{64}")) })
             }
         }
         return null
@@ -182,6 +192,19 @@ class GitHubUpdateChecker(
         const val MAX_APK_BYTES = 250L * 1024L * 1024L
         val APK_CONTENT_TYPES = setOf(APK_MIME_TYPE, "application/octet-stream", "application/zip")
     }
+}
+
+private fun sha256Of(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 private fun File.hasZipHeader(): Boolean = inputStream().use { input ->

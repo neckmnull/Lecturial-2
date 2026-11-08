@@ -63,6 +63,8 @@ internal suspend fun <T> withTestSchedule(lessons: List<ScheduleEvent>, block: s
     val app = testApp
     val previous = app.preferences.selectedGroup.first()
     app.preferences.setSelectedGroup(TEST_GROUP)
+    // "All teachers", so the app doesn't stop on the language-teacher step for this group.
+    app.preferences.setLanguageTeacher(TEST_GROUP, null)
     lessons.groupBy { it.date.with(DayOfWeek.MONDAY) }.forEach { (monday, inWeek) ->
         val days = (0L..6L).map { offset ->
             val date = monday.plusDays(offset)

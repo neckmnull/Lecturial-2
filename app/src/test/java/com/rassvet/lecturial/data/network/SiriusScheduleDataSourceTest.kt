@@ -1,9 +1,16 @@
 package com.rassvet.lecturial.data.network
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -44,6 +51,78 @@ class SiriusScheduleDataSourceTest {
         assertEquals("true", livewire.getHeader("X-Livewire"))
         assertTrue(livewire.body.readUtf8().contains("ИОП-ИТ-26/2"))
         assertTrue(livewire.getHeader("Cookie").orEmpty().contains("session=test"))
+    }
+
+    @Test
+    fun `a cancelled load stops asking the site`() = runBlocking {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) =
+                if (request.path == "/") MockResponse().setBody(initialHtml())
+                else MockResponse().setBody(groupResponse()).setBodyDelay(50, TimeUnit.MILLISECONDS)
+        }
+        val source = SiriusScheduleDataSource(server.url("/").toString(), OkHttpClient())
+        // Twenty weeks ahead of the site's week: the page, the group and twenty steps.
+        val load = launch(Dispatchers.IO) { source.fetchWeek("ИОП-ИТ-26/2", LocalDate.of(2027, 1, 18)) }
+        while (server.requestCount < 3) delay(10)
+
+        load.cancelAndJoin()
+
+        assertTrue("Asked ${server.requestCount} times", server.requestCount <= 5)
+    }
+
+    @Test
+    fun `a cancelled forward walk stops asking the site`() = runBlocking {
+        serveSlowly()
+        val source = SiriusScheduleDataSource(server.url("/").toString(), OkHttpClient())
+        // At the site's own week: the page, the group and nineteen steps forward.
+        val load = launch(Dispatchers.IO) {
+            source.fetchWeeks("ИОП-ИТ-26/2", LocalDate.of(2026, 8, 31), 20) { }
+        }
+        while (server.requestCount < 4) delay(10)
+
+        load.cancelAndJoin()
+
+        assertTrue("Asked ${server.requestCount} times", server.requestCount <= 6)
+    }
+
+    @Test
+    fun `an uncancelled load ahead of the site delivers every week in order`() = runBlocking {
+        serveSlowly(delayMillis = 0)
+        val source = SiriusScheduleDataSource(server.url("/").toString(), OkHttpClient())
+        val weeks = mutableListOf<LocalDate>()
+
+        source.fetchWeeks("ИОП-ИТ-26/2", LocalDate.of(2026, 9, 14), 3) { weeks += it.weekStart }
+
+        assertEquals(
+            listOf(LocalDate.of(2026, 9, 14), LocalDate.of(2026, 9, 21), LocalDate.of(2026, 9, 28)),
+            weeks,
+        )
+        // Page, group, two weeks to the target, two more weeks forward.
+        assertEquals(6, server.requestCount)
+    }
+
+    @Test
+    fun `an uncancelled load behind the site delivers every week in order`() = runBlocking {
+        serveSlowly(delayMillis = 0)
+        val source = SiriusScheduleDataSource(server.url("/").toString(), OkHttpClient())
+        val weeks = mutableListOf<LocalDate>()
+
+        source.fetchWeeks("ИОП-ИТ-26/2", LocalDate.of(2026, 8, 17), 3) { weeks += it.weekStart }
+
+        assertEquals(
+            listOf(LocalDate.of(2026, 8, 17), LocalDate.of(2026, 8, 24), LocalDate.of(2026, 8, 31)),
+            weeks,
+        )
+        // Page, group, two weeks back, two weeks forward.
+        assertEquals(6, server.requestCount)
+    }
+
+    private fun serveSlowly(delayMillis: Long = 50) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) =
+                if (request.path == "/") MockResponse().setBody(initialHtml())
+                else MockResponse().setBody(groupResponse()).setBodyDelay(delayMillis, TimeUnit.MILLISECONDS)
+        }
     }
 
     @Test

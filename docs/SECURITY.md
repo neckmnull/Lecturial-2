@@ -1,7 +1,7 @@
 # Безопасность Lecturial 2
 
 Документ для специалистов по информационной безопасности: какие данные обрабатывает
-приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.5.
+приложение, куда они уходят, как защищены и какие риски остаются. Описана версия 1.13.6.
 Все утверждения проверены по исходному коду; ссылки ведут на файлы, где это видно.
 
 ## Кратко
@@ -259,20 +259,20 @@ WebView и отменяет фоновое обновление.
 Подпись и хеш скачанного APK:
 
 ```bash
-apksigner verify --print-certs Lecturial-2-v1.13.5.apk
-sha256sum Lecturial-2-v1.13.5.apk
+apksigner verify --print-certs Lecturial-2-v1.13.6.apk
+sha256sum Lecturial-2-v1.13.6.apk
 ```
 
 Разрешения:
 
 ```bash
-aapt2 dump permissions Lecturial-2-v1.13.5.apk
+aapt2 dump permissions Lecturial-2-v1.13.6.apk
 ```
 
 Манифест целиком, с флагами `exported`:
 
 ```bash
-aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.5.apk
+aapt2 dump xmltree --file AndroidManifest.xml Lecturial-2-v1.13.6.apk
 ```
 
 Сетевой трафик можно смотреть через прокси с пользовательским сертификатом только

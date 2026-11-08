@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.first
 class LecturialApplication : Application() {
     val preferences by lazy { UserPreferences(this) }
     val database by lazy { LecturialDatabase.create(this) }
-    val updateChecker by lazy { GitHubUpdateChecker() }
+    // Only a release build is the file on GitHub; debug and benchmark APKs always differ from it.
+    val updateChecker by lazy {
+        GitHubUpdateChecker(installedApk = File(applicationInfo.sourceDir).takeIf { BuildConfig.BUILD_TYPE == "release" })
+    }
     val updatesDirectory by lazy { File(cacheDir, "updates") }
     val studyPlanRepository by lazy {
         StudyPlanRepository(database) {
